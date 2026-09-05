@@ -1,0 +1,140 @@
+import { useEffect, useId, useRef } from "react";
+import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { Minus, Square, X } from "lucide-react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { errorMessage, native } from "./api";
+
+export function IconButton({
+  title,
+  children,
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { title: string }) {
+  return (
+    <button
+      type="button"
+      className="icon-button"
+      title={title}
+      aria-label={title}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function WindowControls({
+  onError,
+}: {
+  onError: (message: string) => void;
+}) {
+  const act = (action: "minimize" | "toggleMaximize" | "close") => {
+    if (native)
+      void getCurrentWindow()
+        [action]()
+        .catch((error) => onError(errorMessage(error)));
+  };
+  return (
+    <div className="window-controls">
+      <IconButton
+        title="Minimize window"
+        disabled={!native}
+        onClick={() => act("minimize")}
+      >
+        <Minus size={14} />
+      </IconButton>
+      <IconButton
+        title="Maximize or restore window"
+        disabled={!native}
+        onClick={() => act("toggleMaximize")}
+      >
+        <Square size={12} />
+      </IconButton>
+      <IconButton
+        title="Close window"
+        disabled={!native}
+        onClick={() => act("close")}
+      >
+        <X size={15} />
+      </IconButton>
+    </div>
+  );
+}
+
+export function Modal({
+  title,
+  children,
+  onClose,
+  wide = false,
+}: {
+  title: string;
+  children: ReactNode;
+  onClose: () => void;
+  wide?: boolean;
+}) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  useEffect(() => {
+    const element = dialog.current;
+    element?.showModal();
+    return () => element?.close();
+  }, []);
+  return (
+    <dialog
+      ref={dialog}
+      className={`modal${wide ? " modal-wide" : ""}`}
+      aria-labelledby={titleId}
+      onCancel={(event) => {
+        event.preventDefault();
+        onClose();
+      }}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="modal-surface">
+        <header>
+          <h2 id={titleId}>{title}</h2>
+          <IconButton title="Close dialog" onClick={onClose}>
+            <X size={16} />
+          </IconButton>
+        </header>
+        {children}
+      </div>
+    </dialog>
+  );
+}
+
+export function Menu({
+  children,
+  onClose,
+  className = "",
+}: {
+  children: ReactNode;
+  onClose: () => void;
+  className?: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const close = (event: PointerEvent) => {
+      if (
+        !ref.current?.contains(event.target as Node) &&
+        !(event.target as Element).closest?.("[data-menu-trigger]")
+      )
+        onClose();
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [onClose]);
+  return (
+    <div ref={ref} className={`menu ${className}`}>
+      {children}
+    </div>
+  );
+}

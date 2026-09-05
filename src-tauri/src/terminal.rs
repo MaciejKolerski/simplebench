@@ -1,0 +1,490 @@
+use crate::{
+    files::main_window,
+    shell::{self, Profile},
+};
+use portable_pty::{native_pty_system, ChildKiller, MasterPty, PtySize};
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::HashMap,
+    io::{Read, Write},
+    path::PathBuf,
+    sync::{Arc, Condvar, Mutex},
+    thread,
+};
+use tauri::{
+    ipc::{Channel, Response},
+    State, WebviewWindow,
+};
+
+const HIGH_WATER: usize = 128 * 1024;
+
+#[derive(Default)]
+struct Flow {
+    pending: usize,
+    closed: bool,
+}
+
+struct Session {
+    master: Mutex<Box<dyn MasterPty + Send>>,
+    writer: Mutex<Option<Box<dyn Write + Send>>>,
+    killer: Mutex<Box<dyn ChildKiller + Send + Sync>>,
+    flow: Mutex<Flow>,
+    ready: Condvar,
+    pid: Option<u32>,
+    profile: Profile,
+}
+
+impl Session {
+    fn stop(&self) {
+        if let Ok(mut flow) = self.flow.lock() {
+            flow.closed = true;
+        }
+        self.ready.notify_all();
+        if let Ok(mut killer) = self.killer.lock() {
+            let _ = killer.kill();
+        }
+        if let Ok(mut writer) = self.writer.lock() {
+            writer.take();
+        }
+    }
+}
+
+#[derive(Default, Clone)]
+pub struct Terminals {
+    sessions: Arc<Mutex<HashMap<String, Arc<Session>>>>,
+}
+
+#[derive(Clone)]
+pub struct Shells {
+    pub profiles: Vec<Profile>,
+    pub integration: PathBuf,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartRequest {
+    id: String,
+    profile_id: String,
+    cwd: String,
+    cols: u16,
+    rows: u16,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Started {
+    cwd: String,
+    profile_id: String,
+}
+
+#[derive(Serialize, Clone)]
+pub struct Exit {
+    code: Option<u32>,
+}
+
+fn size(cols: u16, rows: u16) -> Result<PtySize, String> {
+    if cols == 0 || rows == 0 || cols > 1000 || rows > 1000 {
+        return Err("Terminal dimensions must be between 1 and 1000 cells.".into());
+    }
+    Ok(PtySize {
+        rows,
+        cols,
+        pixel_width: 0,
+        pixel_height: 0,
+    })
+}
+
+impl Terminals {
+    fn get(&self, id: &str) -> Result<Arc<Session>, String> {
+        self.sessions
+            .lock()
+            .map_err(|error| error.to_string())?
+            .get(id)
+            .cloned()
+            .ok_or_else(|| "The terminal session is no longer running.".into())
+    }
+
+    pub fn stop_all(&self) {
+        let sessions: Vec<_> = self
+            .sessions
+            .lock()
+            .map(|mut sessions| sessions.drain().map(|(_, session)| session).collect())
+            .unwrap_or_default();
+        for session in sessions {
+            session.stop();
+        }
+    }
+
+    pub fn close(&self, id: &str) {
+        let session = self
+            .sessions
+            .lock()
+            .ok()
+            .and_then(|mut sessions| sessions.remove(id));
+        if let Some(session) = session {
+            session.stop();
+        }
+    }
+
+    pub fn acknowledge(&self, id: &str, bytes: usize) {
+        if let Ok(session) = self.get(id) {
+            if let Ok(mut flow) = session.flow.lock() {
+                flow.pending = flow.pending.saturating_sub(bytes);
+            }
+            session.ready.notify_one();
+        }
+    }
+
+    fn start(
+        &self,
+        shells: &Shells,
+        request: StartRequest,
+        output: Channel<Response>,
+        exited: Channel<Exit>,
+    ) -> Result<Started, String> {
+        if request.id.is_empty() || request.id.len() > 128 {
+            return Err("Invalid terminal identifier.".into());
+        }
+        let profile = shells
+            .profiles
+            .iter()
+            .find(|profile| profile.id == request.profile_id)
+            .cloned()
+            .ok_or("The selected shell is no longer installed. Choose another shell.")?;
+        let (command, cwd) = shell::build(&profile, &request.cwd, &shells.integration)?;
+        let pair = native_pty_system()
+            .openpty(size(request.cols, request.rows)?)
+            .map_err(|error| error.to_string())?;
+        let mut reader = pair
+            .master
+            .try_clone_reader()
+            .map_err(|error| error.to_string())?;
+        let writer = pair
+            .master
+            .take_writer()
+            .map_err(|error| error.to_string())?;
+        let mut child = pair
+            .slave
+            .spawn_command(command)
+            .map_err(|error| format!("Cannot start {}: {error}", profile.name))?;
+        drop(pair.slave);
+        let session = Arc::new(Session {
+            pid: child.process_id(),
+            profile: profile.clone(),
+            master: Mutex::new(pair.master),
+            writer: Mutex::new(Some(writer)),
+            killer: Mutex::new(child.clone_killer()),
+            flow: Mutex::new(Flow::default()),
+            ready: Condvar::new(),
+        });
+        {
+            let mut sessions = self.sessions.lock().map_err(|error| error.to_string())?;
+            if sessions.contains_key(&request.id) {
+                session.stop();
+                let _ = child.wait();
+                return Err("A terminal with this identifier already exists.".into());
+            }
+            sessions.insert(request.id.clone(), session.clone());
+        }
+        let sessions = Arc::downgrade(&self.sessions);
+        thread::spawn(move || {
+            let mut buffer = [0_u8; 16 * 1024];
+            loop {
+                let mut flow = session
+                    .flow
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner());
+                while !flow.closed && flow.pending >= HIGH_WATER {
+                    flow = session
+                        .ready
+                        .wait(flow)
+                        .unwrap_or_else(|error| error.into_inner());
+                }
+                if flow.closed {
+                    break;
+                }
+                drop(flow);
+                let length = match reader.read(&mut buffer) {
+                    Ok(0) | Err(_) => break,
+                    Ok(length) => length,
+                };
+                // Bound bytes in flight; acknowledge only after xterm has parsed them.
+                session
+                    .flow
+                    .lock()
+                    .unwrap_or_else(|error| error.into_inner())
+                    .pending += length;
+                if output
+                    .send(Response::new(buffer[..length].to_vec()))
+                    .is_err()
+                {
+                    session.stop();
+                    break;
+                }
+            }
+            drop(reader);
+            let code = child.wait().ok().map(|status| status.exit_code());
+            if let Some(sessions) = sessions.upgrade() {
+                if let Ok(mut sessions) = sessions.lock() {
+                    if sessions
+                        .get(&request.id)
+                        .is_some_and(|current| Arc::ptr_eq(current, &session))
+                    {
+                        sessions.remove(&request.id);
+                    }
+                }
+            }
+            let _ = exited.send(Exit { code });
+            // An ordered EOF marker keeps the exit notice behind all output chunks.
+            let _ = output.send(Response::new(Vec::<u8>::new()));
+        });
+        Ok(Started {
+            cwd,
+            profile_id: profile.id,
+        })
+    }
+
+    fn write(&self, id: &str, data: &str) -> Result<(), String> {
+        if data.len() > 256 * 1024 {
+            return Err("A terminal input chunk exceeds 256 KiB.".into());
+        }
+        let session = self.get(id)?;
+        let mut writer = session.writer.lock().map_err(|error| error.to_string())?;
+        let writer = writer.as_mut().ok_or("The terminal has been closed.")?;
+        writer
+            .write_all(data.as_bytes())
+            .and_then(|_| writer.flush())
+            .map_err(|error| error.to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn start_terminal(
+    window: WebviewWindow,
+    state: State<'_, Terminals>,
+    shells: State<'_, Shells>,
+    request: StartRequest,
+    output: Channel<Response>,
+    exited: Channel<Exit>,
+) -> Result<Started, String> {
+    main_window(&window)?;
+    let state = state.inner().clone();
+    let shells = shells.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.start(&shells, request, output, exited))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn write_terminal(
+    window: WebviewWindow,
+    state: State<'_, Terminals>,
+    id: String,
+    data: String,
+) -> Result<(), String> {
+    main_window(&window)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.write(&id, &data))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub fn acknowledge_terminal(
+    window: WebviewWindow,
+    state: State<'_, Terminals>,
+    id: String,
+    bytes: usize,
+) -> Result<(), String> {
+    main_window(&window)?;
+    state.acknowledge(&id, bytes);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn resize_terminal(
+    window: WebviewWindow,
+    state: State<'_, Terminals>,
+    id: String,
+    cols: u16,
+    rows: u16,
+) -> Result<(), String> {
+    main_window(&window)?;
+    let session = state.get(&id)?;
+    let result = session
+        .master
+        .lock()
+        .map_err(|error| error.to_string())?
+        .resize(size(cols, rows)?)
+        .map_err(|error| error.to_string());
+    result
+}
+
+#[tauri::command]
+pub async fn close_terminal(
+    window: WebviewWindow,
+    state: State<'_, Terminals>,
+    id: String,
+) -> Result<(), String> {
+    main_window(&window)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.close(&id))
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn reset_terminals(
+    window: WebviewWindow,
+    state: State<'_, Terminals>,
+) -> Result<(), String> {
+    main_window(&window)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.stop_all())
+        .await
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub async fn quote_paths(
+    window: WebviewWindow,
+    shells: State<'_, Shells>,
+    profile_id: String,
+    paths: Vec<String>,
+) -> Result<String, String> {
+    main_window(&window)?;
+    let profile = shells
+        .profiles
+        .iter()
+        .find(|profile| profile.id == profile_id)
+        .cloned()
+        .ok_or("Unknown terminal environment.")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        paths
+            .iter()
+            .map(|path| {
+                let path = if let Some(distro) = &profile.distro {
+                    shell::wsl_path(distro, path)?
+                } else {
+                    path.clone()
+                };
+                shell::quote(&path, &profile.kind)
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .map(|paths| paths.join(" "))
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub fn terminal_directories(
+    window: WebviewWindow,
+    state: State<'_, Terminals>,
+) -> Result<HashMap<String, String>, String> {
+    main_window(&window)?;
+    let sessions = state.sessions.lock().map_err(|error| error.to_string())?;
+    #[allow(unused_mut)]
+    let mut directories = HashMap::new();
+    for (id, session) in sessions.iter() {
+        if session.profile.distro.is_some() {
+            continue;
+        }
+        #[cfg(target_os = "linux")]
+        if let Some(pid) = session.pid {
+            if let Ok(path) = std::fs::read_link(format!("/proc/{pid}/cwd")) {
+                directories.insert(id.clone(), path.to_string_lossy().into_owned());
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
+        let _ = (&directories, &id, &session.pid);
+    }
+    Ok(directories)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn rejects_invalid_terminal_sizes() {
+        assert!(size(0, 24).is_err());
+        assert!(size(80, 1001).is_err());
+        assert!(size(80, 24).is_ok());
+    }
+    #[cfg(unix)]
+    #[test]
+    fn pty_streams_utf8_resizes_and_exits() {
+        use std::{
+            sync::mpsc,
+            time::{Duration, Instant},
+        };
+        let directory = tempfile::tempdir().unwrap();
+        shell::prepare(directory.path()).unwrap();
+        let profile = shell::discover()
+            .into_iter()
+            .find(|profile| profile.kind == "bash")
+            .unwrap();
+        let shells = Shells {
+            profiles: vec![profile.clone()],
+            integration: directory.path().to_owned(),
+        };
+        let manager = Terminals::default();
+        let (send, receive) = mpsc::channel();
+        let ack = manager.clone();
+        let output = Channel::new(move |body| {
+            if let tauri::ipc::InvokeResponseBody::Raw(bytes) = body {
+                ack.acknowledge("test", bytes.len());
+                send.send(bytes).unwrap();
+            }
+            Ok(())
+        });
+        let (exit_send, exit_receive) = mpsc::channel();
+        let exited = Channel::new(move |_| {
+            exit_send.send(()).unwrap();
+            Ok(())
+        });
+        manager
+            .start(
+                &shells,
+                StartRequest {
+                    id: "test".into(),
+                    profile_id: profile.id,
+                    cwd: directory.path().to_string_lossy().into_owned(),
+                    cols: 80,
+                    rows: 24,
+                },
+                output,
+                exited,
+            )
+            .unwrap();
+        manager
+            .get("test")
+            .unwrap()
+            .master
+            .lock()
+            .unwrap()
+            .resize(size(101, 31).unwrap())
+            .unwrap();
+        manager
+            .write("test", "printf 'UTF8: zażółć\\n'; stty size; exit\r")
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        let mut bytes = Vec::new();
+        while Instant::now() < deadline {
+            if let Ok(chunk) = receive.recv_timeout(Duration::from_millis(100)) {
+                bytes.extend(chunk);
+            }
+            if exit_receive.try_recv().is_ok() {
+                while let Ok(chunk) = receive.try_recv() {
+                    bytes.extend(chunk);
+                }
+                break;
+            }
+        }
+        manager.stop_all();
+        let text = String::from_utf8_lossy(&bytes);
+        assert!(text.contains("UTF8: zażółć"), "{text}");
+        assert!(text.contains("31 101"), "{text}");
+        assert!(manager.sessions.lock().unwrap().is_empty());
+    }
+}

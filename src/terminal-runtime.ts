@@ -1,0 +1,548 @@
+import { Channel } from "@tauri-apps/api/core";
+import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { Terminal } from "@xterm/xterm";
+import type { IMarker } from "@xterm/xterm";
+import { FitAddon } from "@xterm/addon-fit";
+import { SearchAddon } from "@xterm/addon-search";
+import { WebLinksAddon } from "@xterm/addon-web-links";
+import type { WebglAddon } from "@xterm/addon-webgl";
+import { api, errorMessage } from "./api";
+import { newId } from "./model";
+import type { Pane, ShellProfile } from "./model";
+import { inputChunks } from "./terminal-utils";
+
+export interface CommandBlock {
+  id: string;
+  command: string;
+  started: number;
+  finished?: number;
+  exitCode?: number;
+  marker?: IMarker;
+}
+interface Snapshot {
+  status: "starting" | "running" | "exited" | "error";
+  error: string | null;
+  cwd: string;
+  renderer: "WebGL" | "DOM";
+  blocks: CommandBlock[];
+  searchResult: string;
+}
+type DirectoryListener = (id: string, cwd: string) => void;
+let directoryListener: DirectoryListener = () => {};
+let reportError: (message: string) => void = () => {};
+
+export function configureTerminals(
+  onDirectory: DirectoryListener,
+  onError: (message: string) => void,
+) {
+  directoryListener = onDirectory;
+  reportError = onError;
+}
+
+export class TerminalRuntime {
+  readonly sessionId = newId();
+  readonly terminal: Terminal;
+  readonly fitAddon = new FitAddon();
+  readonly searchAddon = new SearchAddon();
+  readonly host = document.createElement("div");
+  private webgl?: WebglAddon;
+  private observer?: ResizeObserver;
+  private frame = 0;
+  private opened = false;
+  private attached = false;
+  private rendererGeneration = 0;
+  private disposed = false;
+  private startPromise?: Promise<void>;
+  private input = Promise.resolve();
+  private unacknowledged = 0;
+  private ackTimer: ReturnType<typeof setTimeout> | undefined;
+  private listeners = new Set<() => void>();
+  private snapshot: Snapshot;
+  private promptEnd?: { marker: IMarker; column: number };
+  private activeBlock?: CommandBlock;
+  private nextCommand?: string;
+  private eof = false;
+  private exitCode: number | null | undefined;
+
+  constructor(
+    readonly paneId: string,
+    readonly profile: ShellProfile,
+    cwd: string,
+  ) {
+    const style = getComputedStyle(document.documentElement);
+    const color = (name: string) =>
+      style.getPropertyValue(`--color-${name}`).trim();
+    this.snapshot = {
+      status: "starting",
+      error: null,
+      cwd,
+      renderer: "DOM",
+      blocks: [],
+      searchResult: "",
+    };
+    this.terminal = new Terminal({
+      allowProposedApi: true,
+      cursorBlink: true,
+      cursorStyle: "bar",
+      fontFamily:
+        '"Cascadia Code", "SFMono-Regular", "Liberation Mono", monospace',
+      fontSize: 13,
+      lineHeight: 1.25,
+      scrollback: 10_000,
+      theme: {
+        background: color("background"),
+        foreground: color("surface-text"),
+        cursor: color("primary"),
+        cursorAccent: color("primary-text"),
+        selectionBackground: color("surface-container-highest"),
+        black: color("background"),
+        red: color("error"),
+        green: color("primary"),
+        yellow: color("warning"),
+        blue: color("info"),
+        magenta: color("primary-container"),
+        cyan: color("info"),
+        white: color("surface-text"),
+        brightBlack: color("secondary"),
+        brightRed: color("error"),
+        brightGreen: color("background-text"),
+        brightYellow: color("warning"),
+        brightBlue: color("info"),
+        brightMagenta: color("primary"),
+        brightCyan: color("info"),
+        brightWhite: color("background-text"),
+      },
+    });
+    this.host.className = "terminal-host";
+    this.terminal.loadAddon(this.fitAddon);
+    this.terminal.loadAddon(this.searchAddon);
+    this.terminal.loadAddon(
+      new WebLinksAddon((event, uri) => {
+        if (!(event.ctrlKey || event.metaKey)) return;
+        if (/^https?:\/\//i.test(uri))
+          void openUrl(uri).catch((error) => reportError(errorMessage(error)));
+      }),
+    );
+    this.terminal.onData((data) => {
+      if (data === "\r" && ["cmd", "pwsh", "powershell"].includes(profile.kind))
+        this.startBlock();
+      this.send(data);
+    });
+    this.terminal.attachCustomKeyEventHandler((event) => {
+      if (event.type !== "keydown") return true;
+      const modifier = event.ctrlKey || event.metaKey;
+      if (modifier && event.shiftKey && event.code === "KeyC") {
+        void this.copy();
+        return false;
+      }
+      if (modifier && event.shiftKey && event.code === "KeyV") {
+        void this.pasteClipboard();
+        return false;
+      }
+      if (
+        modifier &&
+        (event.code === "Tab" ||
+          event.code === "Comma" ||
+          (event.shiftKey &&
+            ["KeyT", "KeyW", "KeyE", "KeyG", "KeyF"].includes(event.code)))
+      )
+        return false;
+      return true;
+    });
+    this.terminal.parser.registerOscHandler(7, (value) => {
+      try {
+        const url = new URL(value);
+        if (url.protocol !== "file:") return false;
+        let directory = decodeURIComponent(url.pathname);
+        if (!profile.distro && /^\/[a-z]:/i.test(directory))
+          directory = directory.slice(1);
+        if (
+          directory &&
+          !/[\x00-\x1f]/.test(directory) &&
+          directory !== this.snapshot.cwd
+        ) {
+          this.update({ cwd: directory });
+          directoryListener(this.paneId, directory);
+        }
+      } catch {
+        /* Malformed shell directory reports must not interrupt terminal parsing. */
+      }
+      return true;
+    });
+    this.terminal.parser.registerOscHandler(133, (value) => {
+      const [event, status] = value.split(";");
+      if (event === "B") {
+        this.promptEnd?.marker.dispose();
+        this.promptEnd = {
+          marker: this.terminal.registerMarker(0),
+          column: this.terminal.buffer.active.cursorX,
+        };
+      }
+      if (event === "C") this.startBlock();
+      if (event === "D")
+        this.finishBlock(status === undefined ? undefined : Number(status));
+      return true;
+    });
+    this.searchAddon.onDidChangeResults(({ resultIndex, resultCount }) =>
+      this.update({
+        searchResult: resultCount
+          ? `${resultIndex + 1} / ${resultCount}`
+          : "No matches",
+      }),
+    );
+  }
+
+  readonly subscribe = (listener: () => void) => {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  };
+  readonly getSnapshot = () => this.snapshot;
+  private update(patch: Partial<Snapshot>) {
+    if (this.disposed) return;
+    this.snapshot = { ...this.snapshot, ...patch };
+    for (const listener of this.listeners) listener();
+  }
+
+  attach(container: HTMLElement) {
+    this.attached = true;
+    container.replaceChildren(this.host);
+    if (!this.opened) {
+      this.terminal.open(this.host);
+      this.opened = true;
+    }
+    const generation = ++this.rendererGeneration;
+    void import("@xterm/addon-webgl")
+      .then(({ WebglAddon }) => {
+        if (
+          !this.attached ||
+          this.disposed ||
+          generation !== this.rendererGeneration
+        )
+          return;
+        const webgl = new WebglAddon();
+        webgl.onContextLoss(() => {
+          webgl.dispose();
+          this.webgl = undefined;
+          this.update({ renderer: "DOM" });
+        });
+        this.terminal.loadAddon(webgl);
+        this.webgl = webgl;
+        this.update({ renderer: "WebGL" });
+      })
+      .catch(() => this.update({ renderer: "DOM" }));
+    this.observer = new ResizeObserver(() => this.scheduleFit());
+    this.observer.observe(container);
+    this.scheduleFit();
+    void this.start();
+  }
+
+  detach() {
+    this.attached = false;
+    this.rendererGeneration++;
+    cancelAnimationFrame(this.frame);
+    this.observer?.disconnect();
+    this.webgl?.dispose();
+    this.webgl = undefined;
+    this.host.remove();
+  }
+
+  scheduleFit() {
+    cancelAnimationFrame(this.frame);
+    this.frame = requestAnimationFrame(() => {
+      if (
+        !this.attached ||
+        this.host.clientWidth < 30 ||
+        this.host.clientHeight < 20
+      )
+        return;
+      const before = `${this.terminal.cols}:${this.terminal.rows}`;
+      this.fitAddon.fit();
+      if (
+        this.snapshot.status === "running" &&
+        before !== `${this.terminal.cols}:${this.terminal.rows}`
+      ) {
+        void api("resize_terminal", {
+          id: this.sessionId,
+          cols: this.terminal.cols,
+          rows: this.terminal.rows,
+        }).catch((error) => {
+          if (!this.disposed && this.snapshot.status === "running")
+            reportError(errorMessage(error));
+        });
+      }
+    });
+  }
+
+  private start() {
+    if (this.startPromise) return this.startPromise;
+    this.startPromise = (async () => {
+      this.fitAddon.fit();
+      const output = new Channel<ArrayBuffer>();
+      output.onmessage = (data) => {
+        if (this.disposed) return;
+        const bytes = new Uint8Array(data);
+        if (!bytes.length) {
+          this.eof = true;
+          this.finishExit();
+          return;
+        }
+        // Output stays outside React; acknowledgements follow xterm's parser callback.
+        this.terminal.write(bytes, () => {
+          this.unacknowledged += bytes.length;
+          if (this.unacknowledged >= 32 * 1024) this.acknowledge();
+          else if (this.ackTimer === undefined)
+            this.ackTimer = setTimeout(() => this.acknowledge(), 16);
+        });
+      };
+      const exited = new Channel<{ code: number | null }>();
+      exited.onmessage = ({ code }) => {
+        this.exitCode = code;
+        this.finishExit();
+      };
+      try {
+        const requestedCwd = this.snapshot.cwd;
+        const started = await api<{ cwd: string }>("start_terminal", {
+          request: {
+            id: this.sessionId,
+            profileId: this.profile.id,
+            cwd: this.snapshot.cwd,
+            cols: this.terminal.cols,
+            rows: this.terminal.rows,
+          },
+          output,
+          exited,
+        });
+        if (this.disposed) {
+          await api("close_terminal", { id: this.sessionId });
+          return;
+        }
+        const cwd =
+          this.snapshot.cwd === requestedCwd ? started.cwd : this.snapshot.cwd;
+        if (!this.eof) this.update({ status: "running", cwd });
+        directoryListener(this.paneId, cwd);
+        this.scheduleFit();
+      } catch (error) {
+        this.update({ status: "error", error: errorMessage(error) });
+      }
+    })();
+    return this.startPromise;
+  }
+
+  private finishExit() {
+    if (!this.eof || this.exitCode === undefined || this.disposed) return;
+    this.terminal.write("", () => {
+      this.finishBlock(this.exitCode ?? undefined);
+      this.update({ status: "exited" });
+      this.terminal.writeln(
+        `\r\n\x1b[2mSession ended${this.exitCode === null ? "" : ` (exit ${this.exitCode})`}. Use Restart to open a new shell.\x1b[0m`,
+      );
+    });
+  }
+
+  private acknowledge() {
+    clearTimeout(this.ackTimer);
+    this.ackTimer = undefined;
+    const bytes = this.unacknowledged;
+    this.unacknowledged = 0;
+    if (bytes && !this.disposed)
+      void api("acknowledge_terminal", { id: this.sessionId, bytes }).catch(
+        () => {},
+      );
+  }
+
+  send(data: string) {
+    if (
+      this.disposed ||
+      this.snapshot.status === "exited" ||
+      this.snapshot.status === "error"
+    )
+      return;
+    this.input = this.input
+      .then(async () => {
+        await this.startPromise;
+        if (this.disposed) return;
+        for (const chunk of inputChunks(data)) {
+          await api("write_terminal", { id: this.sessionId, data: chunk });
+        }
+      })
+      .catch((error) => {
+        if (!this.disposed && this.snapshot.status === "running")
+          reportError(errorMessage(error));
+      });
+  }
+
+  execute(command: string) {
+    if (!command.trim()) return;
+    if (command.length > 1_048_576) {
+      reportError("The command input exceeds 1 MiB.");
+      return;
+    }
+    this.nextCommand = command;
+    this.terminal.paste(command);
+    this.send("\r");
+    this.terminal.focus();
+  }
+
+  async pastePaths(paths: string[]) {
+    const quoted = await api<string>("quote_paths", {
+      profileId: this.profile.id,
+      paths,
+    });
+    if (!this.disposed) {
+      this.terminal.paste(`${quoted} `);
+      this.terminal.focus();
+    }
+  }
+
+  async copy() {
+    const selection = this.terminal.getSelection();
+    if (selection)
+      await writeText(selection).catch((error) =>
+        reportError(errorMessage(error)),
+      );
+  }
+
+  async pasteClipboard() {
+    try {
+      const text = await readText();
+      if (text.length > 1_048_576) {
+        reportError("Clipboard text exceeds the 1 MiB paste limit.");
+        return;
+      }
+      this.terminal.paste(text);
+    } catch (error) {
+      reportError(errorMessage(error));
+    }
+  }
+
+  find(query: string, previous = false, caseSensitive = false, regex = false) {
+    if (!query) {
+      this.searchAddon.clearDecorations();
+      this.update({ searchResult: "" });
+      return;
+    }
+    try {
+      const options = {
+        caseSensitive,
+        regex,
+        decorations: {
+          matchBackground: "#303030",
+          activeMatchBackground: "#6e6e6e",
+          matchBorder: "#787878",
+          activeMatchBorder: "#9a9a9a",
+          matchOverviewRuler: "#787878",
+          activeMatchColorOverviewRuler: "#9a9a9a",
+        },
+      };
+      if (previous) this.searchAddon.findPrevious(query, options);
+      else this.searchAddon.findNext(query, options);
+    } catch {
+      this.update({ searchResult: "Invalid expression" });
+    }
+  }
+
+  private startBlock() {
+    if (this.activeBlock || this.terminal.buffer.active.type !== "normal")
+      return;
+    const buffer = this.terminal.buffer.active;
+    const prompt = this.promptEnd;
+    let command = this.nextCommand;
+    this.nextCommand = undefined;
+    if (!command && prompt && !prompt.marker.isDisposed) {
+      const lines: string[] = [];
+      for (
+        let row = prompt.marker.line;
+        row <= buffer.baseY + buffer.cursorY;
+        row++
+      ) {
+        lines.push(
+          buffer
+            .getLine(row)
+            ?.translateToString(
+              true,
+              row === prompt.marker.line ? prompt.column : 0,
+            ) ?? "",
+        );
+      }
+      command = lines.join("\n").trim();
+    }
+    if (!command) return;
+    const block: CommandBlock = {
+      id: newId(),
+      command,
+      started: Date.now(),
+      marker: this.terminal.registerMarker(0),
+    };
+    this.activeBlock = block;
+    const blocks = [...this.snapshot.blocks, block];
+    if (blocks.length > 100) blocks.shift()?.marker?.dispose();
+    this.update({ blocks });
+  }
+
+  private finishBlock(exitCode?: number) {
+    if (!this.activeBlock) return;
+    const id = this.activeBlock.id;
+    this.activeBlock = undefined;
+    this.update({
+      blocks: this.snapshot.blocks.map((block) =>
+        block.id === id
+          ? {
+              ...block,
+              finished: Date.now(),
+              exitCode: Number.isFinite(exitCode) ? exitCode : undefined,
+            }
+          : block,
+      ),
+    });
+  }
+
+  jumpTo(block: CommandBlock) {
+    if (block.marker && !block.marker.isDisposed) {
+      this.terminal.scrollToLine(block.marker.line);
+      this.terminal.focus();
+    }
+  }
+
+  dispose() {
+    this.disposed = true;
+    this.detach();
+    clearTimeout(this.ackTimer);
+    this.listeners.clear();
+    this.terminal.dispose();
+    void this.startPromise?.finally(() =>
+      api("close_terminal", { id: this.sessionId }).catch(() => {}),
+    );
+  }
+}
+
+const runtimes = new Map<string, TerminalRuntime>();
+export function terminalFor(
+  pane: Pane,
+  profile: ShellProfile,
+): TerminalRuntime {
+  let runtime = runtimes.get(pane.id);
+  if (!runtime) {
+    runtime = new TerminalRuntime(pane.id, profile, pane.cwd);
+    runtimes.set(pane.id, runtime);
+  }
+  return runtime;
+}
+export const runningTerminal = (id: string) => runtimes.get(id);
+export function closeTerminals(ids: string[]) {
+  for (const id of ids) {
+    runtimes.get(id)?.dispose();
+    runtimes.delete(id);
+  }
+}
+export function observedDirectories(directories: Record<string, string>) {
+  const result: Record<string, string> = {};
+  for (const [id, runtime] of runtimes)
+    if (directories[runtime.sessionId])
+      result[id] = directories[runtime.sessionId];
+  return result;
+}
+if (import.meta.hot)
+  import.meta.hot.dispose(() => closeTerminals([...runtimes.keys()]));

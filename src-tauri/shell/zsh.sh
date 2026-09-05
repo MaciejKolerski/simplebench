@@ -1,0 +1,18 @@
+ZDOTDIR=${SIMPLEBENCH_ZDOTDIR:-$HOME}
+if [[ -f "$ZDOTDIR/.zshrc" ]]; then
+  source "$ZDOTDIR/.zshrc"
+fi
+
+autoload -Uz add-zsh-hook
+__simplebench_preexec() { printf '\033]133;C\007'; }
+__simplebench_precmd() {
+  local status=$?
+  local directory=${PWD//\%/%25}
+  directory=${directory//#/%23}
+  directory=${directory// /%20}
+  directory=${directory//\?/%3F}
+  printf '\033]133;D;%s\007\033]7;file://localhost%s\007' "$status" "$directory"
+}
+add-zsh-hook preexec __simplebench_preexec
+add-zsh-hook precmd __simplebench_precmd
+PROMPT=$'%{\e]133;A\a%}'"$PROMPT"$'%{\e]133;B\a%}'
