@@ -1,42 +1,47 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import {
   ArrowDown,
   ArrowUp,
   CaseSensitive,
-  ChevronRight,
   Code,
   Command,
   Copy,
-  History,
   Play,
   RotateCcw,
   Search,
-  SplitSquareHorizontal,
-  SplitSquareVertical,
   X,
 } from "lucide-react";
-import type { Pane, ShellProfile, Split } from "./model";
-import { basename } from "./model";
+import type { Pane, ShellProfile } from "./model";
 import { terminalFor } from "./terminal-runtime";
 import { IconButton } from "./ui";
+import { actionForEvent, formatShortcut } from "./keybindings";
+import { useKeybindings } from "./KeybindingsProvider";
 
 interface Props {
   pane: Pane;
   profile?: ShellProfile;
   active: boolean;
   onFocus: () => void;
-  onSplit: (axis: Split["axis"]) => void;
-  onClose: () => void;
   onRestart: (useProjectDirectory?: boolean) => void;
 }
 
 export default function TerminalPane(props: Props) {
+  const { bindings } = useKeybindings();
   if (!props.profile)
     return (
       <section className="terminal-pane">
         <div className="empty-message">
           <h2>Shell unavailable</h2>
-          <p>Choose an installed environment from the tab’s shell selector.</p>
+          <p>
+            Use {formatShortcut(bindings.changeEnvironment)} to choose an
+            installed terminal environment.
+          </p>
         </div>
       </section>
     );
@@ -48,24 +53,25 @@ function LiveTerminal({
   profile,
   active,
   onFocus,
-  onSplit,
-  onClose,
   onRestart,
 }: Props & { profile: ShellProfile }) {
   const [runtime] = useState(() => terminalFor(pane, profile));
   const snapshot = useSyncExternalStore(runtime.subscribe, runtime.getSnapshot);
+  const { bindings } = useKeybindings();
   const container = useRef<HTMLDivElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const composerInput = useRef<HTMLTextAreaElement>(null);
-  const [searchOpen, setSearchOpen] = useState(false);
+  const searchOpen = snapshot.searchOpen;
+  const setSearchOpen = (open: boolean) => runtime.setView("searchOpen", open);
   const [query, setQuery] = useState("");
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [regex, setRegex] = useState(false);
-  const [composer, setComposer] = useState(false);
+  const composer = snapshot.composerOpen;
   const [command, setCommand] = useState("");
-  const [blocks, setBlocks] = useState(false);
+  const blocks = snapshot.blocksOpen;
+  const setBlocks = (open: boolean) => runtime.setView("blocksOpen", open);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     runtime.attach(container.current!);
     return () => runtime.detach();
   }, [runtime]);
@@ -92,21 +98,6 @@ function LiveTerminal({
     runtime.scheduleFit();
     if (composer) composerInput.current?.focus();
   }, [composer, runtime]);
-  useEffect(() => {
-    if (!active) return;
-    const handle = (event: KeyboardEvent) => {
-      if (
-        (event.ctrlKey || event.metaKey) &&
-        event.shiftKey &&
-        event.code === "KeyF"
-      ) {
-        event.preventDefault();
-        setSearchOpen((open) => !open);
-      }
-    };
-    window.addEventListener("keydown", handle);
-    return () => window.removeEventListener("keydown", handle);
-  }, [active]);
 
   const execute = () => {
     runtime.execute(command);
@@ -120,61 +111,6 @@ function LiveTerminal({
       onPointerDownCapture={onFocus}
       onFocusCapture={onFocus}
     >
-      <div className="pane-toolbar">
-        <span
-          className={`session-indicator ${snapshot.status}`}
-          title={snapshot.status}
-        />
-        <span className="pane-shell">{profile.name}</span>
-        <ChevronRight size={12} />
-        <span className="pane-path" title={snapshot.cwd}>
-          {basename(snapshot.cwd)}
-        </span>
-        <span
-          className="renderer-label"
-          title="Renderer for the visible terminal"
-        >
-          {snapshot.renderer}
-        </span>
-        <div className="pane-actions">
-          <IconButton
-            title="Find in terminal (Ctrl+Shift+F)"
-            aria-pressed={searchOpen}
-            onClick={() => setSearchOpen(!searchOpen)}
-          >
-            <Search size={14} />
-          </IconButton>
-          <IconButton
-            title="Command input"
-            aria-pressed={composer}
-            onClick={() => setComposer(!composer)}
-          >
-            <Code size={15} />
-          </IconButton>
-          <IconButton
-            title="Command blocks"
-            aria-pressed={blocks}
-            onClick={() => setBlocks(!blocks)}
-          >
-            <History size={14} />
-          </IconButton>
-          <IconButton
-            title="Split terminal side by side"
-            onClick={() => onSplit("horizontal")}
-          >
-            <SplitSquareHorizontal size={15} />
-          </IconButton>
-          <IconButton
-            title="Split terminal top and bottom"
-            onClick={() => onSplit("vertical")}
-          >
-            <SplitSquareVertical size={15} />
-          </IconButton>
-          <IconButton title="Close terminal" onClick={onClose}>
-            <X size={14} />
-          </IconButton>
-        </div>
-      </div>
       {searchOpen && (
         <div className="terminal-search">
           <Search size={14} />
@@ -185,9 +121,14 @@ function LiveTerminal({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Escape") {
+              if (
+                event.key === "Escape" ||
+                actionForEvent(event.nativeEvent, bindings) === "searchTerminal"
+              ) {
+                event.preventDefault();
                 setSearchOpen(false);
                 runtime.terminal.focus();
+                return;
               }
               if (event.key === "Enter")
                 runtime.find(query, event.shiftKey, caseSensitive, regex);
@@ -299,7 +240,17 @@ function LiveTerminal({
           <div className="composer-heading">
             <Code size={14} />
             <span>Command input</span>
-            <span className="muted">Ctrl+Enter to run</span>
+            <span className="muted">
+              {bindings.runCommand
+                ? `${formatShortcut(bindings.runCommand)} to run`
+                : "Run command"}
+            </span>
+            <IconButton
+              title="Close command input"
+              onClick={() => runtime.setView("composerOpen", false)}
+            >
+              <X size={14} />
+            </IconButton>
             <IconButton
               title="Copy terminal selection"
               onClick={() => void runtime.copy()}
@@ -315,9 +266,12 @@ function LiveTerminal({
             value={command}
             onChange={(event) => setCommand(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+              if (
+                actionForEvent(event.nativeEvent, bindings) === "runCommand"
+              ) {
                 event.preventDefault();
-                execute();
+                if (!event.repeat) execute();
+                return;
               }
               if (event.key === "Tab") {
                 event.preventDefault();

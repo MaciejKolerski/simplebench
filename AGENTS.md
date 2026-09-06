@@ -4,14 +4,16 @@
 
 SimpleBench is a desktop ADE application developed incrementally around project
 folders, named workspaces, and terminal tabs. A project owns workspaces sharing
-its folder; each workspace owns tabs; each tab owns a shell environment and a
-tree of terminal panes. There is no hardcoded tab count limit.
+its folder; each workspace owns tabs; each terminal tab owns a shell environment
+and a tree of terminal panes. File and commit tabs do not own shells. There is
+no hardcoded tab count limit.
 
 The current milestone includes project selection, workspaces, tabs, a file
-explorer, conditional Git Source Control, native terminals with splits and
-background streaming, session restoration, and a separate placeholder settings
-window. Add further product functionality only when requested. Do not infer a
-detailed ADE feature set from the project name or acronym.
+explorer, CodeMirror file editing, conditional Git Source Control, native terminals with splits and
+background streaming, session restoration, and configurable shortcuts in the
+separate settings window's Keybinds page. Add further product functionality only
+when requested. Do not infer a detailed ADE feature set from the project name
+or acronym.
 
 ## Technology and structure
 
@@ -21,10 +23,30 @@ detailed ADE feature set from the project name or acronym.
 - Vite serves the frontend during development and builds it into `dist/`.
 - Plain CSS defines the interface and theme in `src/styles.css`.
 - `src/model.ts` owns the persisted layout and pure layout transformations.
-  Workspace tabs are either terminals with pane layouts or commit views with
-  a repository path and full commit hash. Keep terminal operations scoped to
+  Workspace tabs are terminals with pane layouts, file editors with project-relative
+  paths and positions, or commit views with a repository path and full commit hash.
+  Dragging terminal tabs together preserves pane IDs and running PTYs; moved
+  panes may override the tab's default shell profile, including after restoration.
+  Keep terminal operations scoped to
   terminal tabs and preserve compatibility with saved tabs without a type.
 - `src/Workbench.tsx` coordinates projects, workspaces, tabs, and persistence.
+- `src/editor-service.ts` loads the editor on demand; `src/editor-runtime.ts`
+  keeps shared CodeMirror buffers and history outside React. `src/FileEditor.tsx`
+  mounts only the visible view. `src/editor-text.ts` preserves exact line endings.
+  `src-tauri/src/files/editor.rs` implements scoped reads, atomic saves with
+  revision checks, encoding preservation, and native file watches.
+- `src/editor-preferences.ts` validates indentation preferences;
+  `src/EditorPreferencesProvider.tsx` synchronizes them across windows.
+  Settings → Editor owns writes to `editor-preferences.json` through
+  `src-tauri/src/editor_preferences.rs`. Apply changes to shared buffers through
+  CodeMirror compartments without replacing text, selections, or undo history.
+  The editor status bar changes indentation and language for the current shared
+  buffer only. Keep these overrides across tab/workspace switches and let users
+  restore the defaults; language selection must not rename the file. Load parsers
+  on demand and ignore stale results after language switches or buffer disposal.
+- `src/keybindings.ts` defines shortcut actions, defaults, and validation;
+  `src/KeybindingsProvider.tsx` synchronizes them between native windows.
+  `src/SettingsWindow.tsx` edits them on the Keybinds page.
 - xterm.js renders terminals; `src/terminal-runtime.ts` owns their lifecycle and
   streaming independently of React. Rust `portable-pty` owns native processes.
 - `src-tauri/src/shell.rs` discovers shell environments and quotes dropped paths;
@@ -72,8 +94,22 @@ detailed ADE feature set from the project name or acronym.
   visited. Never replay commands or claim to restore live processes or output.
 - Serialize session saves and replace the layout file atomically. Preserve an
   unreadable or unsupported saved session until the user chooses recovery.
-- Keep custom native commands restricted to the main window. Settings has only
-  the permissions required for its own window controls.
+- Retain dirty file buffers and undo history across tab and workspace switches.
+  Closing their final view, deleting their workspace, or exiting must offer
+  save/discard/cancel. Failed saves must retain edits and prevent save-and-close.
+  External changes may reload clean buffers; dirty buffers require an explicit
+  reload or overwrite choice. Session restoration loads fresh file contents,
+  not unsaved editor buffers. Preserve encodings, line endings, and permissions.
+- Capture configured application shortcuts before xterm forwards input to the
+  PTY. Ctrl+D opens a panel in the current tab; Ctrl+W closes the active panel.
+  Unassigned keys, composition, and ordinary form editing must remain intact.
+- Persist shortcuts separately in `keybindings.json`, apply changes across
+  windows without restarting terminals, and preserve invalid settings until
+  explicit recovery. Prevent conflicting shortcut assignments.
+- Keep project, editor, Git, and terminal commands restricted to the main window.
+  Settings may manage keybindings, editor preferences, and theme packages, listen for updates, and
+  use its own window controls. Only settings may write these preferences or
+  import/create theme packages; both windows may read and apply themes.
 - Git mutations must follow an explicit UI action. Preserve the user's identity
   and exact commit text; never silently stage, commit, push, or add attribution.
 
@@ -90,15 +126,27 @@ detailed ADE feature set from the project name or acronym.
 
 - Use the DeepMono palette from
   `/home/woro/.config/DankMaterialShell/themes/deepmono/theme.json`.
-- The foundation uses the default dark `mono` flavor and `graphite` accent from
-  DeepMono 1.1.0. Their values are stored as CSS custom properties in
+- The foundation uses the dark `mono` and light `mono-light` flavors with the
+  `graphite` accent from DeepMono 1.1.0. Their values are stored as CSS custom properties in
   `src/styles.css`; reuse these tokens instead of inventing additional colors.
-- The native window background in `src-tauri/tauri.conf.json` must match the CSS
-  background token. The app icon source is `public/app-icon.svg`.
+- Follow system appearance by default, including startup and live changes.
+  Persist manual Light/Dark overrides separately from the selected theme.
+  Explicit theme appearances take precedence; adaptive themes inherit the
+  chosen mode. Keep native windows transparent so CSS paints the background
+  once. The app icon source is `public/app-icon.svg`.
+- User-selected themes may override the default appearance through versioned
+  `theme.json` files, scoped local assets, JSON styles, and optional CSS.
+  `src/themes.ts`, `src/theme-runtime.ts`, and `src/ThemeProvider.tsx` own theme
+  validation and live application; `src-tauri/src/themes.rs` owns theme folders,
+  the resource protocol, and atomic preferences. Keep the last working theme
+  after load failures, and preserve invalid files until explicit recovery.
 - The application must work without access to the original local theme file.
   Keep the selected colors in the repository; do not read that path at runtime.
 - Keep the initial interface minimal and usable at the configured minimum window
   size. Use semantic HTML and preserve readable contrast.
+- Keep terminal pages free of permanent pane toolbars and environment selectors.
+  Search, command input, command blocks, and environment selection are shown
+  only when requested through their configurable shortcuts.
 
 ## Development and validation
 

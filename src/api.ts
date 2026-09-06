@@ -4,7 +4,12 @@ import type { AppInfo, Session } from "./model";
 export const native = isTauri();
 export const api = invoke;
 export const errorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : String(error);
+  error &&
+  typeof error === "object" &&
+  "message" in error &&
+  typeof error.message === "string"
+    ? error.message
+    : String(error);
 
 export interface FileEntry {
   name: string;
@@ -24,7 +29,6 @@ export interface GitStatus {
   branch: string;
   changes: GitChange[];
 }
-
 export interface GitCommitSummary {
   id: string;
   shortId: string;

@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-
+import { newProject, newSession } from "../../src/model";
 import type {
   GitCommitDetails,
   GitCommitDiff,
@@ -12,14 +12,25 @@ export interface MockGitHistory {
   diffs: Record<string, GitCommitDiff>;
 }
 
+const project = newProject("/project", "local:bash");
+const initialSession = {
+  ...newSession(),
+  projects: [project],
+  activeProjectId: project.id,
+};
+
 export async function mockDesktop(
   page: Page,
   repository = true,
-  saved: unknown = null,
+  saved: unknown = initialSession,
   gitHistory?: MockGitHistory,
+  editorFiles: Record<
+    string,
+    { content: string; revision: string; encoding: string; readOnly: boolean }
+  > = {},
 ) {
   await page.addInitScript(
-    ({ repository, saved, gitHistory }) => {
+    ({ repository, saved, gitHistory, editorFiles }) => {
       const callbacks = new Map<number, (value: unknown) => void>();
       let callbackId = 0;
       let repositoryPresent = repository;
@@ -29,6 +40,16 @@ export async function mockDesktop(
       const calls: { command: string; args: Record<string, any> }[] = [];
       const sessions = new Map<string, { output: number; index: number }>();
       const events = new Map<number, { event: string; handler: number }>();
+      const emitEvent = async (event: string, payload: unknown = null) => {
+        for (const [id, listener] of events) {
+          if (listener.event === event)
+            await callbacks.get(listener.handler)?.({
+              event,
+              id,
+              payload,
+            });
+        }
+      };
       const emit = (id: string, text: string) => {
         const session = sessions.get(id)!;
         callbacks.get(session.output)?.({
@@ -39,6 +60,15 @@ export async function mockDesktop(
       const desktop = window as any;
       desktop.isTauri = true;
       desktop.__nativeTest = {
+        editorFiles: JSON.parse(
+          localStorage.getItem("test-editor-files") ??
+            JSON.stringify(editorFiles),
+        ),
+        fileReadError: "",
+        failFileSave: false,
+        fileSaveDelay: 0,
+        fileReadDelays: {} as Record<string, number>,
+        emitEvent,
         calls,
         sessions,
         emit,
@@ -49,13 +79,33 @@ export async function mockDesktop(
         failCommitDiff: false,
         diffDelays: {} as Record<string, number>,
         resolvedDiffs: [] as string[],
-
+        folder: "/chosen folder",
+        directoryError: "",
+        failKeybindingsSave: false,
+        failEditorPreferencesSave: false,
+        failThemeSave: false,
+        themeLoadError: "",
+        themeImportError: "",
         setRepository: (value: boolean) => {
           repositoryPresent = value;
         },
       };
+      window.addEventListener("storage", (event) => {
+        if (event.key === "test-editor-preferences")
+          void emitEvent("editor-preferences-changed");
+        if (event.key === "test-keybindings")
+          void emitEvent("keybindings-changed");
+        if (
+          event.key === "test-theme-settings" ||
+          event.key === "test-theme-refresh"
+        )
+          void emitEvent("theme-changed");
+      });
       desktop.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener() {} };
       desktop.__TAURI_INTERNALS__ = {
+        convertFileSrc(path: string, protocol: string) {
+          return `${location.origin}/${protocol}-assets/${path}`;
+        },
         metadata: {
           currentWindow: {
             label: location.search.includes("settings") ? "settings" : "main",
@@ -74,6 +124,65 @@ export async function mockDesktop(
         },
         async invoke(command: string, args: Record<string, any> = {}) {
           calls.push({ command, args: JSON.parse(JSON.stringify(args)) });
+          if (command === "resolve_editor_file") return args.relative;
+          if (command === "watch_editor_files") return;
+          if (
+            command === "read_editor_file" ||
+            command === "save_editor_file"
+          ) {
+            const request =
+              command === "read_editor_file" ? args : args.request;
+            const key = `${request.root}/${request.relative}`;
+            const files = desktop.__nativeTest.editorFiles;
+            if (!Object.hasOwn(files, key))
+              files[key] = {
+                content: request.relative.endsWith(".md")
+                  ? "# Project\nA text file preview.\n"
+                  : 'fn main() {\n    println!("Hello, 🦀!");\n}\n',
+                revision: "initial",
+                encoding: "utf8",
+                readOnly: false,
+              };
+            if (command === "read_editor_file") {
+              if (desktop.__nativeTest.fileReadError)
+                throw {
+                  kind: "io",
+                  message: desktop.__nativeTest.fileReadError,
+                };
+              const delay =
+                desktop.__nativeTest.fileReadDelays[request.relative];
+              if (delay)
+                await new Promise((resolve) => setTimeout(resolve, delay));
+              const file = files[key];
+              if (!file)
+                throw { kind: "io", message: "The file no longer exists." };
+              return {
+                ...file,
+                path: key,
+                relative: request.relative,
+                content:
+                  file.revision === args.knownRevision ? null : file.content,
+              };
+            }
+            if (desktop.__nativeTest.fileSaveDelay)
+              await new Promise((resolve) =>
+                setTimeout(resolve, desktop.__nativeTest.fileSaveDelay),
+              );
+            if (desktop.__nativeTest.failFileSave)
+              throw { kind: "io", message: "Disk is full" };
+            const file = files[key];
+            if (!file)
+              throw { kind: "io", message: "The file no longer exists." };
+            if (request.revision !== file.revision)
+              throw { kind: "conflict", message: "The file changed on disk." };
+            if (file.readOnly)
+              throw { kind: "readOnly", message: "This file is read-only." };
+            file.content = request.content;
+            file.revision += "+saved";
+            localStorage.setItem("test-editor-files", JSON.stringify(files));
+            await emitEvent("editor-files-changed", [key]);
+            return file.revision;
+          }
           if (command === "app_info")
             return {
               directory: "/project",
@@ -94,12 +203,129 @@ export async function mockDesktop(
             return JSON.parse(
               localStorage.getItem("test-session") ?? JSON.stringify(saved),
             );
+          if (command === "load_keybindings")
+            return JSON.parse(
+              localStorage.getItem("test-keybindings") ?? "null",
+            );
+          if (command === "load_editor_preferences")
+            return JSON.parse(
+              localStorage.getItem("test-editor-preferences") ?? "null",
+            );
+          if (command === "list_themes") {
+            const manifests = JSON.parse(
+              localStorage.getItem("test-theme-manifests") ?? "{}",
+            );
+            return {
+              directory:
+                "/home/test/.local/share/dev.simplebench.desktop/themes",
+              themes: Object.entries(manifests).map(
+                ([id, value]: [string, any]) => ({
+                  id,
+                  name: value.name ?? id,
+                  description: value.description ?? "",
+                  author: value.author ?? "",
+                  error:
+                    value.version === 1 ? null : "Unsupported theme version",
+                }),
+              ),
+            };
+          }
+          if (command === "load_theme") {
+            const manifest = JSON.parse(
+              localStorage.getItem("test-theme-manifests") ?? "{}",
+            )[args.id];
+            if (!manifest) throw new Error("Theme folder is missing.");
+            return { id: args.id, manifest };
+          }
+          if (command === "load_theme_preferences") {
+            if (desktop.__nativeTest.themeLoadError)
+              throw new Error(desktop.__nativeTest.themeLoadError);
+            const preferences = JSON.parse(
+              localStorage.getItem("test-theme-settings") ??
+                '{"version":1,"active":null}',
+            );
+            if (preferences.version !== 1)
+              throw new Error(
+                "Unsupported theme settings version. The file has been left intact.",
+              );
+            delete preferences.customCss;
+            preferences.appearance ??= "system";
+            if (!["system", "light", "dark"].includes(preferences.appearance))
+              throw new Error(
+                "Invalid color mode. The file has been left intact.",
+              );
+            const manifest = JSON.parse(
+              localStorage.getItem("test-theme-manifests") ?? "{}",
+            )[preferences.active];
+            if (preferences.active && !manifest)
+              throw new Error("Theme folder is missing.");
+            return {
+              preferences,
+              theme: manifest ? { id: preferences.active, manifest } : null,
+              safeMode: false,
+            };
+          }
+          if (command === "save_theme_preferences") {
+            if (desktop.__nativeTest.failThemeSave)
+              throw new Error("Cannot save theme: Disk is full");
+            localStorage.setItem(
+              "test-theme-settings",
+              JSON.stringify(args.data),
+            );
+            await emitEvent("theme-changed");
+            return;
+          }
+          if (command === "refresh_themes") {
+            localStorage.setItem("test-theme-refresh", String(Date.now()));
+            await emitEvent("theme-changed");
+            return;
+          }
+          if (command === "import_theme" || command === "create_theme") {
+            if (desktop.__nativeTest.themeImportError)
+              throw new Error(desktop.__nativeTest.themeImportError);
+            const manifests = JSON.parse(
+              localStorage.getItem("test-theme-manifests") ?? "{}",
+            );
+            manifests.imported = {
+              version: 1,
+              name: "Imported theme",
+              tokens: { "--radius-control": "12px" },
+            };
+            localStorage.setItem(
+              "test-theme-manifests",
+              JSON.stringify(manifests),
+            );
+            return "imported";
+          }
+          if (["sync_theme_window", "open_themes_folder"].includes(command))
+            return;
+          if (command === "save_keybindings") {
+            if (desktop.__nativeTest.failKeybindingsSave)
+              throw new Error("Cannot save shortcuts: Disk is full");
+            localStorage.setItem("test-keybindings", JSON.stringify(args.data));
+            await emitEvent("keybindings-changed");
+            return;
+          }
+          if (command === "save_editor_preferences") {
+            if (desktop.__nativeTest.failEditorPreferencesSave)
+              throw new Error("Cannot save editor settings: Disk is full");
+            localStorage.setItem(
+              "test-editor-preferences",
+              JSON.stringify(args.data),
+            );
+            await emitEvent("editor-preferences-changed");
+            return;
+          }
           if (command === "save_session") {
             if (desktop.__nativeTest.failSave) throw new Error("Disk is full");
             localStorage.setItem("test-session", JSON.stringify(args.data));
             return;
           }
-          if (command === "validate_directory") return args.path;
+          if (command === "validate_directory") {
+            if (desktop.__nativeTest.directoryError)
+              throw new Error(desktop.__nativeTest.directoryError);
+            return args.path;
+          }
           if (command === "list_directory")
             return args.relative
               ? [
@@ -203,7 +429,8 @@ export async function mockDesktop(
               .join(" ");
           if (command === "plugin:clipboard-manager|read_text")
             return "clipboard text";
-          if (command === "plugin:dialog|open") return "/chosen folder";
+          if (command === "plugin:dialog|open")
+            return desktop.__nativeTest.folder;
           if (command === "plugin:window|scale_factor") return 1;
           if (command === "plugin:event|listen") {
             const id = ++callbackId;
@@ -247,7 +474,7 @@ export async function mockDesktop(
         },
       };
     },
-    { repository, saved, gitHistory },
+    { repository, saved, gitHistory, editorFiles },
   );
 }
 

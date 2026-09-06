@@ -31,12 +31,7 @@ function savedPanels(count: number) {
   project.workspaces[0].tabs = [tab];
   project.workspaces[0].activeTabId = tab.id;
   return {
-    ...newSession({
-      directory: "/project",
-      home: "/home/test",
-      platform: "linux",
-      profiles: [],
-    }),
+    ...newSession(),
     projects: [project],
     activeProjectId: project.id,
   };
@@ -156,10 +151,11 @@ test("divider resizing protects nested panels and a smaller window keeps their s
   await expect(page.locator(".layout-recovery")).toBeVisible();
   await expect(page.locator(".xterm-screen")).toHaveCount(0);
   expect(await calls(page, "close_terminal")).toHaveLength(0);
-  await page.evaluate(() => {
+  await page.evaluate(async (id) => {
+    const { runningTerminal } = await import("/src/terminal-runtime.ts");
     const native = (window as any).__nativeTest;
-    native.emit([...native.sessions.keys()][0], "\r\nBackground output\r\n");
-  });
+    native.emit(runningTerminal(id!)!.sessionId, "\r\nBackground output\r\n");
+  }, firstPane);
   await expect
     .poll(() => buffer(page, firstPane!))
     .toContain("Background output");
@@ -180,6 +176,7 @@ test("an oversized saved tab starts no shells and preserves its layout until rec
   const saved = savedPanels(512);
   const workspace = saved.projects[0].workspaces[0];
   const tab = workspace.tabs[0];
+  if (tab.type !== "terminal") throw new Error("Expected a terminal tab");
   const kept = panes(tab.layout).at(-1)!;
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -232,6 +229,7 @@ test("closing a saved panel can make the remaining layout fit without starting t
   await page.setViewportSize({ width: 800, height: 420 });
   const saved = savedPanels(3);
   const tab = saved.projects[0].workspaces[0].tabs[0];
+  if (tab.type !== "terminal") throw new Error("Expected a terminal tab");
   const closedId = tab.activePaneId;
   await mockDesktop(page, true, saved);
   await page.goto("/");

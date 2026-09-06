@@ -3,19 +3,25 @@ import { test } from "node:test";
 import {
   active,
   newPane,
+  newProject,
   newSession,
   newTab,
   newWorkspace,
   openCommitTab,
+  openFileTab,
+  fileTabs,
   panes,
   removePane,
+  removeTabs,
   resizeSplit,
   restoreSession,
   splitPane,
+  tabsToClose,
   updateDirectories,
   updateWorkspace,
+  updateTab,
 } from "../src/model.ts";
-import type { AppInfo, Split } from "../src/model.ts";
+import type { AppInfo, Split, Tab, TabCloseAction } from "../src/model.ts";
 import { inputChunks } from "../src/terminal-utils.ts";
 
 const info: AppInfo = {
@@ -34,9 +40,161 @@ const info: AppInfo = {
   ],
 };
 
+function projectSession() {
+  const project = newProject(info.directory, info.profiles[0].id);
+  return { ...newSession(), projects: [project], activeProjectId: project.id };
+}
+
+test("tab close actions use the clicked tab and preserve modified files", () => {
+  const tabs: Tab[] = [
+    newTab("/project", "local:bash"),
+    {
+      type: "file",
+      id: "dirty",
+      title: "Dirty",
+      root: "/project",
+      relative: "dirty.txt",
+    },
+    {
+      type: "commit",
+      id: "commit",
+      title: "Commit",
+      root: "/project",
+      commit: "a".repeat(40),
+    },
+    {
+      type: "file",
+      id: "clean",
+      title: "Clean",
+      root: "/project",
+      relative: "clean.txt",
+    },
+    newTab("/project", "local:bash"),
+  ];
+  const modified = new Set(["dirty"]);
+  const cases: [TabCloseAction, number[]][] = [
+    ["close", [2]],
+    ["others", [0, 1, 3, 4]],
+    ["left", [0, 1]],
+    ["right", [3, 4]],
+    ["clean", [0, 2, 3, 4]],
+    ["all", [0, 1, 2, 3, 4]],
+  ];
+  for (const [action, indexes] of cases) {
+    assert.deepEqual(
+      tabsToClose(tabs, "commit", action, modified),
+      indexes.map((index) => tabs[index]),
+    );
+    assert.deepEqual(tabsToClose(tabs, "missing", action, modified), []);
+  }
+  assert.deepEqual(tabsToClose(tabs, tabs[0].id, "left", modified), []);
+  assert.deepEqual(tabsToClose(tabs, tabs[4].id, "right", modified), []);
+  assert.deepEqual(tabsToClose([tabs[0]], tabs[0].id, "others", modified), []);
+  assert.deepEqual(tabsToClose([tabs[1]], "dirty", "clean", modified), []);
+});
+
+test("bulk removal retains the active tab or selects its nearest survivor", () => {
+  const workspace = newWorkspace("/project", "local:bash");
+  const tabs = Array.from({ length: 6 }, () =>
+    newTab("/project", "local:bash"),
+  );
+  workspace.tabs = tabs;
+  workspace.activeTabId = tabs[2].id;
+  const close = (...indexes: number[]) =>
+    removeTabs(
+      workspace,
+      new Set(indexes.map((index) => tabs[index].id)),
+      "/project",
+      "local:bash",
+    );
+  assert.equal(close(0, 1, 3).activeTabId, tabs[2].id);
+  assert.equal(close(0, 2, 3).activeTabId, tabs[4].id);
+  assert.equal(close(2, 3, 4, 5).activeTabId, tabs[1].id);
+  assert.deepEqual(close(0, 2, 3).tabs, [tabs[1], tabs[4], tabs[5]]);
+  assert.equal(
+    removeTabs(workspace, new Set(["missing"]), "/project", "local:bash"),
+    workspace,
+  );
+  assert.equal(workspace.tabs, tabs);
+  assert.equal(workspace.activeTabId, tabs[2].id);
+});
+
+test("closing all tabs creates exactly one fresh terminal with the chosen environment", () => {
+  const workspace = newWorkspace("/project", "local:bash");
+  workspace.tabs.push(newTab("/project/src", "wsl:Ubuntu"));
+  const next = removeTabs(
+    workspace,
+    new Set(workspace.tabs.map((tab) => tab.id)),
+    "/project",
+    "wsl:Ubuntu",
+  );
+  assert.equal(next.tabs.length, 1);
+  const tab = next.tabs[0];
+  assert.equal(tab.type, "terminal");
+  if (tab.type !== "terminal") throw new Error("Expected a terminal");
+  assert.equal(tab.id, next.activeTabId);
+  assert.equal(tab.profileId, "wsl:Ubuntu");
+  assert.equal(panes(tab.layout)[0].cwd, "/project");
+  assert.ok(!workspace.tabs.some((previous) => previous.id === tab.id));
+});
+
+test("file tabs deduplicate within each workspace and survive session restoration", () => {
+  let state = projectSession();
+  const workspace = active(state)!.workspace;
+  state = openFileTab(state, workspace.id, "/project", "src/main.rs");
+  const file = fileTabs(state)[0];
+  assert.equal(active(state)!.tab.id, file.id);
+  assert.equal(file.title, "main.rs");
+  state = openFileTab(state, workspace.id, "/project", "src/main.rs");
+  assert.equal(fileTabs(state).length, 1);
+  const position = { anchor: 25, head: 31, scrollTop: 700, scrollLeft: 16 };
+  state = updateTab(state, file.id, (tab) => ({ ...tab, position }));
+  const second = newWorkspace("/project", "local:bash", "Review");
+  state.projects[0].workspaces.push(second);
+  state = openFileTab(state, second.id, "/project", "src/main.rs");
+  assert.equal(fileTabs(state).length, 2);
+  assert.notEqual(fileTabs(state)[0].id, fileTabs(state)[1].id);
+  const restored = restoreSession(JSON.parse(JSON.stringify(state)), info);
+  assert.deepEqual(restored, state);
+  assert.deepEqual(fileTabs(restored)[0].position, position);
+  const terminal = workspace.tabs[0];
+  assert.equal(terminal.type, "terminal");
+  if (terminal.type !== "terminal") throw new Error("Expected a terminal");
+  const pane = panes(terminal.layout)[0];
+  const updated = updateDirectories(restored, { [pane.id]: "/project/src" });
+  assert.deepEqual(fileTabs(updated), fileTabs(restored));
+  const changedTerminal = updated.projects[0].workspaces[0].tabs[0];
+  if (changedTerminal.type !== "terminal")
+    throw new Error("Expected a terminal");
+  assert.equal(panes(changedTerminal.layout)[0].cwd, "/project/src");
+});
+
+test("a fresh session waits for an explicit project selection", () => {
+  const state = newSession();
+  assert.deepEqual(state.projects, []);
+  assert.equal(state.activeProjectId, null);
+  assert.equal(active(state), undefined);
+  assert.deepEqual(restoreSession(null, info), state);
+});
+
+test("restores an empty session without selecting the startup directory", () => {
+  const state = { ...newSession(), sidebarWidth: 320, sidebar: null };
+  assert.deepEqual(
+    restoreSession(JSON.parse(JSON.stringify(state)), info),
+    state,
+  );
+});
+
+test("retains recent projects when none is selected", () => {
+  const state = { ...projectSession(), activeProjectId: null };
+  const restored = restoreSession(JSON.parse(JSON.stringify(state)), info);
+  assert.deepEqual(restored, state);
+  assert.equal(active(restored), undefined);
+});
+
 test("new projects contain a workspace, a tab and one terminal", () => {
-  const state = newSession(info);
-  const { project, workspace, tab } = active(state);
+  const state = projectSession();
+  const { project, workspace, tab } = active(state)!;
   assert.equal(project.path, "/project");
   assert.equal(workspace.tabs.length, 1);
   assert.equal(panes(tab.layout).length, 1);
@@ -65,8 +223,8 @@ test("split layouts keep their ratios and collapse only the closed branch", () =
 });
 
 test("restores projects, active workspaces, tabs, environments and directories", () => {
-  let state = newSession(info);
-  const { project, workspace, tab } = active(state);
+  let state = projectSession();
+  const { project, workspace, tab } = active(state)!;
   const secondary = newWorkspace("/project", "wsl:Ubuntu", "Review");
   state.projects[0] = {
     ...project,
@@ -78,13 +236,13 @@ test("restores projects, active workspaces, tabs, environments and directories",
   });
   const restored = restoreSession(JSON.parse(JSON.stringify(state)), info);
   assert.deepEqual(restored, state);
-  assert.equal(active(restored).workspace.name, "Review");
-  assert.equal(active(restored).tab.profileId, "wsl:Ubuntu");
+  assert.equal(active(restored)!.workspace.name, "Review");
+  assert.equal(active(restored)!.tab.profileId, "wsl:Ubuntu");
 });
 
 test("does not impose an artificial tab count limit", () => {
-  let state = newSession(info);
-  const workspace = active(state).workspace;
+  let state = projectSession();
+  const workspace = active(state)!.workspace;
   const tabs = Array.from({ length: 1200 }, (_, index) =>
     newTab("/project", "local:bash", `Tab ${index}`),
   );
@@ -93,17 +251,21 @@ test("does not impose an artificial tab count limit", () => {
     tabs,
     activeTabId: tabs.at(-1)!.id,
   }));
-  assert.equal(active(restoreSession(state, info)).workspace.tabs.length, 1200);
-  assert.equal(active(restoreSession(state, info)).tab.title, "Tab 1199");
+  assert.equal(
+    active(restoreSession(state, info))!.workspace.tabs.length,
+    1200,
+  );
+  assert.equal(active(restoreSession(state, info))!.tab.title, "Tab 1199");
 });
 
 test("repairs missing active IDs and duplicate IDs in saved data", () => {
-  const state = newSession(info);
-  const { workspace, tab } = active(state);
+  const state = projectSession();
+  const { workspace, tab } = active(state)!;
   workspace.tabs.push(structuredClone(tab));
+  state.activeProjectId = "missing";
   workspace.activeTabId = "missing";
   tab.activePaneId = "missing";
-  const restored = active(restoreSession(state, info));
+  const restored = active(restoreSession(state, info))!;
   assert.notEqual(restored.workspace.tabs[0].id, restored.workspace.tabs[1].id);
   assert.notEqual(
     panes(restored.workspace.tabs[0].layout)[0].id,
@@ -114,11 +276,11 @@ test("repairs missing active IDs and duplicate IDs in saved data", () => {
 });
 
 test("unchanged directory observations preserve state identity", () => {
-  const state = newSession(info);
-  const pane = panes(active(state).tab.layout)[0];
+  const state = projectSession();
+  const pane = panes(active(state)!.tab.layout)[0];
   assert.equal(updateDirectories(state, { [pane.id]: pane.cwd }), state);
   const next = updateDirectories(state, { [pane.id]: "/project/src" });
-  assert.equal(panes(active(next).tab.layout)[0].cwd, "/project/src");
+  assert.equal(panes(active(next)!.tab.layout)[0].cwd, "/project/src");
   assert.equal(pane.cwd, "/project");
 });
 
@@ -131,7 +293,7 @@ test("large terminal input preserves emoji at transport boundaries", () => {
 });
 
 test("commit tabs persist their repository and revision without acquiring terminal panes", () => {
-  let state = newSession(info);
+  let state = projectSession();
   const { workspace, tab } = active(state)!;
   const pane = panes(tab.layout)[0];
   const commit = "a".repeat(40);
@@ -158,7 +320,7 @@ test("commit tabs persist their repository and revision without acquiring termin
 });
 
 test("opening a commit again selects its existing tab within the same workspace", () => {
-  let state = newSession(info);
+  let state = projectSession();
   const { project, workspace } = active(state)!;
   const commit = "b".repeat(40);
   state = openCommitTab(
@@ -198,7 +360,7 @@ test("opening a commit again selects its existing tab within the same workspace"
 });
 
 test("restores terminal sessions saved before tab types were introduced", () => {
-  const saved = JSON.parse(JSON.stringify(newSession(info)));
+  const saved = JSON.parse(JSON.stringify(projectSession()));
   const terminal = saved.projects[0].workspaces[0].tabs[0];
   delete terminal.type;
   const restored = active(restoreSession(saved, info))!.tab;

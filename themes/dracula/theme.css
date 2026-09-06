@@ -1,0 +1,33 @@
+:root[data-appearance="light"] {
+  --color-background: #f5f6fa;
+  --color-background-text: #282a36;
+  --color-surface: #f8f8f2;
+  --color-surface-text: #282a36;
+  --color-surface-variant: #e9e9f0;
+  --color-surface-variant-text: #44475a;
+  --color-outline: #c8c8d2;
+  --color-surface-container: #f2f2f7;
+  --color-surface-container-high: #ececf2;
+  --color-surface-container-highest: #e6e6ee;
+  --color-primary: #8332f4;
+  --color-primary-text: #f8f8f2;
+  --color-primary-container: #c9a4ff;
+  --color-secondary: color-mix(in srgb, #ff79c6 50%, var(--color-surface-text));
+  --color-surface-tint: #8332f4;
+  --color-error: color-mix(in srgb, #ff5555 65%, var(--color-surface-text));
+  --color-warning: color-mix(in srgb, #f1fa8c 30%, var(--color-surface-text));
+  --color-info: color-mix(in srgb, #8be9fd 30%, var(--color-surface-text));
+  --color-muted-text: var(--color-surface-variant-text);
+  --terminal-black: var(--color-background-text);
+  --terminal-green: color-mix(in srgb, #50fa7b 30%, var(--color-surface-text));
+  --terminal-white: var(--color-surface-variant-text);
+  --terminal-bright-black: var(--color-surface-variant-text);
+}
+
+.tab.active-tab {
+  box-shadow: inset 0 -1px var(--color-primary);
+}
+
+.cm-editor {
+  --color-surface-variant-text: var(--color-muted-text);
+}

@@ -1,40 +1,29 @@
-import { lazy, Suspense, useState } from "react";
-import { WindowControls } from "./ui";
+import { lazy, Suspense } from "react";
+import { KeybindingsProvider } from "./KeybindingsProvider";
+import { ThemeProvider } from "./ThemeProvider";
+import { EditorPreferencesProvider } from "./EditorPreferencesProvider";
 
 const Workbench = lazy(() => import("./Workbench"));
+const SettingsWindow = lazy(() => import("./SettingsWindow"));
 
 export default function App() {
-  return new URLSearchParams(window.location.search).get("window") ===
-    "settings" ? (
-    <SettingsWindow />
-  ) : (
-    <Suspense
-      fallback={<main className="empty-message">Opening workspace…</main>}
-    >
-      <Workbench />
-    </Suspense>
-  );
-}
-
-function SettingsWindow() {
-  const [error, setError] = useState("");
+  const settings =
+    new URLSearchParams(window.location.search).get("window") === "settings";
   return (
-    <div className="app-shell settings-window">
-      <header className="titlebar" data-tauri-drag-region>
-        <span className="settings-title" data-tauri-drag-region>
-          Settings
-        </span>
-        <div className="titlebar-space" data-tauri-drag-region />
-        <WindowControls onError={setError} />
-      </header>
-      <main className="settings-content">
-        <div className="settings-box">settings</div>
-      </main>
-      {error && (
-        <div className="notice" role="alert">
-          {error}
-        </div>
-      )}
-    </div>
+    <ThemeProvider>
+      <KeybindingsProvider>
+        <EditorPreferencesProvider>
+          <Suspense
+            fallback={
+              <main className="empty-message">
+                {settings ? "Opening settings…" : "Opening workspace…"}
+              </main>
+            }
+          >
+            {settings ? <SettingsWindow /> : <Workbench />}
+          </Suspense>
+        </EditorPreferencesProvider>
+      </KeybindingsProvider>
+    </ThemeProvider>
   );
 }

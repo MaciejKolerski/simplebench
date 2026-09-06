@@ -12,9 +12,7 @@ test("tabs keep streaming in the background without starting duplicate PTYs", as
   const paneId = await page
     .locator("[data-pane-id]")
     .getAttribute("data-pane-id");
-  await page
-    .getByRole("button", { name: "New tab (Ctrl+Shift+T)", exact: true })
-    .click();
+  await page.keyboard.press("Control+Shift+T");
   await expect(page.getByRole("tab")).toHaveCount(2);
   await expect
     .poll(() =>
@@ -56,13 +54,10 @@ test("nested splits, workspace names and active tabs survive a reload", async ({
 }) => {
   await mockDesktop(page);
   await page.goto("/");
-  await page
-    .getByRole("button", { name: "Split terminal side by side", exact: true })
-    .click();
-  await page
-    .locator(".terminal-pane.is-active")
-    .getByRole("button", { name: "Split terminal top and bottom", exact: true })
-    .click();
+  await expect(page.locator(".xterm-screen")).toBeVisible();
+  await page.keyboard.press("Control+d");
+  await expect(page.locator("[data-pane-id]")).toHaveCount(2);
+  await page.keyboard.press("Control+Shift+d");
   await expect(page.locator("[data-pane-id]")).toHaveCount(3);
   const firstPane = page.locator("[data-pane-id]").first();
   await firstPane.locator(".xterm-helper-textarea").focus();
@@ -101,8 +96,8 @@ test("nested splits, workspace names and active tabs survive a reload", async ({
   ).toHaveAttribute("aria-valuenow", "55");
   await page
     .locator(".terminal-pane.is-active")
-    .getByRole("button", { name: "Close terminal", exact: true })
-    .click();
+    .locator(".xterm-helper-textarea")
+    .press("Control+w");
   await expect(page.locator("[data-pane-id]")).toHaveCount(2);
 });
 
@@ -150,22 +145,23 @@ test("source control appears when Git is detected and preserves the commit draft
   expect(sent).toBe(message);
 });
 
-test("project selection, file preview and dragging paths reach the native commands", async ({
+test("project selection, file editing and dragging paths reach the native commands", async ({
   page,
 }) => {
   await mockDesktop(page);
   await page.goto("/");
   await page.getByRole("button", { name: "project", exact: true }).click();
-  await page
-    .getByRole("textbox", { name: "Project location" })
-    .fill("/another project");
-  await page.getByRole("button", { name: "Open", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Open Local Folder…" }).click();
   await expect(page.locator(".project-switcher")).toContainText(
-    "another project",
+    "chosen folder",
   );
   await page.getByRole("button", { name: "README.md", exact: true }).click();
-  await expect(page.getByRole("dialog")).toContainText("A text file preview.");
-  await page.getByRole("button", { name: "Close dialog" }).click();
+  await expect(page.locator(".cm-content")).toContainText(
+    "A text file preview.",
+  );
+  await page
+    .getByRole("button", { name: "Close README.md", exact: true })
+    .click();
   const file = await page
     .getByRole("button", { name: "it's a file.txt", exact: true })
     .boundingBox();
@@ -201,9 +197,8 @@ test("command input, search and shortcuts remain functional at minimum window si
   await page.setViewportSize({ width: 800, height: 420 });
   await mockDesktop(page);
   await page.goto("/");
-  await page
-    .getByRole("button", { name: "Command input", exact: true })
-    .click();
+  await expect(page.locator(".xterm-screen")).toBeVisible();
+  await page.keyboard.press("Control+Shift+i");
   await page
     .getByRole("textbox", { name: "Command input", exact: true })
     .fill("echo hello\nprintf world");
@@ -220,12 +215,8 @@ test("command input, search and shortcuts remain functional at minimum window si
       ),
     )
     .toContain("echo hello");
-  await page
-    .getByRole("button", {
-      name: "Find in terminal (Ctrl+Shift+F)",
-      exact: true,
-    })
-    .click();
+  await page.locator(".xterm-helper-textarea").focus();
+  await page.keyboard.press("Control+Shift+f");
   await page
     .getByRole("textbox", { name: "Search terminal output" })
     .fill("bash");
@@ -252,12 +243,14 @@ test("command input, search and shortcuts remain functional at minimum window si
   await page.screenshot({ path: "test-results/workbench-minimum.png" });
 });
 
-test("settings only loads a placeholder and never starts terminal sessions", async ({
+test("settings loads keybindings without starting terminal sessions", async ({
   page,
 }) => {
   await mockDesktop(page);
   await page.goto("/?window=settings");
-  await expect(page.locator(".settings-box")).toHaveText("settings");
+  await expect(
+    page.getByRole("heading", { name: "Keybinds", exact: true }),
+  ).toBeVisible();
   expect(
     await page.evaluate(() =>
       (window as any).__nativeTest.calls.some((call: any) =>
@@ -283,8 +276,11 @@ test("an unsupported saved session is preserved until recovery is chosen", async
   await page.goto("/");
   await expect(page.getByRole("alert")).toContainText("unsupported format");
   await page
-    .getByRole("button", { name: "New tab (Ctrl+Shift+T)", exact: true })
+    .getByRole("button", { name: "Open Recent Project", exact: true })
     .click();
+  await page.getByRole("menuitem", { name: "Open Local Folder…" }).click();
+  await expect(page.locator(".xterm-screen")).toBeVisible();
+  await page.keyboard.press("Control+Shift+T");
   await expect(page.getByRole("tab")).toHaveCount(2);
   await page.clock.fastForward(1000);
   expect(await page.evaluate(() => localStorage.getItem("test-session"))).toBe(
@@ -317,18 +313,15 @@ test("closing flushes the latest layout and a failed save keeps the window open"
 }) => {
   await mockDesktop(page);
   await page.goto("/");
-  await page
-    .getByRole("button", { name: "New tab (Ctrl+Shift+T)", exact: true })
-    .click();
+  await expect(page.locator(".xterm-screen")).toBeVisible();
+  await page.keyboard.press("Control+Shift+T");
   await expect(page.getByRole("tab")).toHaveCount(2);
   await page.evaluate(() => {
     (window as any).__nativeTest.failSave = true;
   });
   await page.getByRole("button", { name: "Close window", exact: true }).click();
   // A pending autosave can report the same storage error after the close flush.
-  await expect(page.getByRole("alert")).toContainText(
-    /Could not (close the window|save the session): Disk is full/,
-  );
+  await expect(page.getByRole("alert")).toContainText("Disk is full");
   expect(
     await page.evaluate(() =>
       (window as any).__nativeTest.calls.some(

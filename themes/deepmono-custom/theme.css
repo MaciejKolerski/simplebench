@@ -1,0 +1,6 @@
+/* Paths in this file are relative to its folder. */
+.tab.active-tab {
+  box-shadow: inset 0 -1px var(--color-primary);
+}
+
+/* Add @font-face here to use a font shipped inside this theme folder. */

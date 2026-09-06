@@ -1,9 +1,12 @@
+mod editor_preferences;
 mod files;
 mod git;
+mod keybindings;
 mod shell;
 mod terminal;
+mod themes;
 
-use tauri::{Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -34,23 +37,44 @@ fn app_info(window: WebviewWindow, shells: State<'_, terminal::Shells>) -> Resul
 }
 
 #[tauri::command]
-async fn open_settings(window: WebviewWindow, app: tauri::AppHandle) -> Result<(), String> {
+async fn open_settings(
+    window: WebviewWindow,
+    app: tauri::AppHandle,
+    page: Option<String>,
+) -> Result<(), String> {
     files::main_window(&window)?;
+    if page
+        .as_deref()
+        .is_some_and(|page| !matches!(page, "keybinds" | "themes" | "editor"))
+    {
+        return Err("Unknown settings page.".into());
+    }
     if let Some(window) = app.get_webview_window("settings") {
+        if let Some(page) = page {
+            window
+                .emit("settings-page-changed", page)
+                .map_err(|error| error.to_string())?;
+        }
         window.show().map_err(|error| error.to_string())?;
         return window.set_focus().map_err(|error| error.to_string());
     }
     WebviewWindowBuilder::new(
         &app,
         "settings",
-        WebviewUrl::App("index.html?window=settings".into()),
+        WebviewUrl::App(
+            format!(
+                "index.html?window=settings&page={}",
+                page.as_deref().unwrap_or("keybinds")
+            )
+            .into(),
+        ),
     )
     .title("Settings — SimpleBench")
-    .inner_size(680.0, 460.0)
-    .min_inner_size(400.0, 300.0)
+    .inner_size(920.0, 680.0)
+    .min_inner_size(560.0, 420.0)
     .decorations(false)
-    .theme(Some(tauri::Theme::Dark))
-    .background_color(tauri::window::Color(16, 16, 16, 255))
+    .transparent(true)
+    .background_color(tauri::window::Color(0, 0, 0, 0))
     .build()
     .map_err(|error| error.to_string())?;
     Ok(())
@@ -63,6 +87,11 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(terminal::Terminals::default())
         .manage(files::SessionFile::default())
+        .manage(files::editor::EditorFiles::default())
+        .manage(keybindings::KeybindingsFile::default())
+        .manage(editor_preferences::EditorPreferencesFile::default())
+        .manage(themes::Themes::default())
+        .register_asynchronous_uri_scheme_protocol("theme", themes::protocol)
         .setup(|app| {
             let integration = app.path().app_data_dir()?.join("shell-integration");
             shell::prepare(&integration).map_err(std::io::Error::other)?;
@@ -78,8 +107,25 @@ pub fn run() {
             files::list_directory,
             files::validate_directory,
             files::preview_file,
+            files::editor::resolve_editor_file,
+            files::editor::read_editor_file,
+            files::editor::save_editor_file,
+            files::editor::watch_editor_files,
             files::load_session,
             files::save_session,
+            keybindings::load_keybindings,
+            keybindings::save_keybindings,
+            editor_preferences::load_editor_preferences,
+            editor_preferences::save_editor_preferences,
+            themes::load_theme_preferences,
+            themes::load_theme,
+            themes::list_themes,
+            themes::save_theme_preferences,
+            themes::refresh_themes,
+            themes::open_themes_folder,
+            themes::import_theme,
+            themes::create_theme,
+            themes::sync_theme_window,
             git::git_status,
             git::git_stage,
             git::git_diff,

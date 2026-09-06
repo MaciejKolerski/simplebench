@@ -2,7 +2,7 @@ import { Channel } from "@tauri-apps/api/core";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Terminal } from "@xterm/xterm";
-import type { IMarker } from "@xterm/xterm";
+import type { IDisposable, IMarker } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
@@ -11,6 +11,11 @@ import { api, errorMessage } from "./api";
 import { newId } from "./model";
 import type { Pane, ShellProfile } from "./model";
 import { inputChunks } from "./terminal-utils";
+import {
+  terminalAppearance,
+  terminalSearchColors,
+  themeAppliedEvent,
+} from "./theme-runtime";
 
 export interface CommandBlock {
   id: string;
@@ -27,10 +32,14 @@ interface Snapshot {
   renderer: "WebGL" | "DOM";
   blocks: CommandBlock[];
   searchResult: string;
+  searchOpen: boolean;
+  composerOpen: boolean;
+  blocksOpen: boolean;
 }
 type DirectoryListener = (id: string, cwd: string) => void;
 let directoryListener: DirectoryListener = () => {};
 let reportError: (message: string) => void = () => {};
+let webglModule: Promise<typeof import("@xterm/addon-webgl")> | undefined;
 
 export function configureTerminals(
   onDirectory: DirectoryListener,
@@ -49,6 +58,8 @@ export class TerminalRuntime {
   private webgl?: WebglAddon;
   private observer?: ResizeObserver;
   private frame = 0;
+  private firstRender?: IDisposable;
+  private rendererReady = false;
   private opened = false;
   private attached = false;
   private rendererGeneration = 0;
@@ -70,9 +81,6 @@ export class TerminalRuntime {
     readonly profile: ShellProfile,
     cwd: string,
   ) {
-    const style = getComputedStyle(document.documentElement);
-    const color = (name: string) =>
-      style.getPropertyValue(`--color-${name}`).trim();
     this.snapshot = {
       status: "starting",
       error: null,
@@ -80,40 +88,17 @@ export class TerminalRuntime {
       renderer: "DOM",
       blocks: [],
       searchResult: "",
+      searchOpen: false,
+      composerOpen: false,
+      blocksOpen: false,
     };
     this.terminal = new Terminal({
       allowProposedApi: true,
-      cursorBlink: true,
-      cursorStyle: "bar",
-      fontFamily:
-        '"Cascadia Code", "SFMono-Regular", "Liberation Mono", monospace',
-      fontSize: 13,
-      lineHeight: 1.25,
+      allowTransparency: true,
       scrollback: 10_000,
-      theme: {
-        background: color("background"),
-        foreground: color("surface-text"),
-        cursor: color("primary"),
-        cursorAccent: color("primary-text"),
-        selectionBackground: color("surface-container-highest"),
-        black: color("background"),
-        red: color("error"),
-        green: color("primary"),
-        yellow: color("warning"),
-        blue: color("info"),
-        magenta: color("primary-container"),
-        cyan: color("info"),
-        white: color("surface-text"),
-        brightBlack: color("secondary"),
-        brightRed: color("error"),
-        brightGreen: color("background-text"),
-        brightYellow: color("warning"),
-        brightBlue: color("info"),
-        brightMagenta: color("primary"),
-        brightCyan: color("info"),
-        brightWhite: color("background-text"),
-      },
+      ...terminalAppearance(),
     });
+    window.addEventListener(themeAppliedEvent, this.applyTheme);
     this.host.className = "terminal-host";
     this.terminal.loadAddon(this.fitAddon);
     this.terminal.loadAddon(this.searchAddon);
@@ -128,27 +113,6 @@ export class TerminalRuntime {
       if (data === "\r" && ["cmd", "pwsh", "powershell"].includes(profile.kind))
         this.startBlock();
       this.send(data);
-    });
-    this.terminal.attachCustomKeyEventHandler((event) => {
-      if (event.type !== "keydown") return true;
-      const modifier = event.ctrlKey || event.metaKey;
-      if (modifier && event.shiftKey && event.code === "KeyC") {
-        void this.copy();
-        return false;
-      }
-      if (modifier && event.shiftKey && event.code === "KeyV") {
-        void this.pasteClipboard();
-        return false;
-      }
-      if (
-        modifier &&
-        (event.code === "Tab" ||
-          event.code === "Comma" ||
-          (event.shiftKey &&
-            ["KeyT", "KeyW", "KeyE", "KeyG", "KeyF"].includes(event.code)))
-      )
-        return false;
-      return true;
     });
     this.terminal.parser.registerOscHandler(7, (value) => {
       try {
@@ -193,6 +157,22 @@ export class TerminalRuntime {
     );
   }
 
+  private readonly applyTheme = () => {
+    if (this.disposed) return;
+    const appearance = terminalAppearance();
+    if (this.terminal.options.fontFamily === appearance.fontFamily) {
+      // A reloaded font may keep its name; change the option to invalidate xterm's cached metrics.
+      this.terminal.options.fontFamily = `${appearance.fontFamily} `;
+    }
+    this.terminal.options = appearance;
+    this.searchAddon.clearDecorations();
+    if (this.snapshot.searchOpen && this.lastSearch)
+      this.find(...this.lastSearch);
+    if (this.opened) this.terminal.refresh(0, this.terminal.rows - 1);
+    this.scheduleFit();
+  };
+  private lastSearch?: [string, boolean, boolean, boolean];
+
   readonly subscribe = (listener: () => void) => {
     this.listeners.add(listener);
     return () => {
@@ -200,6 +180,12 @@ export class TerminalRuntime {
     };
   };
   readonly getSnapshot = () => this.snapshot;
+  setView(view: "searchOpen" | "composerOpen" | "blocksOpen", open: boolean) {
+    this.update({ [view]: open });
+  }
+  toggleView(view: "searchOpen" | "composerOpen" | "blocksOpen") {
+    this.setView(view, !this.snapshot[view]);
+  }
   private update(patch: Partial<Snapshot>) {
     if (this.disposed) return;
     this.snapshot = { ...this.snapshot, ...patch };
@@ -207,79 +193,139 @@ export class TerminalRuntime {
   }
 
   attach(container: HTMLElement) {
+    if (this.disposed) return;
     this.attached = true;
+    // Opacity keeps input focus and measurements available while the renderer is prepared.
+    this.host.style.opacity = "0";
     container.replaceChildren(this.host);
     if (!this.opened) {
       this.terminal.open(this.host);
       this.opened = true;
     }
     const generation = ++this.rendererGeneration;
-    void import("@xterm/addon-webgl")
-      .then(({ WebglAddon }) => {
-        if (
-          !this.attached ||
-          this.disposed ||
-          generation !== this.rendererGeneration
-        )
-          return;
-        const webgl = new WebglAddon();
-        webgl.onContextLoss(() => {
-          webgl.dispose();
-          this.webgl = undefined;
-          this.update({ renderer: "DOM" });
-        });
-        this.terminal.loadAddon(webgl);
-        this.webgl = webgl;
-        this.update({ renderer: "WebGL" });
-      })
-      .catch(() => this.update({ renderer: "DOM" }));
+    const renderer = this.initializeWebgl(generation);
     this.observer = new ResizeObserver(() => this.scheduleFit());
     this.observer.observe(container);
-    this.scheduleFit();
-    void this.start();
+    void this.start(renderer);
+  }
+
+  private async initializeWebgl(generation: number) {
+    let webgl: WebglAddon | undefined;
+    try {
+      const { WebglAddon } = await (webglModule ??=
+        import("@xterm/addon-webgl").catch((error) => {
+          webglModule = undefined;
+          throw error;
+        }));
+      if (
+        !this.attached ||
+        this.disposed ||
+        generation !== this.rendererGeneration
+      )
+        return;
+      webgl = new WebglAddon();
+      const addon = webgl;
+      webgl.onContextLoss(() => {
+        if (this.webgl !== addon) return;
+        addon.dispose();
+        this.webgl = undefined;
+        this.update({ renderer: "DOM" });
+        this.fit();
+      });
+      this.terminal.loadAddon(webgl);
+      // addon-webgl 0.19 multiplies glyph alpha twice with blendFunc, washing out
+      // antialiased and dim text over a transparent canvas. Keep alpha coverage
+      // separate from RGB blending for the browser's premultiplied compositor.
+      for (const canvas of this.host.querySelectorAll<HTMLCanvasElement>(
+        ".xterm-screen > canvas",
+      )) {
+        const gl = canvas.getContext("webgl2");
+        if (!gl) continue;
+        gl.blendFuncSeparate(
+          gl.SRC_ALPHA,
+          gl.ONE_MINUS_SRC_ALPHA,
+          gl.ONE,
+          gl.ONE_MINUS_SRC_ALPHA,
+        );
+        break;
+      }
+      this.webgl = webgl;
+      this.update({ renderer: "WebGL" });
+    } catch {
+      webgl?.dispose();
+      if (generation === this.rendererGeneration)
+        this.update({ renderer: "DOM" });
+    }
+    if (
+      !this.attached ||
+      this.disposed ||
+      generation !== this.rendererGeneration
+    )
+      return;
+    // DOM and WebGL round cell widths differently. Fit and reveal only the chosen renderer.
+    this.rendererReady = true;
+    this.fit();
+    this.firstRender = this.terminal.onRender(() => {
+      this.firstRender?.dispose();
+      this.firstRender = undefined;
+      this.host.style.opacity = "";
+    });
+    this.terminal.refresh(0, this.terminal.rows - 1);
   }
 
   detach() {
     this.attached = false;
+    this.rendererReady = false;
     this.rendererGeneration++;
     cancelAnimationFrame(this.frame);
+    this.firstRender?.dispose();
+    this.firstRender = undefined;
     this.observer?.disconnect();
-    this.webgl?.dispose();
+    // Terminal.dispose owns addon teardown on close, avoiding an intermediate DOM renderer.
+    if (!this.disposed) this.webgl?.dispose();
     this.webgl = undefined;
     this.host.remove();
   }
 
   scheduleFit() {
     cancelAnimationFrame(this.frame);
-    this.frame = requestAnimationFrame(() => {
-      if (
-        !this.attached ||
-        this.host.clientWidth < 30 ||
-        this.host.clientHeight < 20
-      )
-        return;
-      const before = `${this.terminal.cols}:${this.terminal.rows}`;
-      this.fitAddon.fit();
-      if (
-        this.snapshot.status === "running" &&
-        before !== `${this.terminal.cols}:${this.terminal.rows}`
-      ) {
-        void api("resize_terminal", {
-          id: this.sessionId,
-          cols: this.terminal.cols,
-          rows: this.terminal.rows,
-        }).catch((error) => {
-          if (!this.disposed && this.snapshot.status === "running")
-            reportError(errorMessage(error));
-        });
-      }
-    });
+    if (this.attached && this.rendererReady)
+      this.frame = requestAnimationFrame(() => this.fit());
   }
 
-  private start() {
+  private fit() {
+    if (
+      !this.attached ||
+      !this.rendererReady ||
+      this.host.clientWidth < 30 ||
+      this.host.clientHeight < 20
+    )
+      return;
+    const before = `${this.terminal.cols}:${this.terminal.rows}`;
+    this.fitAddon.fit();
+    // Resizing the DOM renderer rounds its canvas width again, which can free one more column.
+    if (!this.webgl && before !== `${this.terminal.cols}:${this.terminal.rows}`)
+      this.fitAddon.fit();
+    if (
+      this.snapshot.status === "running" &&
+      before !== `${this.terminal.cols}:${this.terminal.rows}`
+    ) {
+      void api("resize_terminal", {
+        id: this.sessionId,
+        cols: this.terminal.cols,
+        rows: this.terminal.rows,
+      }).catch((error) => {
+        if (!this.disposed && this.snapshot.status === "running")
+          reportError(errorMessage(error));
+      });
+    }
+  }
+
+  private start(renderer: Promise<void>) {
     if (this.startPromise) return this.startPromise;
     this.startPromise = (async () => {
-      this.fitAddon.fit();
+      await renderer;
+      if (this.disposed) return;
       const output = new Channel<ArrayBuffer>();
       output.onmessage = (data) => {
         if (this.disposed) return;
@@ -419,6 +465,7 @@ export class TerminalRuntime {
   }
 
   find(query: string, previous = false, caseSensitive = false, regex = false) {
+    this.lastSearch = [query, previous, caseSensitive, regex];
     if (!query) {
       this.searchAddon.clearDecorations();
       this.update({ searchResult: "" });
@@ -428,14 +475,7 @@ export class TerminalRuntime {
       const options = {
         caseSensitive,
         regex,
-        decorations: {
-          matchBackground: "#303030",
-          activeMatchBackground: "#6e6e6e",
-          matchBorder: "#787878",
-          activeMatchBorder: "#9a9a9a",
-          matchOverviewRuler: "#787878",
-          activeMatchColorOverviewRuler: "#9a9a9a",
-        },
+        decorations: terminalSearchColors(),
       };
       if (previous) this.searchAddon.findPrevious(query, options);
       else this.searchAddon.findNext(query, options);
@@ -507,6 +547,8 @@ export class TerminalRuntime {
   }
 
   dispose() {
+    if (this.disposed) return;
+    window.removeEventListener(themeAppliedEvent, this.applyTheme);
     this.disposed = true;
     this.detach();
     clearTimeout(this.ackTimer);

@@ -7,6 +7,8 @@ use std::{
 };
 use tauri::{Manager, State, WebviewWindow};
 
+pub mod editor;
+
 #[derive(Default)]
 pub struct SessionFile(pub Mutex<()>);
 
@@ -187,9 +189,16 @@ pub fn save_session(
     main_window(&window)?;
     let _guard = state.0.lock().map_err(|error| error.to_string())?;
     let path = session_path(&app)?;
-    let bytes = serde_json::to_vec_pretty(&data).map_err(|error| error.to_string())?;
-    if bytes.len() > 8 * 1024 * 1024 {
-        return Err("The session layout exceeds 8 MiB.".into());
+    write_json(&path, &data, 8 * 1024 * 1024)
+}
+
+pub fn write_json(path: &Path, data: &impl Serialize, limit: usize) -> Result<(), String> {
+    let bytes = serde_json::to_vec_pretty(data).map_err(|error| error.to_string())?;
+    if bytes.len() > limit {
+        return Err(format!(
+            "The settings file exceeds its {} KiB limit.",
+            limit / 1024
+        ));
     }
     let temporary = path.with_extension("json.tmp");
     {

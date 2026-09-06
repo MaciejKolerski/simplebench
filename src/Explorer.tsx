@@ -22,7 +22,7 @@ import { IconButton } from "./ui";
 interface Props {
   root: string;
   onTerminal: (path: string) => void;
-  onPreview: (relative: string) => void;
+  onOpenFile: (relative: string) => void;
   onError: (message: string) => void;
 }
 
@@ -83,9 +83,6 @@ export default function Explorer(props: Props) {
           toggle={toggle}
         />
       </div>
-      <div className="explorer-hint">
-        Drag files into a terminal to paste their paths.
-      </div>
     </div>
   );
 }
@@ -108,7 +105,7 @@ function Directory(props: DirectoryProps) {
     expanded,
     toggle,
     onTerminal,
-    onPreview,
+    onOpenFile,
     onError,
   } = props;
   const [entries, setEntries] = useState<FileEntry[]>([]);
@@ -134,7 +131,12 @@ function Directory(props: DirectoryProps) {
   }, [root, relative, revision]);
   if (loading)
     return (
-      <div className="tree-message" style={{ paddingLeft: depth * 14 + 16 }}>
+      <div
+        className="tree-message"
+        style={{
+          paddingLeft: `calc(${depth} * var(--tree-indent) + var(--space-16))`,
+        }}
+      >
         Loading…
       </div>
     );
@@ -149,7 +151,12 @@ function Directory(props: DirectoryProps) {
   );
   if (!visible.length)
     return (
-      <div className="tree-message" style={{ paddingLeft: depth * 14 + 16 }}>
+      <div
+        className="tree-message"
+        style={{
+          paddingLeft: `calc(${depth} * var(--tree-indent) + var(--space-16))`,
+        }}
+      >
         Empty folder
       </div>
     );
@@ -161,7 +168,9 @@ function Directory(props: DirectoryProps) {
           <div key={entry.relativePath}>
             <div
               className="tree-row"
-              style={{ paddingLeft: depth * 14 + 10 }}
+              style={{
+                paddingLeft: `calc(${depth} * var(--tree-indent) + var(--space-10))`,
+              }}
               onPointerDown={(event) =>
                 beginFileDrag(event, entry.path, onError)
               }
@@ -173,7 +182,7 @@ function Directory(props: DirectoryProps) {
                 onClick={() =>
                   entry.isDirectory
                     ? toggle(entry.relativePath)
-                    : onPreview(entry.relativePath)
+                    : onOpenFile(entry.relativePath)
                 }
               >
                 {entry.isDirectory ? (

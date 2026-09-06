@@ -18,6 +18,7 @@ export interface Pane {
   type: "terminal";
   id: string;
   cwd: string;
+  profileId?: string;
 }
 export interface Split {
   type: "split";
@@ -50,7 +51,24 @@ export interface CommitTab {
   root: string;
   commit: string;
 }
-export type Tab = TerminalTab | CommitTab;
+export interface EditorPosition {
+  anchor: number;
+  head: number;
+  scrollTop: number;
+  scrollLeft: number;
+}
+export interface FileTab {
+  type: "file";
+  id: string;
+  title: string;
+  root: string;
+  relative: string;
+  position?: EditorPosition;
+}
+export type Tab = TerminalTab | CommitTab | FileTab;
+export type TabDropSide = "left" | "right" | "top" | "bottom";
+export type TabCloseAction =
+  "close" | "others" | "left" | "right" | "clean" | "all";
 export interface Workspace {
   id: string;
   name: string;
@@ -65,7 +83,7 @@ export interface Project {
 }
 export interface Session {
   version: 1;
-  activeProjectId: string;
+  activeProjectId: string | null;
   projects: Project[];
   sidebar: "files" | "git" | null;
   sidebarWidth: number;
@@ -114,12 +132,11 @@ export function newProject(path: string, profileId: string): Project {
     activeWorkspaceId: workspace.id,
   };
 }
-export function newSession(info: AppInfo): Session {
-  const project = newProject(info.directory, info.profiles[0]?.id ?? "");
+export function newSession(): Session {
   return {
     version: 1,
-    projects: [project],
-    activeProjectId: project.id,
+    projects: [],
+    activeProjectId: null,
     sidebar: "files",
     sidebarWidth: 250,
   };
@@ -243,10 +260,12 @@ export function resizeSplit(layout: Layout, id: string, ratio: number): Layout {
   };
 }
 export function active(session: Session) {
+  if (session.activeProjectId === null) return;
   const project =
     session.projects.find(
       (project) => project.id === session.activeProjectId,
     ) ?? session.projects[0];
+  if (!project) return;
   const workspace =
     project.workspaces.find(
       (workspace) => workspace.id === project.activeWorkspaceId,
@@ -271,6 +290,140 @@ export function updateWorkspace(
     })),
   };
 }
+export function tabsToClose(
+  tabs: Tab[],
+  id: string,
+  action: TabCloseAction,
+  modified: ReadonlySet<string>,
+): Tab[] {
+  const index = tabs.findIndex((tab) => tab.id === id);
+  if (index < 0) return [];
+  switch (action) {
+    case "close":
+      return [tabs[index]];
+    case "others":
+      return tabs.filter((tab) => tab.id !== id);
+    case "left":
+      return tabs.slice(0, index);
+    case "right":
+      return tabs.slice(index + 1);
+    case "clean":
+      return tabs.filter((tab) => !modified.has(tab.id));
+    case "all":
+      return tabs;
+  }
+}
+
+export function moveTab(
+  workspace: Workspace,
+  id: string,
+  beforeId: string | null,
+): Workspace {
+  const moved = workspace.tabs.find((tab) => tab.id === id);
+  if (
+    !moved ||
+    id === beforeId ||
+    (beforeId !== null && !workspace.tabs.some((tab) => tab.id === beforeId))
+  )
+    return workspace;
+  const tabs = workspace.tabs.filter((tab) => tab.id !== id);
+  const index =
+    beforeId === null
+      ? tabs.length
+      : tabs.findIndex((tab) => tab.id === beforeId);
+  tabs.splice(index, 0, moved);
+  return tabs.every((tab, index) => tab === workspace.tabs[index])
+    ? workspace
+    : { ...workspace, tabs };
+}
+
+export function canMergeTerminalTabs(
+  source: Tab,
+  target: Tab,
+  side: TabDropSide,
+  size: LayoutSize,
+): boolean {
+  if (
+    source.id === target.id ||
+    source.type !== "terminal" ||
+    target.type !== "terminal"
+  )
+    return false;
+  const first = minimumLayoutSize(target.layout);
+  const second = minimumLayoutSize(source.layout);
+  return side === "left" || side === "right"
+    ? size.width >= first.width + SPLIT_DIVIDER_SIZE + second.width &&
+        size.height >= Math.max(first.height, second.height)
+    : size.width >= Math.max(first.width, second.width) &&
+        size.height >= first.height + SPLIT_DIVIDER_SIZE + second.height;
+}
+
+export function mergeTerminalTabs(
+  workspace: Workspace,
+  sourceId: string,
+  targetId: string,
+  side: TabDropSide,
+  size: LayoutSize,
+): Workspace {
+  const source = workspace.tabs.find((tab) => tab.id === sourceId);
+  const target = workspace.tabs.find((tab) => tab.id === targetId);
+  if (
+    source?.type !== "terminal" ||
+    target?.type !== "terminal" ||
+    !canMergeTerminalTabs(source, target, side, size)
+  )
+    return workspace;
+  // Moved panes retain their shells even after restoring or restarting them.
+  const moved = mapLayout(source.layout, (pane) =>
+    pane.profileId !== undefined || source.profileId === target.profileId
+      ? pane
+      : { ...pane, profileId: source.profileId },
+  );
+  const before = side === "left" || side === "top";
+  const layout: Split = {
+    type: "split",
+    id: newId(),
+    axis: side === "left" || side === "right" ? "horizontal" : "vertical",
+    ratio: 0.5,
+    first: before ? moved : target.layout,
+    second: before ? target.layout : moved,
+  };
+  return {
+    ...workspace,
+    activeTabId: target.id,
+    tabs: workspace.tabs
+      .filter((tab) => tab.id !== source.id)
+      .map((tab) =>
+        tab.id === target.id
+          ? { ...target, layout, activePaneId: source.activePaneId }
+          : tab,
+      ),
+  };
+}
+
+export function removeTabs(
+  workspace: Workspace,
+  ids: ReadonlySet<string>,
+  cwd: string,
+  profileId: string,
+): Workspace {
+  const tabs = workspace.tabs.filter((tab) => !ids.has(tab.id));
+  if (tabs.length === workspace.tabs.length) return workspace;
+  if (!tabs.length) tabs.push(newTab(cwd, profileId));
+  const activeIndex = workspace.tabs.findIndex(
+    (tab) => tab.id === workspace.activeTabId,
+  );
+  const next = ids.has(workspace.activeTabId)
+    ? (workspace.tabs.slice(activeIndex + 1).find((tab) => !ids.has(tab.id)) ??
+      tabs[tabs.length - 1])
+    : undefined;
+  return {
+    ...workspace,
+    tabs,
+    activeTabId: next?.id ?? workspace.activeTabId,
+  };
+}
+
 export function updateTab(
   session: Session,
   id: string,
@@ -337,6 +490,41 @@ export function updateDirectories(
   return changed ? { ...session, projects } : session;
 }
 
+export function openFileTab(
+  session: Session,
+  workspaceId: string,
+  root: string,
+  relative: string,
+): Session {
+  return updateWorkspace(session, workspaceId, (workspace) => {
+    const existing = workspace.tabs.find(
+      (tab) =>
+        tab.type === "file" && tab.root === root && tab.relative === relative,
+    );
+    if (existing) return { ...workspace, activeTabId: existing.id };
+    const tab: FileTab = {
+      type: "file",
+      id: newId(),
+      title: basename(relative),
+      root,
+      relative,
+    };
+    return {
+      ...workspace,
+      tabs: [...workspace.tabs, tab],
+      activeTabId: tab.id,
+    };
+  });
+}
+
+export function fileTabs(session: Session): FileTab[] {
+  return session.projects.flatMap((project) =>
+    project.workspaces.flatMap((workspace) =>
+      workspace.tabs.filter((tab): tab is FileTab => tab.type === "file"),
+    ),
+  );
+}
+
 const record = (value: unknown): Record<string, unknown> =>
   typeof value === "object" && value !== null
     ? (value as Record<string, unknown>)
@@ -346,8 +534,7 @@ const string = (value: unknown, fallback: string) =>
 
 export function restoreSession(value: unknown, info: AppInfo): Session {
   const data = record(value);
-  if (data.version !== 1 || !Array.isArray(data.projects))
-    return newSession(info);
+  if (data.version !== 1 || !Array.isArray(data.projects)) return newSession();
   const ids = new Set<string>();
   const id = (value: unknown) => {
     let candidate = string(value, newId());
@@ -370,7 +557,14 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
         first: layout(node.first, cwd, depth + 1),
         second: layout(node.second, cwd, depth + 1),
       };
-    return { type: "terminal", id: id(node.id), cwd: string(node.cwd, cwd) };
+    return {
+      type: "terminal",
+      id: id(node.id),
+      cwd: string(node.cwd, cwd),
+      ...(typeof node.profileId === "string"
+        ? { profileId: node.profileId }
+        : {}),
+    };
   };
   const projects = data.projects
     .map((value): Project | null => {
@@ -384,6 +578,33 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
         const tabs = (Array.isArray(workspace.tabs) ? workspace.tabs : []).map(
           (value): Tab => {
             const tab = record(value);
+            if (tab.type === "file") {
+              const position = record(tab.position);
+              const offset = (value: unknown) =>
+                typeof value === "number" && Number.isFinite(value)
+                  ? Math.max(0, Math.floor(value))
+                  : 0;
+              return {
+                type: "file",
+                id: id(tab.id),
+                title: string(
+                  tab.title,
+                  basename(string(tab.relative, "File")),
+                ),
+                root: string(tab.root, path),
+                relative: string(tab.relative, ""),
+                ...(tab.position
+                  ? {
+                      position: {
+                        anchor: offset(position.anchor),
+                        head: offset(position.head),
+                        scrollTop: offset(position.scrollTop),
+                        scrollLeft: offset(position.scrollLeft),
+                      },
+                    }
+                  : {}),
+              };
+            }
             if (tab.type === "commit") {
               return {
                 type: "commit",
@@ -431,15 +652,15 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
       };
     })
     .filter((project): project is Project => project !== null);
-  if (!projects.length) return newSession(info);
   return {
     version: 1,
     projects,
-    activeProjectId: projects.some(
-      (project) => project.id === data.activeProjectId,
-    )
-      ? (data.activeProjectId as string)
-      : projects[0].id,
+    activeProjectId:
+      data.activeProjectId === null
+        ? null
+        : projects.some((project) => project.id === data.activeProjectId)
+          ? (data.activeProjectId as string)
+          : (projects[0]?.id ?? null),
     sidebar:
       data.sidebar === "git" ? "git" : data.sidebar === null ? null : "files",
     sidebarWidth:

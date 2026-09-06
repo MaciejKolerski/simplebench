@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   layoutFits,
   MIN_PANE_HEIGHT,
@@ -7,18 +7,41 @@ import {
   SPLIT_DIVIDER_SIZE,
   splitGeometry,
 } from "./model";
-import type { Layout, LayoutSize, Pane, ShellProfile, Split } from "./model";
+import type { Layout, LayoutSize, ShellProfile, Split } from "./model";
 import TerminalPane from "./TerminalPane";
 
 interface Props {
   layout: Layout;
   profile?: ShellProfile;
+  profiles: ShellProfile[];
   activePaneId: string;
   onFocus: (id: string) => void;
-  onSplit: (pane: Pane, axis: Split["axis"]) => void;
-  onClose: (id: string) => void;
   onRestart: (id: string, useProjectDirectory?: boolean) => void;
   onResize: (id: string, ratio: number) => void;
+}
+
+interface Bounds extends LayoutSize {
+  left: number;
+  top: number;
+}
+
+function layoutPositions(layout: Layout, size: LayoutSize) {
+  const positions: { layout: Layout; bounds: Bounds }[] = [];
+  const visit = (layout: Layout, bounds: Bounds) => {
+    positions.push({ layout, bounds });
+    if (layout.type === "terminal") return;
+    const geometry = splitGeometry(layout, bounds);
+    visit(layout.first, { ...bounds, ...geometry.first });
+    visit(layout.second, {
+      ...bounds,
+      ...geometry.second,
+      ...(layout.axis === "horizontal"
+        ? { left: bounds.left + geometry.first.width + SPLIT_DIVIDER_SIZE }
+        : { top: bounds.top + geometry.first.height + SPLIT_DIVIDER_SIZE }),
+    });
+  };
+  visit(layout, { ...size, left: 0, top: 0 });
+  return positions;
 }
 
 export default function SplitView({
@@ -43,16 +66,52 @@ export default function SplitView({
     observer.observe(container);
     return () => observer.disconnect();
   }, []);
-  const fits =
-    size &&
-    (props.layout.type === "terminal" || layoutFits(props.layout, size));
+  const positions = useMemo(
+    () =>
+      size &&
+      (props.layout.type === "terminal" || layoutFits(props.layout, size))
+        ? layoutPositions(props.layout, size)
+        : null,
+    [props.layout, size],
+  );
   return (
-    <div className="split-container" ref={root}>
+    <div
+      className={`split-container${props.layout.type === "split" ? " is-split" : ""}`}
+      ref={root}
+    >
       {size &&
         size.width > 0 &&
         size.height > 0 &&
-        (fits ? (
-          <LayoutView {...props} size={size} />
+        (positions ? (
+          // Stable sibling keys keep terminal hosts and WebGL contexts mounted as the tree changes.
+          positions.map(({ layout, bounds }) =>
+            layout.type === "terminal" ? (
+              <div key={layout.id} className="split-child" style={bounds}>
+                <TerminalPane
+                  pane={layout}
+                  profile={
+                    layout.profileId !== undefined
+                      ? props.profiles.find(
+                          (profile) => profile.id === layout.profileId,
+                        )
+                      : props.profile
+                  }
+                  active={props.activePaneId === layout.id}
+                  onFocus={() => props.onFocus(layout.id)}
+                  onRestart={(useProjectDirectory) =>
+                    props.onRestart(layout.id, useProjectDirectory)
+                  }
+                />
+              </div>
+            ) : (
+              <Divider
+                key={layout.id}
+                layout={layout}
+                bounds={bounds}
+                onResize={props.onResize}
+              />
+            ),
+          )
         ) : (
           <div className="layout-recovery" role="status">
             <h2>This terminal layout needs more space</h2>
@@ -78,98 +137,90 @@ export default function SplitView({
   );
 }
 
-function LayoutView(props: Props & { size: LayoutSize }) {
-  if (props.layout.type === "terminal") {
-    const pane = props.layout;
-    return (
-      <TerminalPane
-        key={pane.id}
-        pane={pane}
-        profile={props.profile}
-        active={props.activePaneId === pane.id}
-        onFocus={() => props.onFocus(pane.id)}
-        onSplit={(axis) => props.onSplit(pane, axis)}
-        onClose={() => props.onClose(pane.id)}
-        onRestart={(useProjectDirectory) =>
-          props.onRestart(pane.id, useProjectDirectory)
-        }
-      />
-    );
-  }
-  return <Branch {...props} layout={props.layout} />;
-}
-
-function Branch({
+function Divider({
   layout,
-  size,
-  ...props
-}: Props & { layout: Split; size: LayoutSize }) {
-  const root = useRef<HTMLDivElement>(null);
+  bounds,
+  onResize,
+}: {
+  layout: Split;
+  bounds: Bounds;
+  onResize: Props["onResize"];
+}) {
   const horizontal = layout.axis === "horizontal";
-  const geometry = splitGeometry(layout, size);
+  const geometry = splitGeometry(layout, bounds);
   const resize = (ratio: number) =>
-    props.onResize(
+    onResize(
       layout.id,
       Math.max(geometry.minRatio, Math.min(geometry.maxRatio, ratio)),
     );
   return (
-    <div className={`split-view split-${layout.axis}`} ref={root}>
-      <div className="split-child" style={{ flex: `${geometry.ratio} 1 0` }}>
-        <LayoutView {...props} layout={layout.first} size={geometry.first} />
-      </div>
-      <div
-        className="split-divider"
-        style={{ flexBasis: SPLIT_DIVIDER_SIZE }}
-        role="separator"
-        aria-label={
-          horizontal ? "Resize terminal columns" : "Resize terminal rows"
-        }
-        aria-orientation={horizontal ? "vertical" : "horizontal"}
-        aria-valuemin={Math.round(geometry.minRatio * 100)}
-        aria-valuemax={Math.round(geometry.maxRatio * 100)}
-        aria-valuenow={Math.round(geometry.ratio * 100)}
-        tabIndex={0}
-        onDoubleClick={() => resize(0.5)}
-        onKeyDown={(event) => {
-          if (
-            ["ArrowLeft", "ArrowUp", "ArrowRight", "ArrowDown"].includes(
-              event.key,
-            )
-          ) {
-            event.preventDefault();
-            resize(
-              geometry.ratio +
-                (["ArrowLeft", "ArrowUp"].includes(event.key) ? -0.05 : 0.05),
-            );
-          }
-        }}
-        onPointerDown={(event) => {
-          if (event.button !== 0) return;
+    <div
+      className="split-divider"
+      style={
+        horizontal
+          ? {
+              left: bounds.left + geometry.first.width,
+              top: bounds.top,
+              width: SPLIT_DIVIDER_SIZE,
+              height: bounds.height,
+            }
+          : {
+              left: bounds.left,
+              top: bounds.top + geometry.first.height,
+              width: bounds.width,
+              height: SPLIT_DIVIDER_SIZE,
+            }
+      }
+      role="separator"
+      aria-label={
+        horizontal ? "Resize terminal columns" : "Resize terminal rows"
+      }
+      aria-orientation={horizontal ? "vertical" : "horizontal"}
+      aria-valuemin={Math.round(geometry.minRatio * 100)}
+      aria-valuemax={Math.round(geometry.maxRatio * 100)}
+      aria-valuenow={Math.round(geometry.ratio * 100)}
+      tabIndex={0}
+      onDoubleClick={() => resize(0.5)}
+      onKeyDown={(event) => {
+        if (
+          ["ArrowLeft", "ArrowUp", "ArrowRight", "ArrowDown"].includes(
+            event.key,
+          )
+        ) {
           event.preventDefault();
-          event.currentTarget.setPointerCapture(event.pointerId);
-        }}
-        onPointerMove={(event) => {
-          if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-          const bounds = root.current!.getBoundingClientRect();
           resize(
-            horizontal
-              ? (event.clientX - bounds.left - SPLIT_DIVIDER_SIZE / 2) /
-                  (bounds.width - SPLIT_DIVIDER_SIZE)
-              : (event.clientY - bounds.top - SPLIT_DIVIDER_SIZE / 2) /
-                  (bounds.height - SPLIT_DIVIDER_SIZE),
+            geometry.ratio +
+              (["ArrowLeft", "ArrowUp"].includes(event.key) ? -0.05 : 0.05),
           );
-        }}
-        onPointerUp={(event) => {
-          if (event.currentTarget.hasPointerCapture(event.pointerId))
-            event.currentTarget.releasePointerCapture(event.pointerId);
-        }}
-      />
-      <div
-        className="split-child"
-        style={{ flex: `${1 - geometry.ratio} 1 0` }}
-      >
-        <LayoutView {...props} layout={layout.second} size={geometry.second} />
-      </div>
-    </div>
+        }
+      }}
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+      }}
+      onPointerMove={(event) => {
+        if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+        const origin =
+          event.currentTarget.parentElement!.getBoundingClientRect();
+        resize(
+          horizontal
+            ? (event.clientX -
+                origin.left -
+                bounds.left -
+                SPLIT_DIVIDER_SIZE / 2) /
+                (bounds.width - SPLIT_DIVIDER_SIZE)
+            : (event.clientY -
+                origin.top -
+                bounds.top -
+                SPLIT_DIVIDER_SIZE / 2) /
+                (bounds.height - SPLIT_DIVIDER_SIZE),
+        );
+      }}
+      onPointerUp={(event) => {
+        if (event.currentTarget.hasPointerCapture(event.pointerId))
+          event.currentTarget.releasePointerCapture(event.pointerId);
+      }}
+    />
   );
 }

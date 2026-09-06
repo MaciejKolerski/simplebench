@@ -117,12 +117,7 @@ test("restoring deeply nested legacy splits preserves panels and the active dire
   project.workspaces[0].tabs = [tab];
   project.workspaces[0].activeTabId = tab.id;
   const saved = {
-    ...newSession({
-      directory: "/project",
-      home: "/home/test",
-      platform: "linux",
-      profiles: [],
-    }),
+    ...newSession(),
     projects: [project],
     activeProjectId: project.id,
   };
