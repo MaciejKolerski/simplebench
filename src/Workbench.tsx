@@ -28,6 +28,7 @@ import type { GitStatus } from "./api";
 import {
   active,
   basename,
+  canSplitPane,
   mapLayout,
   newPane,
   newProject,
@@ -42,7 +43,7 @@ import {
   updateTab,
   updateWorkspace,
 } from "./model";
-import type { AppInfo, Pane, Session, Split, Tab } from "./model";
+import type { AppInfo, Session, Split, Tab } from "./model";
 import {
   closeTerminals,
   configureTerminals,
@@ -138,18 +139,37 @@ function useGit(root: string) {
 
 export default function Workbench() {
   const [info, setInfo] = useState<AppInfo>();
-  const [session, setSession] = useState<Session>();
+  const [session, renderSession] = useState<Session>();
+  const currentSession = useRef<Session>(undefined);
+  const setSession = useCallback(
+    (
+      update: Session | ((state: Session | undefined) => Session | undefined),
+    ) => {
+      const next =
+        typeof update === "function" ? update(currentSession.current) : update;
+      // Queued shortcuts must see the updated layout before React renders it.
+      currentSession.current = next;
+      renderSession(next);
+    },
+    [],
+  );
   const [error, setError] = useState("");
   const [restoreError, setRestoreError] = useState("");
+  const [paneNotice, setPaneNotice] = useState("");
   const [menu, setMenu] = useState<"project" | "workspace" | null>(null);
   const [location, setLocation] = useState("");
   const [dialog, setDialog] = useState<Dialog | null>(null);
-  const currentSession = useRef(session);
-  currentSession.current = session;
+  const terminalLayout = useRef<HTMLDivElement>(null);
   const savingEnabled = useRef(false);
   const selected = session ? active(session) : undefined;
   const git = useGit(selected?.project.path ?? "");
   const closeMenu = useCallback(() => setMenu(null), []);
+
+  useEffect(() => {
+    if (!paneNotice) return;
+    const timer = setTimeout(() => setPaneNotice(""), 5000);
+    return () => clearTimeout(timer);
+  }, [paneNotice]);
 
   useEffect(() => {
     if (!native) return;
@@ -327,6 +347,29 @@ export default function Workbench() {
         !(event.ctrlKey || event.metaKey)
       )
         return;
+      if (
+        !event.altKey &&
+        !event.isComposing &&
+        !event.getModifierState("AltGraph") &&
+        (event.code === "KeyD" || (!event.shiftKey && event.code === "KeyW"))
+      ) {
+        const target = event.target;
+        if (
+          target instanceof Element &&
+          !target.classList.contains("xterm-helper-textarea") &&
+          target.closest(
+            "input, textarea, select, [contenteditable]:not([contenteditable='false'])",
+          )
+        )
+          return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.repeat) return;
+        if (event.code === "KeyD")
+          split(event.shiftKey ? "vertical" : "horizontal");
+        else closePane(active(currentSession.current!).tab.activePaneId);
+        return;
+      }
       if (event.shiftKey && event.code === "KeyT") {
         event.preventDefault();
         addTab();
@@ -369,8 +412,8 @@ export default function Workbench() {
         );
       }
     };
-    window.addEventListener("keydown", keyboard);
-    return () => window.removeEventListener("keydown", keyboard);
+    window.addEventListener("keydown", keyboard, true);
+    return () => window.removeEventListener("keydown", keyboard, true);
   });
 
   if (!native)
@@ -455,31 +498,59 @@ export default function Workbench() {
     );
   const modifyTab = (transform: (tab: Tab) => Tab) =>
     change((state) => updateTab(state, tab.id, transform));
-  const split = (pane: Pane, axis: Split["axis"]) => {
+  const split = (axis: Split["axis"], paneId?: string) => {
+    const state = currentSession.current;
+    const selection = state ? active(state) : undefined;
+    const container = terminalLayout.current;
+    if (!container || !selection) return;
+    const current = selection.tab;
+    const targetId = paneId ?? current.activePaneId;
+    if (
+      !canSplitPane(current.layout, targetId, axis, {
+        width: container.clientWidth,
+        height: container.clientHeight,
+      })
+    ) {
+      setPaneNotice(
+        "No room for another terminal in this direction. Enlarge the window, hide the sidebar, or resize the panels.",
+      );
+      return;
+    }
+    const pane = panes(current.layout).find((pane) => pane.id === targetId)!;
     const added = newPane(
       runningTerminal(pane.id)?.getSnapshot().cwd ?? pane.cwd,
     );
-    modifyTab((tab) => ({
-      ...tab,
-      layout: splitPane(tab.layout, pane.id, axis, added),
-      activePaneId: added.id,
-    }));
+    setPaneNotice("");
+    change((state) =>
+      updateTab(state, current.id, (tab) => ({
+        ...tab,
+        layout: splitPane(current.layout, pane.id, axis, added),
+        activePaneId: added.id,
+      })),
+    );
   };
   const closePane = (id: string) => {
-    if (allPanes.length === 1) {
-      closeTab(tab.id);
+    const state = currentSession.current;
+    if (!state) return;
+    const current = active(state)?.tab;
+    if (!current) return;
+    if (!panes(current.layout).some((pane) => pane.id === id)) return;
+    if (current.layout.type === "terminal") {
+      closeTab(current.id);
       return;
     }
     closeTerminals([id]);
-    modifyTab((tab) => {
-      const layout = removePane(tab.layout, id)!;
-      return {
-        ...tab,
-        layout,
-        activePaneId:
-          tab.activePaneId === id ? panes(layout)[0].id : tab.activePaneId,
-      };
-    });
+    change((state) =>
+      updateTab(state, current.id, (tab) => {
+        const layout = removePane(tab.layout, id)!;
+        return {
+          ...tab,
+          layout,
+          activePaneId:
+            tab.activePaneId === id ? panes(layout)[0].id : tab.activePaneId,
+        };
+      }),
+    );
   };
   const restartPane = (id: string, useProjectDirectory = false) => {
     closeTerminals([id]);
@@ -938,7 +1009,7 @@ export default function Workbench() {
               </select>
             </label>
           </div>
-          <div className="terminal-layout">
+          <div className="terminal-layout" ref={terminalLayout}>
             <SplitView
               key={tab.id}
               layout={tab.layout}
@@ -948,9 +1019,21 @@ export default function Workbench() {
                 if (id !== tab.activePaneId)
                   modifyTab((tab) => ({ ...tab, activePaneId: id }));
               }}
-              onSplit={split}
+              onSplit={(pane, axis) => split(axis, pane.id)}
               onClose={closePane}
               onRestart={restartPane}
+              onKeepActivePane={() => {
+                const kept = allPanes.find(
+                  (pane) => pane.id === tab.activePaneId,
+                )!;
+                closeTerminals(
+                  allPanes
+                    .filter((pane) => pane.id !== kept.id)
+                    .map((pane) => pane.id),
+                );
+                modifyTab((tab) => ({ ...tab, layout: kept }));
+                setPaneNotice("");
+              }}
               onResize={(id, ratio) =>
                 modifyTab((tab) => ({
                   ...tab,
@@ -959,6 +1042,17 @@ export default function Workbench() {
               }
             />
           </div>
+          {paneNotice && (
+            <div className="pane-limit-notice" role="status">
+              <span>{paneNotice}</span>
+              <IconButton
+                title="Dismiss panel limit"
+                onClick={() => setPaneNotice("")}
+              >
+                <X size={14} />
+              </IconButton>
+            </div>
+          )}
         </main>
       </div>
       <footer className="statusbar">

@@ -89,6 +89,19 @@ running processes, in-memory command blocks, and unsaved command input are not
 restored; previous commands are never replayed. Closing a pane, tab, workspace,
 or the main window terminates its associated PTYs.
 
+Panel splits require at least 240 × 120 CSS pixels per terminal, plus
+space for the dividers. The limit follows the available terminal area, sidebar
+width, split direction, and nested layout. Divider resizing preserves this
+minimum, and repeated shortcuts cannot queue more panels than fit. Tab counts
+remain unlimited.
+
+A restored tab whose panels do not fit shows a recovery view before starting
+any of its shells. Enlarge the window, hide the sidebar, close individual
+panels with Ctrl+W, or choose **Keep only the active terminal**
+to close the other panels in that tab. Resizing never deletes panels or stops
+existing shells; their output continues parsing while the recovery view is
+visible. Saved panels remain available until you explicitly close them.
+
 The Rust reader sends raw binary Tauri channels directly into xterm, outside
 React state. Acknowledgements follow xterm parsing and bound data in flight to
 roughly 128 KiB per PTY. Hidden terminals retain their parsers and scrollback but
@@ -106,6 +119,9 @@ Use Cmd instead of Ctrl on macOS.
 
 | Shortcut                    | Action                                    |
 | --------------------------- | ----------------------------------------- |
+| Ctrl+D                      | Split the active terminal side by side    |
+| Ctrl+Shift+D                | Split the active terminal top and bottom  |
+| Ctrl+W                      | Close the active terminal panel           |
 | Ctrl+Shift+T                | New tab                                   |
 | Ctrl+Shift+W                | Close active tab                          |
 | Ctrl+Tab / Ctrl+Shift+Tab   | Next / previous tab                       |
