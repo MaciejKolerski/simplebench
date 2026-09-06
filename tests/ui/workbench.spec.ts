@@ -132,7 +132,7 @@ test("source control appears when Git is detected and preserves the commit draft
     "docs(readme): describe the project\n\nExplain the workspace.\n\nValidation:\n- Documentation reviewed";
   await page.getByRole("textbox", { name: "Commit message" }).fill(message);
   await page
-    .getByRole("button", { name: "Stage README.md", exact: true })
+    .getByRole("checkbox", { name: "Stage README.md", exact: true })
     .click();
   await expect(
     page.getByRole("textbox", { name: "Commit message" }),

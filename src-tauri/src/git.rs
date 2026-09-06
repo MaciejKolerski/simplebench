@@ -6,7 +6,9 @@ use std::{
 };
 use tauri::WebviewWindow;
 
-fn command(root: &Path, args: &[&str]) -> Result<Output, String> {
+pub mod history;
+
+fn configured_command(root: &Path, args: &[&str]) -> Command {
     let mut command = Command::new("git");
     command
         .arg("-C")
@@ -21,6 +23,10 @@ fn command(root: &Path, args: &[&str]) -> Result<Output, String> {
         command.creation_flags(0x08000000);
     }
     command
+}
+
+fn command(root: &Path, args: &[&str]) -> Result<Output, String> {
+    configured_command(root, args)
         .output()
         .map_err(|error| format!("Cannot run Git: {error}"))
 }

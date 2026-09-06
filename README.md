@@ -9,7 +9,7 @@ is developed incrementally with Tauri 2, Rust, React, TypeScript, and Vite.
   tab button, and settings. Choose a folder with the native picker or enter its
   path. Previously opened projects retain their workspaces.
 - Each project has named workspaces sharing its project folder. Each workspace
-  has its own tabs. There is no hardcoded tab count limit; each tab starts with
+  has its own tabs. There is no hardcoded tab count limit; each terminal tab starts with
   one terminal and can contain nested horizontal or vertical splits.
 - The left sidebar contains a lazy file explorer with directory expansion,
   hidden-file visibility, refresh, text previews, path copying, and opening a
@@ -17,7 +17,15 @@ is developed incrementally with Tauri 2, Rust, React, TypeScript, and Vite.
 - Source Control appears when Git detects a repository, including a worktree or
   an enclosing repository. It shows the branch and changes, previews diffs, stages
   and unstages files, and commits staged changes using the message you enter.
+  The Changes page groups staged, tracked, and untracked files, with staging
+  checkboxes and a commit form anchored below the scrollable list.
   Detection refreshes every four seconds and when the window regains focus.
+- The Source Control **History** page lists commits from all locally available
+  branches, tags, and HEAD, loading 50 at a time with **Load more commits**.
+  Select a commit to open a workspace tab with its full message, author and
+  committer, dates, hashes, changed files, line counts, and a selectable file
+  diff. Merge commits are compared with their first parent; initial commits
+  show the files they introduced. Reopening a commit selects its existing tab.
 - Settings opens a separate native window containing a box labeled `settings`.
 - Terminals use xterm.js with WebGL, a native `portable-pty` backend, true color,
   inline search, and Ctrl/Cmd-clickable HTTP(S) links. Running terminals continue
@@ -77,6 +85,10 @@ Project folders, workspace names, tabs, selected environments, per-pane working
 directories, split directions and ratios, and sidebar layout are saved to
 `session.json` in Tauri's application data directory. On Linux, its default
 location is `~/.local/share/dev.simplebench.desktop/session.json`.
+
+Commit tabs also retain their repository path and full hash. Restoring a commit
+view reloads its details without starting a shell. File diffs display at most
+2 MiB or 20,000 lines and clearly mark truncated output.
 
 Saving is debounced, serialized, and uses an atomic file replacement. Closing
 the main window flushes the current layout. Invalid JSON or an unsupported

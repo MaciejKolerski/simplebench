@@ -5,6 +5,7 @@ import {
   Folder,
   FolderOpen,
   GitBranch,
+  GitCommitHorizontal,
   Layers,
   PanelLeft,
   Plus,
@@ -34,6 +35,7 @@ import {
   newProject,
   newTab,
   newWorkspace,
+  openCommitTab,
   panes,
   removePane,
   resizeSplit,
@@ -43,7 +45,7 @@ import {
   updateTab,
   updateWorkspace,
 } from "./model";
-import type { AppInfo, Session, Split, Tab } from "./model";
+import type { AppInfo, Session, Split, TerminalTab } from "./model";
 import {
   closeTerminals,
   configureTerminals,
@@ -54,6 +56,7 @@ import { dropPaths, terminalAt } from "./file-drag";
 import { IconButton, Menu, Modal, WindowControls } from "./ui";
 import Explorer from "./Explorer";
 import SourceControl from "./SourceControl";
+import CommitDetails from "./CommitDetails";
 import SplitView from "./SplitView";
 import "@xterm/xterm/css/xterm.css";
 
@@ -303,7 +306,7 @@ export default function Workbench() {
       const { project, workspace, tab } = active(state);
       const added = newTab(
         cwd ?? project.path,
-        tab.profileId,
+        tab.type === "terminal" ? tab.profileId : (info?.profiles[0]?.id ?? ""),
         `Terminal ${workspace.tabs.length + 1}`,
       );
       return updateWorkspace(state, workspace.id, (workspace) => ({
@@ -318,12 +321,21 @@ export default function Workbench() {
     const { project, workspace } = active(state);
     const tab = workspace.tabs.find((tab) => tab.id === id);
     if (!tab) return;
-    closeTerminals(panes(tab.layout).map((pane) => pane.id));
+    if (tab.type === "terminal")
+      closeTerminals(panes(tab.layout).map((pane) => pane.id));
     change((state) =>
       updateWorkspace(state, workspace.id, (workspace) => {
         const index = workspace.tabs.findIndex((tab) => tab.id === id);
         const tabs = workspace.tabs.filter((tab) => tab.id !== id);
-        if (!tabs.length) tabs.push(newTab(project.path, tab.profileId));
+        if (!tabs.length)
+          tabs.push(
+            newTab(
+              project.path,
+              tab.type === "terminal"
+                ? tab.profileId
+                : (info?.profiles[0]?.id ?? ""),
+            ),
+          );
         return {
           ...workspace,
           tabs,
@@ -367,7 +379,11 @@ export default function Workbench() {
         if (event.repeat) return;
         if (event.code === "KeyD")
           split(event.shiftKey ? "vertical" : "horizontal");
-        else closePane(active(currentSession.current!).tab.activePaneId);
+        else {
+          const tab = active(currentSession.current!).tab;
+          if (tab.type === "commit") closeTab(tab.id);
+          else closePane(tab.activePaneId);
+        }
         return;
       }
       if (event.shiftKey && event.code === "KeyT") {
@@ -452,8 +468,11 @@ export default function Workbench() {
       </div>
     );
   const { project, workspace, tab } = selected;
-  const profile = info.profiles.find((profile) => profile.id === tab.profileId);
-  const allPanes = panes(tab.layout);
+  const profile =
+    tab.type === "terminal"
+      ? info.profiles.find((profile) => profile.id === tab.profileId)
+      : undefined;
+  const allPanes = tab.type === "terminal" ? panes(tab.layout) : [];
   const sidebar =
     session.sidebar === "git" && !git.status ? null : session.sidebar;
   const selectProject = async (path: string) => {
@@ -496,14 +515,19 @@ export default function Workbench() {
         activeTabId: id,
       })),
     );
-  const modifyTab = (transform: (tab: Tab) => Tab) =>
-    change((state) => updateTab(state, tab.id, transform));
+  const modifyTab = (transform: (tab: TerminalTab) => TerminalTab) =>
+    change((state) =>
+      updateTab(state, tab.id, (tab) =>
+        tab.type === "terminal" ? transform(tab) : tab,
+      ),
+    );
   const split = (axis: Split["axis"], paneId?: string) => {
     const state = currentSession.current;
     const selection = state ? active(state) : undefined;
     const container = terminalLayout.current;
     if (!container || !selection) return;
     const current = selection.tab;
+    if (current.type !== "terminal") return;
     const targetId = paneId ?? current.activePaneId;
     if (
       !canSplitPane(current.layout, targetId, axis, {
@@ -533,7 +557,7 @@ export default function Workbench() {
     const state = currentSession.current;
     if (!state) return;
     const current = active(state)?.tab;
-    if (!current) return;
+    if (!current || current.type !== "terminal") return;
     if (!panes(current.layout).some((pane) => pane.id === id)) return;
     if (current.layout.type === "terminal") {
       closeTab(current.id);
@@ -542,6 +566,7 @@ export default function Workbench() {
     closeTerminals([id]);
     change((state) =>
       updateTab(state, current.id, (tab) => {
+        if (tab.type !== "terminal") return tab;
         const layout = removePane(tab.layout, id)!;
         return {
           ...tab,
@@ -771,7 +796,9 @@ export default function Workbench() {
                     submit: () => {
                       closeTerminals(
                         workspace.tabs.flatMap((tab) =>
-                          panes(tab.layout).map((pane) => pane.id),
+                          tab.type === "terminal"
+                            ? panes(tab.layout).map((pane) => pane.id)
+                            : [],
                         ),
                       );
                       change((state) => ({
@@ -850,7 +877,11 @@ export default function Workbench() {
                   }
                 }}
               >
-                <Terminal size={13} />
+                {candidate.type === "commit" ? (
+                  <GitCommitHorizontal size={13} />
+                ) : (
+                  <Terminal size={13} />
+                )}
                 <span>{candidate.title}</span>
               </button>
               <button
@@ -909,9 +940,21 @@ export default function Workbench() {
                 />
               ) : (
                 <SourceControl
+                  key={project.path}
                   status={git.status}
                   onRefresh={git.refresh}
                   onDiff={(path, staged) => void diff(path, staged)}
+                  onOpenCommit={(commit) =>
+                    change((state) =>
+                      openCommitTab(
+                        state,
+                        workspace.id,
+                        git.status!.root,
+                        commit.id,
+                        `${commit.shortId} · ${commit.subject || "Commit"}`,
+                      ),
+                    )
+                  }
                   onError={setError}
                 />
               )}
@@ -968,90 +1011,100 @@ export default function Workbench() {
           role="tabpanel"
           aria-labelledby={`tab-${tab.id}`}
         >
-          <div className="tab-context">
-            <span className="tab-context-path" title={project.path}>
-              {project.path}
-            </span>
-            <label>
-              <span>Environment</span>
-              <select
-                aria-label="Tab environment"
-                value={tab.profileId}
-                onChange={(event) => {
-                  const profileId = event.target.value;
-                  setDialog({
-                    type: "confirm",
-                    title: "Change terminal environment",
-                    text: "This will restart the terminals in this tab in the project folder. Continue?",
-                    submit: () => {
-                      closeTerminals(allPanes.map((pane) => pane.id));
-                      const layout = mapLayout(tab.layout, () =>
-                        newPane(project.path),
-                      );
-                      modifyTab((tab) => ({
-                        ...tab,
-                        profileId,
-                        layout,
-                        activePaneId: panes(layout)[0].id,
-                      }));
-                    },
-                  });
-                }}
-              >
-                {!profile && (
-                  <option value={tab.profileId}>Unavailable environment</option>
-                )}
-                {info.profiles.map((profile) => (
-                  <option key={profile.id} value={profile.id}>
-                    {profile.distro ? profile.name : `Local · ${profile.name}`}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-          <div className="terminal-layout" ref={terminalLayout}>
-            <SplitView
-              key={tab.id}
-              layout={tab.layout}
-              profile={profile}
-              activePaneId={tab.activePaneId}
-              onFocus={(id) => {
-                if (id !== tab.activePaneId)
-                  modifyTab((tab) => ({ ...tab, activePaneId: id }));
-              }}
-              onSplit={(pane, axis) => split(axis, pane.id)}
-              onClose={closePane}
-              onRestart={restartPane}
-              onKeepActivePane={() => {
-                const kept = allPanes.find(
-                  (pane) => pane.id === tab.activePaneId,
-                )!;
-                closeTerminals(
-                  allPanes
-                    .filter((pane) => pane.id !== kept.id)
-                    .map((pane) => pane.id),
-                );
-                modifyTab((tab) => ({ ...tab, layout: kept }));
-                setPaneNotice("");
-              }}
-              onResize={(id, ratio) =>
-                modifyTab((tab) => ({
-                  ...tab,
-                  layout: resizeSplit(tab.layout, id, ratio),
-                }))
-              }
-            />
-          </div>
-          {paneNotice && (
-            <div className="pane-limit-notice" role="status">
-              <span>{paneNotice}</span>
-              <IconButton
-                title="Dismiss panel limit"
-                onClick={() => setPaneNotice("")}
-              >
-                <X size={14} />
-              </IconButton>
-            </div>
+          {tab.type === "commit" ? (
+            <CommitDetails key={tab.id} root={tab.root} commitId={tab.commit} />
+          ) : (
+            <>
+              <div className="tab-context">
+                <span className="tab-context-path" title={project.path}>
+                  {project.path}
+                </span>
+                <label>
+                  <span>Environment</span>
+                  <select
+                    aria-label="Tab environment"
+                    value={tab.profileId}
+                    onChange={(event) => {
+                      const profileId = event.target.value;
+                      setDialog({
+                        type: "confirm",
+                        title: "Change terminal environment",
+                        text: "This will restart the terminals in this tab in the project folder. Continue?",
+                        submit: () => {
+                          closeTerminals(allPanes.map((pane) => pane.id));
+                          const layout = mapLayout(tab.layout, () =>
+                            newPane(project.path),
+                          );
+                          modifyTab((tab) => ({
+                            ...tab,
+                            profileId,
+                            layout,
+                            activePaneId: panes(layout)[0].id,
+                          }));
+                        },
+                      });
+                    }}
+                  >
+                    {!profile && (
+                      <option value={tab.profileId}>
+                        Unavailable environment
+                      </option>
+                    )}
+                    {info.profiles.map((profile) => (
+                      <option key={profile.id} value={profile.id}>
+                        {profile.distro
+                          ? profile.name
+                          : `Local · ${profile.name}`}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="terminal-layout" ref={terminalLayout}>
+                <SplitView
+                  key={tab.id}
+                  layout={tab.layout}
+                  profile={profile}
+                  activePaneId={tab.activePaneId}
+                  onFocus={(id) => {
+                    if (id !== tab.activePaneId)
+                      modifyTab((tab) => ({ ...tab, activePaneId: id }));
+                  }}
+                  onSplit={(pane, axis) => split(axis, pane.id)}
+                  onClose={closePane}
+                  onRestart={restartPane}
+                  onKeepActivePane={() => {
+                    const kept = allPanes.find(
+                      (pane) => pane.id === tab.activePaneId,
+                    )!;
+                    closeTerminals(
+                      allPanes
+                        .filter((pane) => pane.id !== kept.id)
+                        .map((pane) => pane.id),
+                    );
+                    modifyTab((tab) => ({ ...tab, layout: kept }));
+                    setPaneNotice("");
+                  }}
+                  onResize={(id, ratio) =>
+                    modifyTab((tab) => ({
+                      ...tab,
+                      layout: resizeSplit(tab.layout, id, ratio),
+                    }))
+                  }
+                />
+              </div>
+              {paneNotice && (
+                <div className="pane-limit-notice" role="status">
+                  <span>{paneNotice}</span>
+                  <IconButton
+                    title="Dismiss panel limit"
+                    onClick={() => setPaneNotice("")}
+                  >
+                    <X size={14} />
+                  </IconButton>
+                </div>
+              )}
+            </>
           )}
         </main>
       </div>

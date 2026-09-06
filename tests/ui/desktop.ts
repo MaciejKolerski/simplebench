@@ -1,12 +1,25 @@
 import type { Page } from "@playwright/test";
 
+import type {
+  GitCommitDetails,
+  GitCommitDiff,
+  GitCommitSummary,
+} from "../../src/api";
+
+export interface MockGitHistory {
+  commits: GitCommitSummary[];
+  details: Record<string, GitCommitDetails>;
+  diffs: Record<string, GitCommitDiff>;
+}
+
 export async function mockDesktop(
   page: Page,
   repository = true,
   saved: unknown = null,
+  gitHistory?: MockGitHistory,
 ) {
   await page.addInitScript(
-    ({ repository, saved }) => {
+    ({ repository, saved, gitHistory }) => {
       const callbacks = new Map<number, (value: unknown) => void>();
       let callbackId = 0;
       let repositoryPresent = repository;
@@ -30,6 +43,13 @@ export async function mockDesktop(
         sessions,
         emit,
         failSave: false,
+        gitHistory,
+        failHistory: false,
+        failCommitDetails: false,
+        failCommitDiff: false,
+        diffDelays: {} as Record<string, number>,
+        resolvedDiffs: [] as string[],
+
         setRepository: (value: boolean) => {
           repositoryPresent = value;
         },
@@ -120,6 +140,36 @@ export async function mockDesktop(
             return repositoryPresent
               ? { root: args.root, branch: "main", changes }
               : null;
+          if (command === "git_history") {
+            if (desktop.__nativeTest.failHistory)
+              throw new Error("History is unavailable");
+            const commits = desktop.__nativeTest.gitHistory?.commits ?? [];
+            return {
+              commits: commits.slice(args.skip, args.skip + 50),
+              tips:
+                args.tips ??
+                commits.slice(0, 1).map((commit: any) => commit.id),
+              hasMore: commits.length > args.skip + 50,
+            };
+          }
+          if (command === "git_commit_details") {
+            if (desktop.__nativeTest.failCommitDetails)
+              throw new Error("Commit is unavailable");
+            const details = desktop.__nativeTest.gitHistory?.details[args.id];
+            if (!details) throw new Error("Commit was not found");
+            return details;
+          }
+          if (command === "git_commit_diff") {
+            if (desktop.__nativeTest.failCommitDiff)
+              throw new Error("Diff is unavailable");
+            const diff = desktop.__nativeTest.gitHistory?.diffs[args.path];
+            if (!diff) throw new Error("Diff was not found");
+            const delay = desktop.__nativeTest.diffDelays[args.path];
+            if (delay)
+              await new Promise((resolve) => setTimeout(resolve, delay));
+            desktop.__nativeTest.resolvedDiffs.push(args.path);
+            return diff;
+          }
           if (command === "git_stage") {
             changes = changes.map((change) => ({
               ...change,
@@ -197,13 +247,21 @@ export async function mockDesktop(
         },
       };
     },
-    { repository, saved },
+    { repository, saved, gitHistory },
   );
 }
 
 export async function buffer(page: Page, paneId: string) {
   return page.evaluate(async (id) => {
-    const { runningTerminal } = await import("/src/terminal-runtime.ts");
+    // Reuse the application's module when Vite adds a version after an update.
+    const runtimeUrl = performance
+      .getEntriesByType("resource")
+      .map((entry) => entry.name)
+      .filter((url) => new URL(url).pathname === "/src/terminal-runtime.ts")
+      .at(-1);
+    const { runningTerminal } = await import(
+      runtimeUrl ?? "/src/terminal-runtime.ts"
+    );
     const buffer = runningTerminal(id)!.terminal.buffer.active;
     return Array.from({ length: buffer.length }, (_, row) =>
       buffer.getLine(row)?.translateToString(true),

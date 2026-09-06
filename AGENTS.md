@@ -21,6 +21,9 @@ detailed ADE feature set from the project name or acronym.
 - Vite serves the frontend during development and builds it into `dist/`.
 - Plain CSS defines the interface and theme in `src/styles.css`.
 - `src/model.ts` owns the persisted layout and pure layout transformations.
+  Workspace tabs are either terminals with pane layouts or commit views with
+  a repository path and full commit hash. Keep terminal operations scoped to
+  terminal tabs and preserve compatibility with saved tabs without a type.
 - `src/Workbench.tsx` coordinates projects, workspaces, tabs, and persistence.
 - xterm.js renders terminals; `src/terminal-runtime.ts` owns their lifecycle and
   streaming independently of React. Rust `portable-pty` owns native processes.
@@ -28,6 +31,8 @@ detailed ADE feature set from the project name or acronym.
   `src-tauri/shell/` contains integration hooks. Do not edit user shell profiles.
 - `src-tauri/src/files.rs` handles file access and session saving;
   `src-tauri/src/git.rs` handles Git through argument-based CLI calls.
+  `src-tauri/src/git/history.rs` provides paginated history and commit details.
+  History and commit tabs are read-only; merge diffs use the first parent.
 - pnpm manages frontend dependencies; Cargo manages Rust dependencies.
 - `src-tauri/tauri.conf.json` connects Vite to Tauri and configures the window.
 - `src-tauri/capabilities/` defines the native commands available to the frontend.

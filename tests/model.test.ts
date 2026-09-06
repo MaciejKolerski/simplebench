@@ -6,6 +6,7 @@ import {
   newSession,
   newTab,
   newWorkspace,
+  openCommitTab,
   panes,
   removePane,
   resizeSplit,
@@ -127,4 +128,81 @@ test("large terminal input preserves emoji at transport boundaries", () => {
   assert.equal(chunks.join(""), input);
   assert.ok(chunks.every((chunk) => chunk.isWellFormed()));
   assert.ok(chunks.every((chunk) => chunk.length <= 16_384));
+});
+
+test("commit tabs persist their repository and revision without acquiring terminal panes", () => {
+  let state = newSession(info);
+  const { workspace, tab } = active(state)!;
+  const pane = panes(tab.layout)[0];
+  const commit = "a".repeat(40);
+  state = openCommitTab(
+    state,
+    workspace.id,
+    "/repository",
+    commit,
+    "aaaaaaa · Initial commit",
+  );
+  const opened = active(state)!.tab;
+  assert.equal(opened.type, "commit");
+  assert.equal("layout" in opened, false);
+  state = updateDirectories(state, { [pane.id]: "/project/src" });
+  assert.equal(active(state)!.tab, opened);
+  const restored = restoreSession(JSON.parse(JSON.stringify(state)), info);
+  assert.deepEqual(restored, state);
+  assert.equal(active(restored)!.tab.type, "commit");
+  assert.equal(active(restored)!.workspace.tabs.length, 2);
+  assert.equal(
+    panes(active(restored)!.workspace.tabs[0].layout)[0].cwd,
+    "/project/src",
+  );
+});
+
+test("opening a commit again selects its existing tab within the same workspace", () => {
+  let state = newSession(info);
+  const { project, workspace } = active(state)!;
+  const commit = "b".repeat(40);
+  state = openCommitTab(
+    state,
+    workspace.id,
+    "/project",
+    commit,
+    "bbbbbbb · Commit",
+  );
+  const first = active(state)!.tab;
+  state = openCommitTab(
+    state,
+    workspace.id,
+    "/project",
+    "c".repeat(40),
+    "Another commit",
+  );
+  state = openCommitTab(
+    state,
+    workspace.id,
+    "/project",
+    commit,
+    "A different label",
+  );
+  assert.equal(active(state)!.tab.id, first.id);
+  assert.equal(active(state)!.workspace.tabs.length, 3);
+  const review = newWorkspace("/project", "local:bash", "Review");
+  state.projects[0] = {
+    ...state.projects[0],
+    workspaces: [...state.projects[0].workspaces, review],
+    activeWorkspaceId: review.id,
+  };
+  state = openCommitTab(state, review.id, "/project", commit, "Review commit");
+  assert.notEqual(active(state)!.tab.id, first.id);
+  assert.equal(active(state)!.workspace.tabs.length, 2);
+  assert.equal(active(state)!.project.id, project.id);
+});
+
+test("restores terminal sessions saved before tab types were introduced", () => {
+  const saved = JSON.parse(JSON.stringify(newSession(info)));
+  const terminal = saved.projects[0].workspaces[0].tabs[0];
+  delete terminal.type;
+  const restored = active(restoreSession(saved, info))!.tab;
+  assert.equal(restored.type, "terminal");
+  assert.deepEqual(restored.layout, terminal.layout);
+  assert.equal(restored.activePaneId, terminal.activePaneId);
 });

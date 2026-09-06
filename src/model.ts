@@ -35,13 +35,22 @@ export interface LayoutSize {
 export const MIN_PANE_WIDTH = 240;
 export const MIN_PANE_HEIGHT = 120;
 export const SPLIT_DIVIDER_SIZE = 3;
-export interface Tab {
+export interface TerminalTab {
+  type: "terminal";
   id: string;
   title: string;
   profileId: string;
   activePaneId: string;
   layout: Layout;
 }
+export interface CommitTab {
+  type: "commit";
+  id: string;
+  title: string;
+  root: string;
+  commit: string;
+}
+export type Tab = TerminalTab | CommitTab;
 export interface Workspace {
   id: string;
   name: string;
@@ -77,9 +86,16 @@ export function newTab(
   cwd: string,
   profileId: string,
   title = "Terminal",
-): Tab {
+): TerminalTab {
   const layout = newPane(cwd);
-  return { id: newId(), title, profileId, layout, activePaneId: layout.id };
+  return {
+    type: "terminal",
+    id: newId(),
+    title,
+    profileId,
+    layout,
+    activePaneId: layout.id,
+  };
 }
 export function newWorkspace(
   cwd: string,
@@ -273,6 +289,27 @@ export function updateTab(
     })),
   };
 }
+export function openCommitTab(
+  session: Session,
+  workspaceId: string,
+  root: string,
+  commit: string,
+  title: string,
+): Session {
+  return updateWorkspace(session, workspaceId, (workspace) => {
+    const existing = workspace.tabs.find(
+      (tab) =>
+        tab.type === "commit" && tab.root === root && tab.commit === commit,
+    );
+    if (existing) return { ...workspace, activeTabId: existing.id };
+    const tab: CommitTab = { type: "commit", id: newId(), root, commit, title };
+    return {
+      ...workspace,
+      tabs: [...workspace.tabs, tab],
+      activeTabId: tab.id,
+    };
+  });
+}
 export function updateDirectories(
   session: Session,
   directories: Record<string, string>,
@@ -282,15 +319,19 @@ export function updateDirectories(
     ...project,
     workspaces: project.workspaces.map((workspace) => ({
       ...workspace,
-      tabs: workspace.tabs.map((tab) => ({
-        ...tab,
-        layout: mapLayout(tab.layout, (pane) => {
-          const cwd = directories[pane.id];
-          if (!cwd || cwd === pane.cwd) return pane;
-          changed = true;
-          return { ...pane, cwd };
-        }),
-      })),
+      tabs: workspace.tabs.map((tab) =>
+        tab.type !== "terminal"
+          ? tab
+          : {
+              ...tab,
+              layout: mapLayout(tab.layout, (pane) => {
+                const cwd = directories[pane.id];
+                if (!cwd || cwd === pane.cwd) return pane;
+                changed = true;
+                return { ...pane, cwd };
+              }),
+            },
+      ),
     })),
   }));
   return changed ? { ...session, projects } : session;
@@ -343,9 +384,19 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
         const tabs = (Array.isArray(workspace.tabs) ? workspace.tabs : []).map(
           (value): Tab => {
             const tab = record(value);
+            if (tab.type === "commit") {
+              return {
+                type: "commit",
+                id: id(tab.id),
+                title: string(tab.title, "Commit"),
+                root: string(tab.root, path),
+                commit: string(tab.commit, ""),
+              };
+            }
             const tree = layout(tab.layout, path);
             const leaves = panes(tree);
             return {
+              type: "terminal",
               id: id(tab.id),
               title: string(tab.title, "Terminal"),
               profileId: string(tab.profileId, info.profiles[0]?.id ?? ""),
