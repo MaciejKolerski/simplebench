@@ -30,14 +30,16 @@ export const actions = [
   {
     id: "newTerminal",
     label: "New terminal",
-    description: "Split the active terminal side by side.",
+    description:
+      "Split the terminal under the pointer side by side, or the active panel when the pointer is outside.",
     group: "Terminals",
     shortcut: "Ctrl+KeyD",
   },
   {
     id: "splitVertical",
     label: "Split terminal vertically",
-    description: "Place a terminal below the active terminal.",
+    description:
+      "Place a terminal below the terminal under the pointer, or the active panel when the pointer is outside.",
     group: "Terminals",
     shortcut: "Ctrl+Shift+KeyD",
   },

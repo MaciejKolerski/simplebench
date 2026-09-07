@@ -705,8 +705,16 @@ export default function Workbench() {
     const container = terminalLayout.current;
     if (!container || selection?.tab.type !== "terminal") return;
     const current = selection.tab;
+    const hoveredId = container.querySelector<HTMLElement>(
+      ".terminal-pane[data-pane-id]:hover",
+    )?.dataset.paneId;
+    const currentPanes = panes(current.layout);
+    const pane =
+      currentPanes.find((pane) => pane.id === hoveredId) ??
+      currentPanes.find((pane) => pane.id === current.activePaneId);
+    if (!pane) return;
     if (
-      !canSplitPane(current.layout, current.activePaneId, axis, {
+      !canSplitPane(current.layout, pane.id, axis, {
         width: container.clientWidth,
         height: container.clientHeight,
       })
@@ -716,9 +724,6 @@ export default function Workbench() {
       );
       return;
     }
-    const pane = panes(current.layout).find(
-      (pane) => pane.id === current.activePaneId,
-    )!;
     const added = newPane(
       runningTerminal(pane.id)?.getSnapshot().cwd ?? pane.cwd,
     );
