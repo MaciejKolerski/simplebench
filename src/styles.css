@@ -1232,14 +1232,6 @@ svg {
   overflow: hidden;
   container-type: inline-size;
 }
-.split-container.is-split .terminal-pane.is-active::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border: var(--border-width) solid var(--color-primary-container);
-  pointer-events: none;
-  z-index: 3;
-}
 .terminal-body {
   display: flex;
   flex: 1;
