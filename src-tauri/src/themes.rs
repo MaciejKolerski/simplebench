@@ -660,10 +660,6 @@ fn create_starter(root: &Path) -> Result<String, String> {
 #[tauri::command]
 pub fn sync_theme_window(window: WebviewWindow, appearance: Appearance) -> Result<(), String> {
     authorize(window.label(), false)?;
-    // CSS paints the background once, so translucent colors do not stack over an opaque native surface.
-    window
-        .set_background_color(Some(tauri::window::Color(0, 0, 0, 0)))
-        .map_err(|error| error.to_string())?;
     window
         .set_theme(appearance.native())
         .map_err(|error| error.to_string())?;

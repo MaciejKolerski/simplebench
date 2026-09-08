@@ -38,6 +38,54 @@ fn app_info(window: WebviewWindow, shells: State<'_, terminal::Shells>) -> Resul
 }
 
 #[tauri::command]
+fn show_ready_window(window: WebviewWindow, background: [u8; 3]) -> Result<(), String> {
+    if !matches!(window.label(), "main" | "settings") {
+        return Err("Unknown application window.".into());
+    }
+    if !window.is_visible().map_err(|error| error.to_string())? {
+        #[cfg(target_os = "linux")]
+        {
+            use gtk::prelude::*;
+            // Tao's transparent draw path does not normalize byte RGB values.
+            // GTK paints the startup color correctly through its CSS provider.
+            window
+                .gtk_window()
+                .map_err(|error| error.to_string())?
+                .set_app_paintable(false);
+        }
+        window
+            .set_background_color(Some(tauri::window::Color(
+                background[0],
+                background[1],
+                background[2],
+                255,
+            )))
+            .map_err(|error| error.to_string())?;
+        window.show().map_err(|error| error.to_string())?;
+        window.set_focus().map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn finish_window_startup(window: WebviewWindow) -> Result<(), String> {
+    if !matches!(window.label(), "main" | "settings") {
+        return Err("Unknown application window.".into());
+    }
+    #[cfg(target_os = "linux")]
+    {
+        use gtk::prelude::*;
+        window
+            .gtk_window()
+            .map_err(|error| error.to_string())?
+            .set_app_paintable(true);
+    }
+    window
+        .set_background_color(Some(tauri::window::Color(0, 0, 0, 0)))
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
 async fn open_settings(
     window: WebviewWindow,
     app: tauri::AppHandle,
@@ -56,8 +104,13 @@ async fn open_settings(
                 .emit("settings-page-changed", page)
                 .map_err(|error| error.to_string())?;
         }
-        window.show().map_err(|error| error.to_string())?;
-        return window.set_focus().map_err(|error| error.to_string());
+        if window.is_visible().map_err(|error| error.to_string())?
+            || window.is_minimized().map_err(|error| error.to_string())?
+        {
+            window.show().map_err(|error| error.to_string())?;
+            window.set_focus().map_err(|error| error.to_string())?;
+        }
+        return Ok(());
     }
     WebviewWindowBuilder::new(
         &app,
@@ -73,6 +126,7 @@ async fn open_settings(
     .title("Settings — SimpleBench")
     .inner_size(920.0, 680.0)
     .min_inner_size(560.0, 420.0)
+    .visible(false)
     .decorations(false)
     .transparent(true)
     .background_color(tauri::window::Color(0, 0, 0, 0))
@@ -105,6 +159,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app_info,
+            show_ready_window,
+            finish_window_startup,
             open_settings,
             files::list_directory,
             files::validate_directory,

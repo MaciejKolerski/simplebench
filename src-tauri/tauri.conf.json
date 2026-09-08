@@ -19,6 +19,7 @@
         "height": 900,
         "minWidth": 800,
         "minHeight": 420,
+        "visible": false,
         "decorations": false,
         "transparent": true,
         "backgroundColor": "#00000000"

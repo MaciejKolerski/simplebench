@@ -477,6 +477,8 @@ export async function mockDesktop(
               "close_terminal",
               "reset_terminals",
               "open_settings",
+              "show_ready_window",
+              "finish_window_startup",
               "plugin:event|unlisten",
               "plugin:window|set_title",
               "plugin:window|destroy",
