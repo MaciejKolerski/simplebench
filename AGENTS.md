@@ -4,9 +4,9 @@
 
 SimpleBench is a desktop ADE application developed incrementally around project
 folders, named workspaces, and terminal tabs. A project owns workspaces sharing
-its folder; each workspace owns tabs; each terminal tab owns a shell environment
-and a tree of terminal panes. File and commit tabs do not own shells. There is
-no hardcoded tab count limit.
+its folder; each workspace owns tabs; each terminal tab owns a default shell
+environment and a tree of terminal and file editor panels. File and commit tabs
+do not own shells. There is no hardcoded tab count limit.
 
 The current milestone includes project selection, workspaces, tabs, a file
 explorer, CodeMirror file editing, conditional Git Source Control, native terminals with splits and
@@ -25,14 +25,20 @@ or acronym.
 - `src/model.ts` owns the persisted layout and pure layout transformations.
   Workspace tabs are terminals with pane layouts, file editors with project-relative
   paths and positions, or commit views with a repository path and full commit hash.
-  Dragging terminal tabs together preserves pane IDs and running PTYs; moved
-  panes may override the tab's default shell profile, including after restoration.
+  Dragging terminal or file tabs into a terminal layout preserves pane IDs,
+  editor buffers, and running PTYs; moved terminal panes may override the tab's default shell profile, including after restoration.
   Keep terminal operations scoped to
   terminal tabs and preserve compatibility with saved tabs without a type.
 - `src/Workbench.tsx` coordinates projects, workspaces, tabs, and persistence.
+  Workspaces, Explorer, and Source Control have independently assigned sidebar sides; opposite
+  sides can stay open together. `src/Sidebar.tsx` resizes them, and
+  `src/SidebarToggle.tsx` exposes placement through the status-bar context menus.
+  `src/Workspaces.tsx` lists workspaces across all project folders. Adding a
+  workspace from this panel may reuse a folder with separate tabs and terminals.
+  Preserve legacy left-sidebar settings when restoring older sessions.
 - `src/editor-service.ts` loads the editor on demand; `src/editor-runtime.ts`
   keeps shared CodeMirror buffers and history outside React. `src/FileEditor.tsx`
-  mounts only the visible view. `src/editor-text.ts` preserves exact line endings.
+  mounts visible file panels. `src/editor-text.ts` preserves exact line endings.
   `src-tauri/src/files/editor.rs` implements scoped reads, atomic saves with
   revision checks, encoding preservation, and native file watches.
 - `src/editor-preferences.ts` validates indentation preferences;
@@ -47,6 +53,9 @@ or acronym.
 - `src/keybindings.ts` defines shortcut actions, defaults, and validation;
   `src/KeybindingsProvider.tsx` synchronizes them between native windows.
   `src/SettingsWindow.tsx` edits them on the Keybinds page.
+  The same preferences persist the optional focus-follows-pointer mode.
+  `src/usePointerFocus.ts` focuses panels for typing, paste, and shortcuts;
+  preserve dialogs, ordinary form fields, dragging, and input composition.
 - `src/terminal-preferences.ts` validates terminal appearance overrides and bounded
   behavior settings; `src/TerminalPreferencesProvider.tsx` synchronizes them across
   windows. Settings → Terminal owns writes to `terminal-preferences.json` through
@@ -57,6 +66,11 @@ or acronym.
 - `src-tauri/src/shell.rs` discovers shell environments and quotes dropped paths;
   `src-tauri/shell/` contains integration hooks. Do not edit user shell profiles.
 - `src-tauri/src/files.rs` handles file access and session saving;
+  `src-tauri/src/files/search.rs` searches scoped text with bounded results and
+  cancellation. `src-tauri/src/files/operations.rs` handles explicit Explorer
+  mutations, serialized with editor saves. `src/explorer-model.ts` updates paths
+  and closes removed views; migrate shared editor aliases before retaining the
+  updated session, preserving dirty text and undo history across renames.
   `src-tauri/src/git.rs` handles Git through argument-based CLI calls.
   `src-tauri/src/git/history.rs` provides paginated history and commit details.
   History and commit tabs are read-only; merge diffs use the first parent.

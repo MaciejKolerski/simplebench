@@ -401,7 +401,7 @@ function readTerminalAppearance(): ITerminalOptions {
   return {
     ...terminalPreferences.behavior,
     fontFamily: token("fontFamily"),
-    fontSize: numeric("fontSize", 13, 6, 72),
+    fontSize: numeric("fontSize", 16, 6, 72),
     fontWeight: weight("fontWeight", "normal"),
     fontWeightBold: weight("fontWeightBold", "bold"),
     lineHeight: numeric("lineHeight", 1.25, 1, 3),

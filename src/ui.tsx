@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef } from "react";
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, ReactNode, RefObject } from "react";
 import { Minus, Square, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { errorMessage, native } from "./api";
@@ -66,25 +66,31 @@ export function Modal({
   onClose,
   wide = false,
   className = "",
+  descriptionId,
+  initialFocus,
 }: {
   title: string;
   children: ReactNode;
   onClose: () => void;
   wide?: boolean;
   className?: string;
+  descriptionId?: string;
+  initialFocus?: RefObject<HTMLElement | null>;
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   useEffect(() => {
     const element = dialog.current;
     element?.showModal();
+    initialFocus?.current?.focus();
     return () => element?.close();
-  }, []);
+  }, [initialFocus]);
   return (
     <dialog
       ref={dialog}
       className={`modal${wide ? " modal-wide" : ""}${className ? ` ${className}` : ""}`}
       aria-labelledby={titleId}
+      aria-describedby={descriptionId}
       onCancel={(event) => {
         event.preventDefault();
         onClose();

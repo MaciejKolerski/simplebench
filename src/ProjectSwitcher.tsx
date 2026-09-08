@@ -1,5 +1,11 @@
 import { useEffect, useId, useRef } from "react";
-import { Check, Folder, FolderOpen, Menu as MenuIcon } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  Folder,
+  FolderOpen,
+  Menu as MenuIcon,
+} from "lucide-react";
 import { basename } from "./model";
 import type { Project } from "./model";
 import { Menu } from "./ui";
@@ -61,6 +67,11 @@ export default function ProjectSwitcher({
           <MenuIcon size={13} aria-hidden="true" />
         )}
         <span>{project ? basename(project.path) : "Open Recent Project"}</span>
+        <ChevronDown
+          className="switcher-chevron"
+          size={11}
+          aria-hidden="true"
+        />
       </button>
       {expanded && (
         <Menu className="project-menu" onClose={onClose}>
@@ -106,6 +117,7 @@ export default function ProjectSwitcher({
           >
             {projects.length > 0 && (
               <>
+                <div className="menu-label">RECENT PROJECTS</div>
                 <div
                   className="recent-projects"
                   role="group"
@@ -127,6 +139,7 @@ export default function ProjectSwitcher({
                         onSelect(candidate.path);
                       }}
                     >
+                      <Folder size={14} aria-hidden="true" />
                       <span>{basename(candidate.path)}</span>
                       {candidate.id === activeProjectId && (
                         <Check size={13} aria-hidden="true" />

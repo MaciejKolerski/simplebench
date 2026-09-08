@@ -210,7 +210,7 @@ test("terminal shortcuts leave form editing alone and environment selection is t
   await expect(page.getByRole("dialog")).toBeVisible();
   await expect(
     page.getByRole("combobox", { name: "Terminal environment" }),
-  ).toHaveValue("local:bash");
+  ).toHaveText("Local · bash");
   await page.keyboard.press("Control+d");
   await expect(page.locator("[data-pane-id]")).toHaveCount(1);
   await page.getByRole("button", { name: "Cancel", exact: true }).click();

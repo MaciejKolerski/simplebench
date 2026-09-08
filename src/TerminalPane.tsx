@@ -111,7 +111,10 @@ function LiveTerminal({
     runtime.execute(command);
     setCommand("");
   };
-  const title = snapshot.status === "running" ? snapshot.title : "";
+  const title =
+    snapshot.status === "running"
+      ? snapshot.title || snapshot.foregroundProgram
+      : "";
   const titleBusy = snapshot.status === "running" && snapshot.titleBusy;
   return (
     <section

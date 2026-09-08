@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   active,
+  addWorkspace,
   newPane,
   newProject,
   newSession,
@@ -367,4 +368,43 @@ test("restores terminal sessions saved before tab types were introduced", () => 
   assert.equal(restored.type, "terminal");
   assert.deepEqual(restored.layout, terminal.layout);
   assert.equal(restored.activePaneId, terminal.activePaneId);
+});
+
+test("new workspaces share a folder while retaining independent tabs and restore together", () => {
+  const first = addWorkspace(
+    newSession(),
+    "/work/simplevoice",
+    "local:bash",
+    "Voice 1",
+  );
+  const original = active(first)!;
+  const second = addWorkspace(
+    first,
+    "/work/simplevoice",
+    "local:bash",
+    "Voice 2",
+  );
+  const third = addWorkspace(
+    second,
+    "/work/simplebench",
+    "local:bash",
+    "Bench",
+  );
+  assert.equal(first.projects[0].workspaces.length, 1);
+  assert.equal(third.projects.length, 2);
+  assert.equal(third.projects[0].workspaces.length, 2);
+  assert.equal(third.projects[0].workspaces[0], original.workspace);
+  assert.notEqual(active(second)!.tab.id, original.tab.id);
+  assert.equal(active(third)!.workspace.name, "Bench");
+  const terminals = third.projects.flatMap((project) =>
+    project.workspaces.flatMap((workspace) => workspace.tabs),
+  );
+  const paneIds = terminals.flatMap((tab) =>
+    tab.type === "terminal" ? panes(tab.layout).map((pane) => pane.id) : [],
+  );
+  assert.equal(new Set(paneIds).size, 3);
+  assert.deepEqual(
+    restoreSession(JSON.parse(JSON.stringify(third)), info),
+    third,
+  );
 });

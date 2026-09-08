@@ -28,7 +28,8 @@ export interface Split {
   first: Layout;
   second: Layout;
 }
-export type Layout = Pane | Split;
+export type LayoutPane = Pane | FileTab;
+export type Layout = LayoutPane | Split;
 export interface LayoutSize {
   width: number;
   height: number;
@@ -64,7 +65,9 @@ export interface FileTab {
   root: string;
   relative: string;
   position?: EditorPosition;
+  markdownView?: "split" | "preview";
 }
+export type MarkdownView = "editor" | "split" | "preview";
 export type Tab = TerminalTab | CommitTab | FileTab;
 export type TabDropSide = "left" | "right" | "top" | "bottom";
 export type TabCloseAction =
@@ -81,12 +84,17 @@ export interface Project {
   activeWorkspaceId: string;
   workspaces: Workspace[];
 }
+export type SidebarPanel = "files" | "git" | "workspaces";
+export type SidebarSide = "left" | "right";
 export interface Session {
   version: 1;
   activeProjectId: string | null;
   projects: Project[];
-  sidebar: "files" | "git" | null;
+  sidebar: SidebarPanel | null;
   sidebarWidth: number;
+  rightSidebar: SidebarPanel | null;
+  rightSidebarWidth: number;
+  sidebarSides: Record<SidebarPanel, SidebarSide>;
 }
 
 export const newId = () => crypto.randomUUID();
@@ -132,6 +140,30 @@ export function newProject(path: string, profileId: string): Project {
     activeWorkspaceId: workspace.id,
   };
 }
+export function addWorkspace(
+  session: Session,
+  path: string,
+  profileId: string,
+  name: string,
+): Session {
+  const workspace = newWorkspace(path, profileId, name);
+  const existing = session.projects.find((project) => project.path === path);
+  const project: Project = {
+    id: existing?.id ?? newId(),
+    path,
+    workspaces: [...(existing?.workspaces ?? []), workspace],
+    activeWorkspaceId: workspace.id,
+  };
+  return {
+    ...session,
+    activeProjectId: project.id,
+    projects: existing
+      ? session.projects.map((item) =>
+          item.id === project.id ? project : item,
+        )
+      : [...session.projects, project],
+  };
+}
 export function newSession(): Session {
   return {
     version: 1,
@@ -139,15 +171,63 @@ export function newSession(): Session {
     activeProjectId: null,
     sidebar: "files",
     sidebarWidth: 250,
+    rightSidebar: null,
+    rightSidebarWidth: 250,
+    sidebarSides: { files: "left", git: "left", workspaces: "left" },
   };
 }
+export function showSidebar(session: Session, panel: SidebarPanel): Session {
+  const slot =
+    session.sidebarSides[panel] === "left" ? "sidebar" : "rightSidebar";
+  return { ...session, [slot]: panel };
+}
+export function toggleSidebar(session: Session, panel: SidebarPanel): Session {
+  const slot =
+    session.sidebarSides[panel] === "left" ? "sidebar" : "rightSidebar";
+  return { ...session, [slot]: session[slot] === panel ? null : panel };
+}
+export function moveSidebar(
+  session: Session,
+  panel: SidebarPanel,
+  side: SidebarSide,
+): Session {
+  return showSidebar(
+    {
+      ...session,
+      sidebar: session.sidebar === panel ? null : session.sidebar,
+      rightSidebar:
+        session.rightSidebar === panel ? null : session.rightSidebar,
+      sidebarSides: { ...session.sidebarSides, [panel]: side },
+    },
+    panel,
+  );
+}
+export function layoutPanes(layout: Layout): LayoutPane[] {
+  return layout.type === "split"
+    ? [...layoutPanes(layout.first), ...layoutPanes(layout.second)]
+    : [layout];
+}
 export function panes(layout: Layout): Pane[] {
-  return layout.type === "terminal"
-    ? [layout]
-    : [...panes(layout.first), ...panes(layout.second)];
+  return layoutPanes(layout).filter(
+    (pane): pane is Pane => pane.type === "terminal",
+  );
+}
+export function filesInTab(tab: Tab): FileTab[] {
+  return tab.type === "file"
+    ? [tab]
+    : tab.type === "terminal"
+      ? layoutPanes(tab.layout).filter(
+          (pane): pane is FileTab => pane.type === "file",
+        )
+      : [];
+}
+export function activePanel(tab: Tab): LayoutPane | CommitTab | undefined {
+  return tab.type === "terminal"
+    ? layoutPanes(tab.layout).find((pane) => pane.id === tab.activePaneId)
+    : tab;
 }
 export function minimumLayoutSize(layout: Layout): LayoutSize {
-  if (layout.type === "terminal")
+  if (layout.type !== "split")
     return { width: MIN_PANE_WIDTH, height: MIN_PANE_HEIGHT };
   const first = minimumLayoutSize(layout.first);
   const second = minimumLayoutSize(layout.second);
@@ -186,8 +266,7 @@ function paneSize(
   paneId: string,
   size: LayoutSize,
 ): LayoutSize | undefined {
-  if (layout.type === "terminal")
-    return layout.id === paneId ? size : undefined;
+  if (layout.type !== "split") return layout.id === paneId ? size : undefined;
   const geometry = splitGeometry(layout, size);
   return (
     paneSize(layout.first, paneId, geometry.first) ??
@@ -211,8 +290,10 @@ export function mapLayout(
   layout: Layout,
   transform: (pane: Pane) => Pane,
 ): Layout {
-  return layout.type === "terminal"
-    ? transform(layout)
+  return layout.type !== "split"
+    ? layout.type === "terminal"
+      ? transform(layout)
+      : layout
     : {
         ...layout,
         first: mapLayout(layout.first, transform),
@@ -223,9 +304,9 @@ export function splitPane(
   layout: Layout,
   paneId: string,
   axis: Split["axis"],
-  added: Pane,
+  added: LayoutPane,
 ): Layout {
-  if (layout.type === "terminal")
+  if (layout.type !== "split")
     return layout.id === paneId
       ? {
           type: "split",
@@ -243,14 +324,14 @@ export function splitPane(
   };
 }
 export function removePane(layout: Layout, paneId: string): Layout | null {
-  if (layout.type === "terminal") return layout.id === paneId ? null : layout;
+  if (layout.type !== "split") return layout.id === paneId ? null : layout;
   const first = removePane(layout.first, paneId);
   const second = removePane(layout.second, paneId);
   return first && second ? { ...layout, first, second } : (first ?? second);
 }
 export function resizeSplit(layout: Layout, id: string, ratio: number): Layout {
   if (!Number.isFinite(ratio)) return layout;
-  if (layout.type === "terminal") return layout;
+  if (layout.type !== "split") return layout;
   if (layout.id === id)
     return { ...layout, ratio: Math.max(0, Math.min(1, ratio)) };
   return {
@@ -337,7 +418,7 @@ export function moveTab(
     : { ...workspace, tabs };
 }
 
-export function canMergeTerminalTabs(
+export function canMergeTabs(
   source: Tab,
   target: Tab,
   side: TabDropSide,
@@ -345,12 +426,14 @@ export function canMergeTerminalTabs(
 ): boolean {
   if (
     source.id === target.id ||
-    source.type !== "terminal" ||
+    source.type === "commit" ||
     target.type !== "terminal"
   )
     return false;
   const first = minimumLayoutSize(target.layout);
-  const second = minimumLayoutSize(source.layout);
+  const second = minimumLayoutSize(
+    source.type === "file" ? source : source.layout,
+  );
   return side === "left" || side === "right"
     ? size.width >= first.width + SPLIT_DIVIDER_SIZE + second.width &&
         size.height >= Math.max(first.height, second.height)
@@ -358,7 +441,7 @@ export function canMergeTerminalTabs(
         size.height >= first.height + SPLIT_DIVIDER_SIZE + second.height;
 }
 
-export function mergeTerminalTabs(
+export function mergeTabs(
   workspace: Workspace,
   sourceId: string,
   targetId: string,
@@ -368,17 +451,21 @@ export function mergeTerminalTabs(
   const source = workspace.tabs.find((tab) => tab.id === sourceId);
   const target = workspace.tabs.find((tab) => tab.id === targetId);
   if (
-    source?.type !== "terminal" ||
+    !source ||
+    source.type === "commit" ||
     target?.type !== "terminal" ||
-    !canMergeTerminalTabs(source, target, side, size)
+    !canMergeTabs(source, target, side, size)
   )
     return workspace;
   // Moved panes retain their shells even after restoring or restarting them.
-  const moved = mapLayout(source.layout, (pane) =>
-    pane.profileId !== undefined || source.profileId === target.profileId
-      ? pane
-      : { ...pane, profileId: source.profileId },
-  );
+  const moved =
+    source.type === "file"
+      ? source
+      : mapLayout(source.layout, (pane) =>
+          pane.profileId !== undefined || source.profileId === target.profileId
+            ? pane
+            : { ...pane, profileId: source.profileId },
+        );
   const before = side === "left" || side === "top";
   const layout: Split = {
     type: "split",
@@ -395,7 +482,12 @@ export function mergeTerminalTabs(
       .filter((tab) => tab.id !== source.id)
       .map((tab) =>
         tab.id === target.id
-          ? { ...target, layout, activePaneId: source.activePaneId }
+          ? {
+              ...target,
+              layout,
+              activePaneId:
+                source.type === "file" ? source.id : source.activePaneId,
+            }
           : tab,
       ),
   };
@@ -497,11 +589,21 @@ export function openFileTab(
   relative: string,
 ): Session {
   return updateWorkspace(session, workspaceId, (workspace) => {
-    const existing = workspace.tabs.find(
-      (tab) =>
-        tab.type === "file" && tab.root === root && tab.relative === relative,
-    );
-    if (existing) return { ...workspace, activeTabId: existing.id };
+    for (const tab of workspace.tabs) {
+      const file = filesInTab(tab).find(
+        (file) => file.root === root && file.relative === relative,
+      );
+      if (file)
+        return {
+          ...workspace,
+          activeTabId: tab.id,
+          tabs: workspace.tabs.map((candidate) =>
+            candidate.id === tab.id && candidate.type === "terminal"
+              ? { ...candidate, activePaneId: file.id }
+              : candidate,
+          ),
+        };
+    }
     const tab: FileTab = {
       type: "file",
       id: newId(),
@@ -520,9 +622,61 @@ export function openFileTab(
 export function fileTabs(session: Session): FileTab[] {
   return session.projects.flatMap((project) =>
     project.workspaces.flatMap((workspace) =>
-      workspace.tabs.filter((tab): tab is FileTab => tab.type === "file"),
+      workspace.tabs.flatMap(filesInTab),
     ),
   );
+}
+
+export function updateFilePosition(
+  session: Session,
+  id: string,
+  position: EditorPosition,
+): Session {
+  return updateFile(session, id, (file) => ({ ...file, position }));
+}
+
+export function updateMarkdownView(
+  session: Session,
+  id: string,
+  view: MarkdownView,
+): Session {
+  return updateFile(session, id, (file) => {
+    const { markdownView: _previous, ...rest } = file;
+    return view === "editor" ? rest : { ...rest, markdownView: view };
+  });
+}
+
+function updateFile(
+  session: Session,
+  id: string,
+  change: (file: FileTab) => FileTab,
+): Session {
+  const update = (layout: Layout): Layout =>
+    layout.type === "split"
+      ? {
+          ...layout,
+          first: update(layout.first),
+          second: update(layout.second),
+        }
+      : layout.type === "file" && layout.id === id
+        ? change(layout)
+        : layout;
+  return {
+    ...session,
+    projects: session.projects.map((project) => ({
+      ...project,
+      workspaces: project.workspaces.map((workspace) => ({
+        ...workspace,
+        tabs: workspace.tabs.map((tab) =>
+          tab.type === "terminal"
+            ? { ...tab, layout: update(tab.layout) }
+            : tab.type === "file" && tab.id === id
+              ? change(tab)
+              : tab,
+        ),
+      })),
+    })),
+  };
 }
 
 const record = (value: unknown): Record<string, unknown> =>
@@ -542,8 +696,36 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
     ids.add(candidate);
     return candidate;
   };
+  const file = (node: Record<string, unknown>, cwd: string): FileTab => {
+    const position = record(node.position);
+    const offset = (value: unknown) =>
+      typeof value === "number" && Number.isFinite(value)
+        ? Math.max(0, Math.floor(value))
+        : 0;
+    return {
+      type: "file",
+      id: id(node.id),
+      title: string(node.title, basename(string(node.relative, "File"))),
+      root: string(node.root, cwd),
+      relative: string(node.relative, ""),
+      ...(node.markdownView === "split" || node.markdownView === "preview"
+        ? { markdownView: node.markdownView }
+        : {}),
+      ...(node.position
+        ? {
+            position: {
+              anchor: offset(position.anchor),
+              head: offset(position.head),
+              scrollTop: offset(position.scrollTop),
+              scrollLeft: offset(position.scrollLeft),
+            },
+          }
+        : {}),
+    };
+  };
   const layout = (value: unknown, cwd: string, depth = 0): Layout => {
     const node = record(value);
+    if (node.type === "file") return file(node, cwd);
     // Preserve every layout accepted by the native JSON parser's nesting limit.
     if (node.type === "split" && depth < 128)
       return {
@@ -579,31 +761,7 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
           (value): Tab => {
             const tab = record(value);
             if (tab.type === "file") {
-              const position = record(tab.position);
-              const offset = (value: unknown) =>
-                typeof value === "number" && Number.isFinite(value)
-                  ? Math.max(0, Math.floor(value))
-                  : 0;
-              return {
-                type: "file",
-                id: id(tab.id),
-                title: string(
-                  tab.title,
-                  basename(string(tab.relative, "File")),
-                ),
-                root: string(tab.root, path),
-                relative: string(tab.relative, ""),
-                ...(tab.position
-                  ? {
-                      position: {
-                        anchor: offset(position.anchor),
-                        head: offset(position.head),
-                        scrollTop: offset(position.scrollTop),
-                        scrollLeft: offset(position.scrollLeft),
-                      },
-                    }
-                  : {}),
-              };
+              return file(tab, path);
             }
             if (tab.type === "commit") {
               return {
@@ -615,7 +773,7 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
               };
             }
             const tree = layout(tab.layout, path);
-            const leaves = panes(tree);
+            const leaves = layoutPanes(tree);
             return {
               type: "terminal",
               id: id(tab.id),
@@ -652,6 +810,30 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
       };
     })
     .filter((project): project is Project => project !== null);
+  const savedSides = record(data.sidebarSides);
+  const sidebarSides: Session["sidebarSides"] = {
+    files: savedSides.files === "right" ? "right" : "left",
+    git: savedSides.git === "right" ? "right" : "left",
+    workspaces: savedSides.workspaces === "right" ? "right" : "left",
+  };
+  const left =
+    data.sidebar === "git" || data.sidebar === "workspaces"
+      ? data.sidebar
+      : data.sidebar === null
+        ? null
+        : "files";
+  const right =
+    data.rightSidebar === "git" ||
+    data.rightSidebar === "files" ||
+    data.rightSidebar === "workspaces"
+      ? data.rightSidebar
+      : null;
+  const sidebarWidth = (value: unknown) =>
+    typeof value === "number" && Number.isFinite(value)
+      ? value > 0
+        ? value
+        : 180
+      : 250;
   return {
     version: 1,
     projects,
@@ -661,14 +843,10 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
         : projects.some((project) => project.id === data.activeProjectId)
           ? (data.activeProjectId as string)
           : (projects[0]?.id ?? null),
-    sidebar:
-      data.sidebar === "git" ? "git" : data.sidebar === null ? null : "files",
-    sidebarWidth:
-      typeof data.sidebarWidth === "number" &&
-      Number.isFinite(data.sidebarWidth)
-        ? data.sidebarWidth > 0
-          ? data.sidebarWidth
-          : 180
-        : 250,
+    sidebar: left && sidebarSides[left] === "left" ? left : null,
+    rightSidebar: right && sidebarSides[right] === "right" ? right : null,
+    sidebarSides,
+    sidebarWidth: sidebarWidth(data.sidebarWidth),
+    rightSidebarWidth: sidebarWidth(data.rightSidebarWidth),
   };
 }

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
-import { canMergeTerminalTabs, splitGeometry } from "./model";
+import { canMergeTabs, splitGeometry } from "./model";
 import type { Tab, TabDropSide } from "./model";
 
 interface Props {
@@ -114,8 +114,9 @@ export function useTabDrag(props: Props) {
           : vertical < 0.5
             ? "top"
             : "bottom";
-      const allowed = canMergeTerminalTabs(source, target, side, area);
-      if (source.type !== "terminal" || target.type !== "terminal") return;
+      const allowed = canMergeTabs(source, target, side, area);
+      if (source.type === "commit" || target.type !== "terminal") return;
+      const sourceLayout = source.type === "file" ? source : source.layout;
       if (allowed) destination = { type: "merge", targetId: target.id, side };
       indicator.className = `tab-merge-preview${allowed ? "" : " is-blocked"}`;
       indicator.dataset.side = side;
@@ -130,8 +131,8 @@ export function useTabDrag(props: Props) {
           id: "preview",
           axis: columns ? "horizontal" : "vertical",
           ratio: 0.5,
-          first: before ? source.layout : target.layout,
-          second: before ? target.layout : source.layout,
+          first: before ? sourceLayout : target.layout,
+          second: before ? target.layout : sourceLayout,
         },
         { width: area.width, height: area.height },
       );

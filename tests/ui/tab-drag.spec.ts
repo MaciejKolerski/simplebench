@@ -365,3 +365,258 @@ test("merging different shells preserves profiles when restoring and splitting a
     )
     .toEqual(["local:bash", "local:fish", "local:fish"]);
 });
+
+async function dockFile(
+  page: Page,
+  name = "README.md",
+  side: "left" | "right" | "top" | "bottom" = "right",
+) {
+  const area = (await page.locator(".terminal-layout").boundingBox())!;
+  await grab(page, page.getByRole("tab", { name: new RegExp(name) }));
+  await page.mouse.move(
+    area.x +
+      area.width * (side === "left" ? 0.1 : side === "right" ? 0.9 : 0.5),
+    area.y +
+      area.height * (side === "top" ? 0.1 : side === "bottom" ? 0.9 : 0.5),
+    { steps: 10 },
+  );
+  await expect(page.locator(".tab-merge-preview")).toHaveAttribute(
+    "data-side",
+    side,
+  );
+  await expect(page.locator(".tab-merge-preview")).not.toHaveClass(
+    /is-blocked/,
+  );
+  await page.mouse.up();
+  await expect(
+    page.getByRole("region", { name: `Editor for ${name}` }),
+  ).toBeVisible();
+}
+
+for (const side of ["left", "right", "top", "bottom"] as const) {
+  test(`docks a modified file on the ${side} beside three live terminals and restores the layout`, async ({
+    page,
+  }) => {
+    await setup(page, 1);
+    await page.keyboard.press("Control+d");
+    await page.keyboard.press("Control+Shift+d");
+    await expect(page.locator(".xterm-screen")).toHaveCount(3);
+    await page.getByRole("button", { name: "README.md", exact: true }).click();
+    const editor = page.locator(".cm-content");
+    await expect(editor).toBeVisible();
+    await editor.fill("mixed panels 🦀");
+    await page.getByRole("tab", { name: "Terminal 1", exact: true }).click();
+    await page.locator("[data-pane-id]").evaluateAll((elements) => {
+      (window as any).__terminalHosts = elements;
+    });
+    await dockFile(page, "README.md", side);
+    await expect(page.getByRole("tab")).toHaveCount(1);
+    await expect(page.getByRole("tab")).toContainText("●");
+    await expect(editor).toHaveText("mixed panels 🦀");
+    await expect(editor).toBeFocused();
+    expect(
+      await page
+        .locator("[data-pane-id]")
+        .evaluateAll((elements) =>
+          elements.every(
+            (element, index) =>
+              element === (window as any).__terminalHosts[index],
+          ),
+        ),
+    ).toBe(true);
+    await page.evaluate(() => {
+      const native = (window as any).__nativeTest;
+      for (const id of native.sessions.keys())
+        native.emit(id, "\r\nRUNNING WITH EDITOR\r\n");
+    });
+    for (const pane of await page.locator("[data-pane-id]").all()) {
+      const id = (await pane.getAttribute("data-pane-id"))!;
+      await expect
+        .poll(() => buffer(page, id))
+        .toContain("RUNNING WITH EDITOR");
+    }
+    await page.keyboard.press("Control+s");
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (window as any).__nativeTest.editorFiles["/project/README.md"]
+              .content,
+        ),
+      )
+      .toBe("mixed panels 🦀");
+    await page.keyboard.press("Control+z");
+    await expect(editor).toContainText("A text file preview.");
+    await page.keyboard.press("Control+Shift+z");
+    await expect(editor).toHaveText("mixed panels 🦀");
+    await page.locator(".xterm-helper-textarea").first().focus();
+    await expect(page.locator(".editor-status")).toHaveCount(0);
+    await page.getByRole("button", { name: "README.md", exact: true }).click();
+    await expect(editor).toBeFocused();
+    await expect(page.getByRole("tab")).toHaveCount(1);
+    await expect(page.locator(".editor-status")).toBeVisible();
+    expect(
+      await page.evaluate(
+        () =>
+          (window as any).__nativeTest.calls.filter(
+            (call: any) => call.command === "start_terminal",
+          ).length,
+      ),
+    ).toBe(3);
+    expect(
+      await page.evaluate(() =>
+        (window as any).__nativeTest.calls.filter(
+          (call: any) => call.command === "close_terminal",
+        ),
+      ),
+    ).toEqual([]);
+    await expect.poll(async () => (await savedTabs(page))?.length).toBe(1);
+    if (side === "right")
+      await page.screenshot({
+        path: "test-results/three-terminals-and-file.png",
+      });
+    await page.reload();
+    await expect(page.locator(".xterm-screen")).toHaveCount(3);
+    await expect(editor).toHaveText("mixed panels 🦀");
+    await expect(editor).toBeFocused();
+    await page.keyboard.press("Control+w");
+    await expect(editor).toHaveCount(0);
+    await expect(page.locator(".xterm-screen")).toHaveCount(3);
+    await expect(page.getByRole("tab")).toHaveCount(1);
+  });
+}
+
+test("closing a file panel or its whole tab protects unsaved edits and failed saves", async ({
+  page,
+}) => {
+  await setup(page, 1);
+  await page.getByRole("button", { name: "README.md", exact: true }).click();
+  await expect(page.locator(".cm-content")).toBeVisible();
+  await page.locator(".cm-content").fill("keep this file");
+  await page.getByRole("tab", { name: "Terminal 1", exact: true }).click();
+  await dockFile(page);
+  const dialog = page.getByRole("dialog", {
+    name: "Save changes before closing?",
+  });
+  await page.keyboard.press("Control+w");
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(page.locator(".cm-content")).toHaveText("keep this file");
+  await page
+    .getByRole("button", { name: "Close README.md panel", exact: true })
+    .click();
+  await page.evaluate(() => {
+    (window as any).__nativeTest.failFileSave = true;
+  });
+  await dialog
+    .getByRole("button", { name: "Save changes", exact: true })
+    .click();
+  await expect(dialog.getByRole("alert")).toHaveText("Disk is full");
+  await expect(page.locator(".cm-content")).toHaveText("keep this file");
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await page.getByRole("tab").click({ button: "right" });
+  await expect(
+    page.getByRole("menuitem", { name: "Close Clean", exact: true }),
+  ).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Control+Shift+w");
+  await expect(dialog).toBeVisible();
+  await expect(page.locator(".xterm-screen")).toHaveCount(1);
+  await dialog
+    .getByRole("button", { name: "Discard changes", exact: true })
+    .click();
+  await expect(page.locator(".cm-content")).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__nativeTest.calls.filter(
+            (call: any) => call.command === "close_terminal",
+          ).length,
+      ),
+    )
+    .toBe(1);
+});
+
+test("two file panels retain independent focus, positions and buffers when the last terminal closes", async ({
+  page,
+}) => {
+  await setup(page, 1);
+  await page.getByRole("button", { name: "README.md", exact: true }).click();
+  await expect(page.locator(".cm-content")).toBeVisible();
+  await page.getByRole("tab", { name: "Terminal 1", exact: true }).click();
+  await dockFile(page);
+  await page
+    .getByRole("button", { name: "it's a file.txt", exact: true })
+    .click();
+  await expect(
+    page.getByRole("region", { name: "Editor for it's a file.txt" }),
+  ).toBeVisible();
+  await page.getByRole("tab", { name: "Terminal 1", exact: true }).click();
+  await dockFile(page, "it's a file.txt", "bottom");
+  const readme = page
+    .getByRole("region", { name: "Editor for README.md" })
+    .locator(".cm-content");
+  const text = page
+    .getByRole("region", { name: "Editor for it's a file.txt" })
+    .locator(".cm-content");
+  await readme.fill("first file");
+  await page.keyboard.press("Control+Home");
+  await page.keyboard.press("ArrowRight");
+  await text.fill("second file");
+  await page.keyboard.press("Control+Home");
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await page.locator(".xterm-helper-textarea").focus();
+  await page.keyboard.press("Control+w");
+  await expect(page.locator(".xterm-screen")).toHaveCount(0);
+  await expect(readme).toHaveText("first file");
+  await expect(text).toHaveText("second file");
+  await page.keyboard.press("Control+Shift+t");
+  await expect(page.getByRole("tab")).toHaveCount(2);
+  await expect(page.locator(".cm-content")).toHaveCount(0);
+  await page.getByRole("tab", { name: /Terminal 1/ }).click();
+  await expect(readme).toHaveText("first file");
+  await expect(text).toHaveText("second file");
+  await readme.focus();
+  await expect(page.locator(".editor-status")).toContainText("Ln 1, Col 2");
+  await page.keyboard.press("Control+s");
+  await text.focus();
+  await expect(page.locator(".editor-status")).toContainText("Ln 1, Col 3");
+  await page.keyboard.press("Control+s");
+  await expect
+    .poll(
+      async () => (await savedTabs(page))?.[0].layout?.second?.position?.head,
+    )
+    .toBe(2);
+  await page.reload();
+  await expect(readme).toHaveText("first file");
+  await expect(text).toHaveText("second file");
+  await expect(page.locator(".xterm-screen")).toHaveCount(0);
+  await readme.focus();
+  await page.keyboard.press("Control+d");
+  await expect(page.locator(".xterm-screen")).toHaveCount(1);
+  await expect(readme).toHaveText("first file");
+});
+
+test("a docked editor remains usable at minimum window size", async ({
+  page,
+}) => {
+  await setup(page, 1);
+  await page.getByRole("button", { name: "README.md", exact: true }).click();
+  await expect(page.locator(".cm-content")).toBeVisible();
+  await page.getByRole("tab", { name: "Terminal 1", exact: true }).click();
+  await dockFile(page);
+  await page.setViewportSize({ width: 800, height: 420 });
+  await expect(page.locator(".cm-content")).toBeVisible();
+  const heading = page.locator(".editor-heading");
+  expect(
+    await heading.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true);
+  await expect(
+    page.getByRole("button", { name: "Close README.md panel", exact: true }),
+  ).toBeInViewport();
+  await page.screenshot({ path: "test-results/mixed-panels-minimum.png" });
+});

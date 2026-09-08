@@ -1,4 +1,3 @@
-import Sidebar from "./Sidebar";
 import Select from "./Select";
 import {
   lazy,
@@ -11,13 +10,15 @@ import {
 } from "react";
 import {
   ChevronDown,
+  ChevronRight,
   Folder,
   GitBranch,
   Layers,
-  PanelLeft,
+  Pencil,
   Plus,
   Settings,
   Terminal,
+  Trash2,
   X,
 } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -34,15 +35,24 @@ import {
 import type { GitStatus } from "./api";
 import {
   active,
+  activePanel,
+  addWorkspace,
+  filesInTab,
+  fileTabs,
+  layoutPanes,
+  updateFilePosition,
+  updateMarkdownView,
   basename,
   canSplitPane,
   mapLayout,
-  mergeTerminalTabs,
+  mergeTabs,
   moveTab,
+  moveSidebar,
+  showSidebar,
+  toggleSidebar,
   newPane,
   newProject,
   newTab,
-  newWorkspace,
   openCommitTab,
   openFileTab,
   panes,
@@ -60,6 +70,7 @@ import type {
   AppInfo,
   Session,
   ShellProfile,
+  SidebarPanel,
   Split,
   TabCloseAction,
   TerminalTab,
@@ -67,16 +78,21 @@ import type {
 import {
   closeTerminals,
   configureTerminals,
-  observedDirectories,
+  observeTerminalContexts,
   runningTerminal,
 } from "./terminal-runtime";
+import type { TerminalContext } from "./terminal-runtime";
 import { dropPaths, terminalAt } from "./file-drag";
 import { IconButton, Menu, Modal, WindowControls } from "./ui";
 import Explorer from "./Explorer";
 import ProjectSwitcher from "./ProjectSwitcher";
 import SourceControl from "./SourceControl";
+import Sidebar from "./Sidebar";
+import SidebarToggle from "./SidebarToggle";
+import Workspaces from "./Workspaces";
 import CommitDetails from "./CommitDetails";
 import SplitView from "./SplitView";
+import { usePointerFocus } from "./usePointerFocus";
 import TabBar from "./TabBar";
 import FileEditorStatus from "./FileEditorStatus";
 import { useKeybindings } from "./KeybindingsProvider";
@@ -85,10 +101,20 @@ import {
   captureEditorPositions,
   editorRevision,
   loadedEditor,
+  openEditorDocument,
+  pauseEditorFileOperations,
+  relocateEditorFiles,
   retainEditorTabs,
   subscribeEditors,
 } from "./editor-service";
 import { useEditorCloseGuard } from "./EditorCloseGuard";
+import {
+  absoluteFilePath,
+  applyFileChange,
+  containsPath,
+} from "./explorer-model";
+import type { FileChange, FileOperation } from "./explorer-model";
+import type { SearchMatch } from "./ProjectSearch";
 import "@xterm/xterm/css/xterm.css";
 
 const FileEditor = lazy(() => import("./FileEditor"));
@@ -184,6 +210,7 @@ export default function Workbench() {
   const closeGuard = useEditorCloseGuard();
   useSyncExternalStore(subscribeEditors, editorRevision);
   const fileOpenRequest = useRef(0);
+  const fileOperationBusy = useRef(false);
   const preferences = useKeybindings();
   const { bindings } = preferences;
   const [info, setInfo] = useState<AppInfo>();
@@ -208,6 +235,7 @@ export default function Workbench() {
   const [menu, setMenu] = useState<"project" | "workspace" | null>(null);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const terminalLayout = useRef<HTMLDivElement>(null);
+  usePointerFocus(preferences.focusFollowsPointer, terminalLayout);
   const savingEnabled = useRef(false);
   const selected = session ? active(session) : undefined;
   const git = useGit(selected?.project.path ?? "");
@@ -263,16 +291,15 @@ export default function Workbench() {
   useEffect(() => {
     if (!info) return;
     const timer = setInterval(() => {
-      void api<Record<string, string>>("terminal_directories")
-        .then((directories) =>
+      void api<Record<string, TerminalContext>>("terminal_contexts")
+        .then((contexts) => {
+          const directories = observeTerminalContexts(contexts);
           setSession((state) =>
-            state
-              ? updateDirectories(state, observedDirectories(directories))
-              : state,
-          ),
-        )
+            state ? updateDirectories(state, directories) : state,
+          );
+        })
         .catch(() => {});
-    }, 4000);
+    }, 1000);
     return () => clearInterval(timer);
   }, [info]);
   useEffect(() => {
@@ -378,13 +405,21 @@ export default function Workbench() {
     if (!tab) return;
     const modified = new Set(
       workspace.tabs
-        .filter((tab) => tab.type === "file" && loadedEditor(tab)?.dirty)
+        .filter((tab) =>
+          filesInTab(tab).some((file) => loadedEditor(file)?.dirty),
+        )
         .map((tab) => tab.id),
     );
     const ids = new Set(
       tabsToClose(workspace.tabs, id, action, modified).map((tab) => tab.id),
     );
-    if (!ids.size || !(await closeGuard.confirm(ids))) return;
+    const fileIds = new Set(
+      workspace.tabs
+        .filter((tab) => ids.has(tab.id))
+        .flatMap(filesInTab)
+        .map((file) => file.id),
+    );
+    if (!ids.size || !(await closeGuard.confirm(fileIds))) return;
     const current = currentSession.current?.projects
       .find((candidate) => candidate.id === project.id)
       ?.workspaces.find((candidate) => candidate.id === workspace.id);
@@ -417,6 +452,7 @@ export default function Workbench() {
     if (!session || !info || !preferences.ready) return;
     const keyboard = (event: KeyboardEvent) => {
       const selected = currentSession.current && active(currentSession.current);
+      const panel = selected && activePanel(selected.tab);
       const inEditor =
         event.target instanceof Element &&
         !!event.target.closest(".file-editor");
@@ -424,7 +460,9 @@ export default function Workbench() {
         event.defaultPrevented ||
         document.querySelector("dialog[open]") ||
         (event.target instanceof Element &&
-          event.target.closest(".tab-context-menu, .editor-status-menu")) ||
+          event.target.closest(
+            ".tab-context-menu, .editor-status-menu, .sidebar-context-menu, .markdown-preview-menu",
+          )) ||
         (isTextInput(event.target) && !inEditor)
       )
         return;
@@ -436,12 +474,15 @@ export default function Workbench() {
         "goToLine",
         "toggleWordWrap",
       ].includes(action);
-      if (editorAction && selected?.tab.type !== "file") return;
+      if (editorAction && panel?.type !== "file") return;
       if (
-        selected?.tab.type !== "terminal" &&
+        ["newTerminal", "splitVertical"].includes(action) &&
+        selected?.tab.type !== "terminal"
+      )
+        return;
+      if (
+        panel?.type !== "terminal" &&
         [
-          "newTerminal",
-          "splitVertical",
           "searchTerminal",
           "commandInput",
           "commandBlocks",
@@ -451,7 +492,12 @@ export default function Workbench() {
         ].includes(action)
       )
         return;
-      if (!selected && action !== "openSettings") return;
+      if (
+        !selected &&
+        action !== "openSettings" &&
+        action !== "toggleWorkspaces"
+      )
+        return;
       if (action === "toggleSourceControl" && !git.status) return;
       if (
         (action === "copyTerminal" || action === "pasteTerminal") &&
@@ -470,14 +516,18 @@ export default function Workbench() {
         openSettings();
         return;
       }
+      if (action === "toggleWorkspaces") {
+        change((state) => toggleSidebar(state, "workspaces"));
+        return;
+      }
       if (!selected) return;
       const { workspace, tab } = selected;
       const runtime =
-        tab.type === "terminal" ? runningTerminal(tab.activePaneId) : undefined;
+        panel?.type === "terminal" ? runningTerminal(panel.id) : undefined;
       switch (action) {
         case "saveFile":
-          if (tab.type === "file") {
-            const document = loadedEditor(tab);
+          if (panel?.type === "file") {
+            const document = loadedEditor(panel);
             void document
               ?.save()
               .catch((error) => document.reportError(errorMessage(error)));
@@ -486,7 +536,7 @@ export default function Workbench() {
         case "findFile":
         case "goToLine":
         case "toggleWordWrap":
-          if (tab.type === "file") loadedEditor(tab)?.command(action);
+          if (panel?.type === "file") loadedEditor(panel)?.command(action);
           break;
         case "newTerminal":
         case "splitVertical": {
@@ -523,16 +573,10 @@ export default function Workbench() {
           closeTab(tab.id);
           break;
         case "toggleExplorer":
-          change((state) => ({
-            ...state,
-            sidebar: state.sidebar === "files" ? null : "files",
-          }));
+          change((state) => toggleSidebar(state, "files"));
           break;
         case "toggleSourceControl":
-          change((state) => ({
-            ...state,
-            sidebar: state.sidebar === "git" ? null : "git",
-          }));
+          change((state) => toggleSidebar(state, "git"));
           break;
         case "nextTab":
         case "previousTab": {
@@ -590,7 +634,7 @@ export default function Workbench() {
         </main>
       </div>
     );
-  const selectProject = async (path: string) => {
+  const selectProject = async (path: string, workspaceId?: string) => {
     setMenu(null);
     try {
       const normalized = await api<string>("validate_directory", { path });
@@ -598,6 +642,21 @@ export default function Workbench() {
         const found = state.projects.find(
           (project) => project.path === normalized,
         );
+        if (workspaceId) {
+          if (
+            !found?.workspaces.some((workspace) => workspace.id === workspaceId)
+          )
+            return state;
+          return {
+            ...state,
+            activeProjectId: found.id,
+            projects: state.projects.map((project) =>
+              project.id === found.id
+                ? { ...project, activeWorkspaceId: workspaceId }
+                : project,
+            ),
+          };
+        }
         const added =
           found ?? newProject(normalized, info.profiles[0]?.id ?? "");
         return {
@@ -613,16 +672,41 @@ export default function Workbench() {
       setError(errorMessage(error));
     }
   };
-  const browse = async () => {
+  const promptWorkspace = (path: string, initial = "") => {
+    setMenu(null);
+    setDialog({
+      type: "name",
+      title: "New workspace",
+      initial,
+      submit: (name) =>
+        change((state) =>
+          addWorkspace(state, path, info.profiles[0]?.id ?? "", name),
+        ),
+    });
+  };
+  const browse = async (createWorkspace = false) => {
     setMenu(null);
     try {
       const path = await open({
         directory: true,
         multiple: false,
         defaultPath: selected?.project.path ?? info.home,
-        title: "Open Local Folder",
+        title: createWorkspace
+          ? "Choose workspace folder"
+          : "Open Local Folder",
       });
-      if (path) await selectProject(path);
+      if (!path) return;
+      if (createWorkspace) {
+        const normalized = await api<string>("validate_directory", { path });
+        const count =
+          currentSession.current?.projects.find(
+            (project) => project.path === normalized,
+          )?.workspaces.length ?? 0;
+        promptWorkspace(
+          normalized,
+          `${basename(normalized)}${count ? ` ${count + 1}` : ""}`,
+        );
+      } else await selectProject(path);
     } catch (error) {
       setError(errorMessage(error));
     }
@@ -660,6 +744,45 @@ export default function Workbench() {
       </IconButton>
     </div>
   );
+  const sidebarOpen = (panel: SidebarPanel) =>
+    session.sidebarSides[panel] === "left"
+      ? session.sidebar === panel
+      : session.rightSidebar === panel;
+  const workspaceSide = session.sidebarSides.workspaces;
+  const workspaceWidthKey =
+    workspaceSide === "left" ? "sidebarWidth" : "rightSidebarWidth";
+  const workspacePanel = sidebarOpen("workspaces") && (
+    <Sidebar
+      key="workspaces"
+      side={workspaceSide}
+      width={session[workspaceWidthKey]}
+      label="Workspaces"
+      onResize={(width) =>
+        change((state) => ({ ...state, [workspaceWidthKey]: width }))
+      }
+    >
+      <Workspaces
+        projects={session.projects}
+        activeWorkspaceId={selected?.workspace.id}
+        onSelect={(path, id) => void selectProject(path, id)}
+        onNew={() => void browse(true)}
+      />
+    </Sidebar>
+  );
+  const workspaceToggle = (
+    <div className="status-panel-control" data-side={workspaceSide}>
+      <SidebarToggle
+        panel="workspaces"
+        side={workspaceSide}
+        active={sidebarOpen("workspaces")}
+        title={shortcutTitle("Toggle workspaces", bindings.toggleWorkspaces)}
+        onToggle={() => change((state) => toggleSidebar(state, "workspaces"))}
+        onMove={(side) =>
+          change((state) => moveSidebar(state, "workspaces", side))
+        }
+      />
+    </div>
+  );
   if (!selected)
     return (
       <div className="app-shell">
@@ -675,19 +798,32 @@ export default function Workbench() {
           <WindowControls onError={setError} />
         </header>
         {notice}
-        <main className="work-area" aria-label="No project open" />
+        <div className="work-area">
+          {workspacePanel}
+          <main className="terminal-stage" aria-label="No project open" />
+        </div>
+        <footer className="statusbar">
+          {workspaceToggle}
+          <span className="status-spacer" />
+        </footer>
+        {dialog && (
+          <AppDialog dialog={dialog} onClose={() => setDialog(null)} />
+        )}
         {closeGuard.dialog}
       </div>
     );
   const { project, workspace, tab } = selected;
-  const editorDocument = tab.type === "file" ? loadedEditor(tab) : undefined;
+  const panel = activePanel(tab);
+  const editorDocument =
+    panel?.type === "file" ? loadedEditor(panel) : undefined;
   const profile =
     tab.type === "terminal"
       ? info.profiles.find((profile) => profile.id === tab.profileId)
       : undefined;
-  const allPanes = tab.type === "terminal" ? panes(tab.layout) : [];
-  const sidebar =
-    session.sidebar === "git" && !git.status ? null : session.sidebar;
+  const allPanes = tab.type === "terminal" ? layoutPanes(tab.layout) : [];
+  const sidebarPanels: SidebarPanel[] = git.status
+    ? ["files", "git"]
+    : ["files"];
   const selectTab = (id: string) =>
     change((state) =>
       updateWorkspace(state, workspace.id, (workspace) => ({
@@ -707,13 +843,9 @@ export default function Workbench() {
     const container = terminalLayout.current;
     if (!container || selection?.tab.type !== "terminal") return;
     const current = selection.tab;
-    const hoveredId = container.querySelector<HTMLElement>(
-      ".terminal-pane[data-pane-id]:hover",
-    )?.dataset.paneId;
-    const currentPanes = panes(current.layout);
-    const pane =
-      currentPanes.find((pane) => pane.id === hoveredId) ??
-      currentPanes.find((pane) => pane.id === current.activePaneId);
+    const pane = layoutPanes(current.layout).find(
+      (pane) => pane.id === current.activePaneId,
+    );
     if (!pane) return;
     if (
       !canSplitPane(current.layout, pane.id, axis, {
@@ -727,9 +859,12 @@ export default function Workbench() {
       return;
     }
     const added = newPane(
-      runningTerminal(pane.id)?.getSnapshot().cwd ?? pane.cwd,
+      pane.type === "terminal"
+        ? (runningTerminal(pane.id)?.getSnapshot().cwd ?? pane.cwd)
+        : selection.project.path,
     );
-    if (pane.profileId !== undefined) added.profileId = pane.profileId;
+    if (pane.type === "terminal" && pane.profileId !== undefined)
+      added.profileId = pane.profileId;
     setPaneNotice("");
     change((state) =>
       updateTab(state, current.id, (tab) => ({
@@ -739,26 +874,32 @@ export default function Workbench() {
       })),
     );
   };
-  const closePane = (id: string) => {
+  const closePane = async (id: string) => {
     const state = currentSession.current;
     if (!state) return;
     const current = active(state)?.tab;
     if (current?.type !== "terminal") return;
-    if (!panes(current.layout).some((pane) => pane.id === id)) return;
-    if (current.layout.type === "terminal") {
-      closeTab(current.id);
+    const pane = layoutPanes(current.layout).find((pane) => pane.id === id);
+    if (!pane) return;
+    if (current.layout.type !== "split") {
+      await closeTab(current.id);
       return;
     }
-    closeTerminals([id]);
+    if (pane.type === "file" && !(await closeGuard.confirm(new Set([id]))))
+      return;
+    if (pane.type === "terminal") closeTerminals([id]);
     change((state) =>
       updateTab(state, current.id, (tab) => {
         if (tab.type !== "terminal") return tab;
-        const layout = removePane(tab.layout, id)!;
+        const layout = removePane(tab.layout, id);
+        if (!layout) return tab;
         return {
           ...tab,
           layout,
           activePaneId:
-            tab.activePaneId === id ? panes(layout)[0].id : tab.activePaneId,
+            tab.activePaneId === id
+              ? layoutPanes(layout)[0].id
+              : tab.activePaneId,
         };
       }),
     );
@@ -770,7 +911,8 @@ export default function Workbench() {
       const layout = mapLayout(tab.layout, (pane) => {
         if (pane.id !== id) return pane;
         const added = newPane(useProjectDirectory ? project.path : pane.cwd);
-        if (pane.profileId !== undefined) added.profileId = pane.profileId;
+        if (pane.type === "terminal" && pane.profileId !== undefined)
+          added.profileId = pane.profileId;
         if (activePaneId === id) activePaneId = added.id;
         return added;
       });
@@ -785,29 +927,45 @@ export default function Workbench() {
       profiles: info.profiles,
       selected: tab.profileId,
       submit: (profileId) => {
-        closeTerminals(allPanes.map((pane) => pane.id));
+        closeTerminals(panes(tab.layout).map((pane) => pane.id));
         const layout = mapLayout(tab.layout, () => newPane(project.path));
         modifyTab((tab) => ({
           ...tab,
           profileId,
           layout,
-          activePaneId: panes(layout)[0].id,
+          activePaneId: panel?.type === "file" ? panel.id : panes(layout)[0].id,
         }));
       },
     });
   };
-  const openFile = async (relative: string) => {
+  const openFile = async (
+    relative: string,
+    root = project.path,
+    match?: SearchMatch,
+  ) => {
     const request = ++fileOpenRequest.current;
     try {
       const normalized = await api<string>("resolve_editor_file", {
-        root: project.path,
+        root,
         relative,
       });
       change((state) => {
         const previous = state.projects
           .flatMap((project) => project.workspaces)
           .find((candidate) => candidate.id === workspace.id)?.activeTabId;
-        const next = openFileTab(state, workspace.id, project.path, normalized);
+        const opened = openFileTab(state, workspace.id, root, normalized);
+        const file = match
+          ? opened.projects
+              .flatMap((project) => project.workspaces)
+              .find((candidate) => candidate.id === workspace.id)
+              ?.tabs.flatMap(filesInTab)
+              .find(
+                (file) => file.root === root && file.relative === normalized,
+              )
+          : undefined;
+        const next = file
+          ? updateMarkdownView(opened, file.id, "editor")
+          : opened;
         return request === fileOpenRequest.current || !previous
           ? next
           : updateWorkspace(next, workspace.id, (workspace) => ({
@@ -815,9 +973,108 @@ export default function Workbench() {
               activeTabId: previous,
             }));
       });
+      if (match && request === fileOpenRequest.current) {
+        const file = currentSession.current?.projects
+          .flatMap((project) => project.workspaces)
+          .find((candidate) => candidate.id === workspace.id)
+          ?.tabs.flatMap(filesInTab)
+          .find((file) => file.root === root && file.relative === normalized);
+        if (file) {
+          const document = await openEditorDocument(file);
+          if (
+            request === fileOpenRequest.current &&
+            active(currentSession.current!)?.workspace.id === workspace.id
+          )
+            document.selectMatch(match);
+        }
+      }
     } catch (error) {
       setError(errorMessage(error));
     }
+  };
+  const operateFile = async (
+    relative: string,
+    operation: FileOperation,
+  ): Promise<boolean> => {
+    if (fileOperationBusy.current)
+      throw new Error("Another file operation is in progress.");
+    fileOperationBusy.current = true;
+    let resume: (() => void) | undefined;
+    try {
+      const deleting =
+        operation.kind === "trash" || operation.kind === "delete";
+      const expectedPath = deleting
+        ? await api<string>("resolve_project_entry", {
+            root: project.path,
+            relative,
+          })
+        : undefined;
+      if (expectedPath) {
+        const path = expectedPath;
+        const ids = new Set(
+          fileTabs(currentSession.current!)
+            .filter(
+              (file) =>
+                containsPath(path, absoluteFilePath(file)) ||
+                currentSession.current!.projects.some(
+                  (project) =>
+                    containsPath(path, project.path) &&
+                    project.workspaces.some((workspace) =>
+                      workspace.tabs
+                        .flatMap(filesInTab)
+                        .some((view) => view.id === file.id),
+                    ),
+                ),
+            )
+            .map((file) => file.id),
+        );
+        if (!(await closeGuard.confirm(ids))) return false;
+      }
+      resume = await pauseEditorFileOperations();
+      const result = await api<FileChange>("file_operation", {
+        root: project.path,
+        relative,
+        operation,
+        expectedPath,
+      });
+      change((state) => {
+        const next = applyFileChange(state, result, info.profiles[0]?.id ?? "");
+        relocateEditorFiles(state, next);
+        const kept = new Set(next.projects.map((project) => project.id));
+        closeTerminals(
+          state.projects
+            .filter((project) => !kept.has(project.id))
+            .flatMap((project) =>
+              project.workspaces.flatMap((workspace) =>
+                workspace.tabs.flatMap((tab) =>
+                  tab.type === "terminal"
+                    ? panes(tab.layout).map((pane) => pane.id)
+                    : [],
+                ),
+              ),
+            ),
+        );
+        return next;
+      });
+      git.refresh();
+      return true;
+    } finally {
+      resume?.();
+      fileOperationBusy.current = false;
+    }
+  };
+  const openHistoryCommit = (commit: import("./api").GitCommitSummary) => {
+    if (!git.status) return;
+    const root = git.status.root;
+    change((state) =>
+      openCommitTab(
+        state,
+        workspace.id,
+        root,
+        commit.id,
+        `${commit.shortId} · ${commit.subject}`,
+      ),
+    );
   };
   const diff = async (path: string, staged: boolean) => {
     try {
@@ -840,18 +1097,28 @@ export default function Workbench() {
     <div className="app-shell">
       <header className="titlebar" data-tauri-drag-region>
         {projectPicker}
+        <ChevronRight
+          className="titlebar-context-separator"
+          size={12}
+          aria-hidden="true"
+        />
         <div className="titlebar-workspace">
           <button
+            type="button"
             className="workspace-switcher"
             data-menu-trigger
             aria-expanded={menu === "workspace"}
             aria-label="Switch workspace"
-            title="Switch workspace"
+            title={`Switch workspace: ${workspace.name}`}
             onClick={() => setMenu(menu === "workspace" ? null : "workspace")}
           >
-            <Layers size={14} />
+            <Layers size={14} aria-hidden="true" />
             <span>{workspace.name}</span>
-            <ChevronDown size={12} />
+            <ChevronDown
+              className="switcher-chevron"
+              size={11}
+              aria-hidden="true"
+            />
           </button>
           {menu === "workspace" && (
             <Menu className="workspace-menu" onClose={closeMenu}>
@@ -860,6 +1127,10 @@ export default function Workbench() {
                 <button
                   className={`menu-item${candidate.id === workspace.id ? " selected" : ""}`}
                   key={candidate.id}
+                  title={candidate.name}
+                  aria-current={
+                    candidate.id === workspace.id ? "true" : undefined
+                  }
                   onClick={() => {
                     change((state) => ({
                       ...state,
@@ -880,33 +1151,7 @@ export default function Workbench() {
               <div className="menu-divider" />
               <button
                 className="menu-item"
-                onClick={() => {
-                  setMenu(null);
-                  setDialog({
-                    type: "name",
-                    title: "New workspace",
-                    initial: "",
-                    submit: (name) => {
-                      const added = newWorkspace(
-                        project.path,
-                        info.profiles[0]?.id ?? "",
-                        name,
-                      );
-                      change((state) => ({
-                        ...state,
-                        projects: state.projects.map((candidate) =>
-                          candidate.id === project.id
-                            ? {
-                                ...candidate,
-                                workspaces: [...candidate.workspaces, added],
-                                activeWorkspaceId: added.id,
-                              }
-                            : candidate,
-                        ),
-                      }));
-                    },
-                  });
-                }}
+                onClick={() => promptWorkspace(project.path)}
               >
                 <Plus size={14} />
                 New workspace
@@ -929,6 +1174,7 @@ export default function Workbench() {
                   });
                 }}
               >
+                <Pencil size={14} aria-hidden="true" />
                 Rename workspace
               </button>
               <button
@@ -943,7 +1189,11 @@ export default function Workbench() {
                     submit: async () => {
                       if (
                         !(await closeGuard.confirm(
-                          new Set(workspace.tabs.map((tab) => tab.id)),
+                          new Set(
+                            workspace.tabs
+                              .flatMap(filesInTab)
+                              .map((file) => file.id),
+                          ),
                         ))
                       )
                         return;
@@ -972,6 +1222,7 @@ export default function Workbench() {
                   });
                 }}
               >
+                <Trash2 size={14} aria-hidden="true" />
                 Delete workspace…
               </button>
             </Menu>
@@ -983,13 +1234,15 @@ export default function Workbench() {
           modified={
             new Set(
               workspace.tabs
-                .filter(
-                  (tab) => tab.type === "file" && loadedEditor(tab)?.dirty,
+                .filter((tab) =>
+                  filesInTab(tab).some((file) => loadedEditor(file)?.dirty),
                 )
                 .map((tab) => tab.id),
             )
           }
           activeTabId={tab.id}
+          newTabTitle={shortcutTitle("New tab", bindings.newTab)}
+          onNew={() => addTab()}
           onSelect={selectTab}
           onClose={closeTab}
           mergeContainer={terminalLayout}
@@ -1006,7 +1259,7 @@ export default function Workbench() {
             change((state) =>
               updateWorkspace(state, workspace.id, (current) =>
                 current.activeTabId === targetId
-                  ? mergeTerminalTabs(current, id, targetId, side, {
+                  ? mergeTabs(current, id, targetId, side, {
                       width: container.clientWidth,
                       height: container.clientHeight,
                     })
@@ -1040,21 +1293,32 @@ export default function Workbench() {
       </header>
       {notice}
       <div className="work-area">
-        {sidebar && (
-          <>
+        {workspacePanel}
+        {sidebarPanels.filter(sidebarOpen).map((panel) => {
+          const side = session.sidebarSides[panel];
+          const widthKey =
+            side === "left" ? "sidebarWidth" : "rightSidebarWidth";
+          return (
             <Sidebar
-              width={session.sidebarWidth}
-              label={sidebar === "files" ? "Explorer" : "Source control"}
+              key={panel}
+              side={side}
+              width={session[widthKey]}
+              label={panel === "files" ? "Explorer" : "Source Control"}
               onResize={(width) =>
-                change((state) => ({ ...state, sidebarWidth: width }))
+                change((state) => ({ ...state, [widthKey]: width }))
               }
             >
-              {sidebar === "files" ? (
+              {panel === "files" ? (
                 <Explorer
                   key={project.path}
                   root={project.path}
                   onTerminal={addTab}
-                  onOpenFile={(relative) => void openFile(relative)}
+                  onOpenFile={(relative, match) =>
+                    void openFile(relative, project.path, match)
+                  }
+                  repositoryRoot={git.status?.root}
+                  onOpenCommit={openHistoryCommit}
+                  onOperation={operateFile}
                   onError={setError}
                 />
               ) : (
@@ -1080,8 +1344,8 @@ export default function Workbench() {
                 />
               )}
             </Sidebar>
-          </>
-        )}
+          );
+        })}
         <main
           className="terminal-stage"
           id={`panel-${tab.id}`}
@@ -1101,14 +1365,12 @@ export default function Workbench() {
               <FileEditor
                 key={tab.id}
                 tab={tab}
+                onOpenFile={(root, relative) => void openFile(relative, root)}
+                onMarkdownView={(view) =>
+                  change((state) => updateMarkdownView(state, tab.id, view))
+                }
                 onPosition={(position) =>
-                  change((state) =>
-                    updateTab(state, tab.id, (current) =>
-                      current.type === "file"
-                        ? { ...current, position }
-                        : current,
-                    ),
-                  )
+                  change((state) => updateFilePosition(state, tab.id, position))
                 }
               />
             </Suspense>
@@ -1125,13 +1387,34 @@ export default function Workbench() {
                     modifyTab((tab) => ({ ...tab, activePaneId: id }));
                 }}
                 onRestart={restartPane}
-                onKeepActivePane={() => {
+                onClosePane={closePane}
+                onFilePosition={(id, position) =>
+                  change((state) => updateFilePosition(state, id, position))
+                }
+                onMarkdownView={(id, view) =>
+                  change((state) => updateMarkdownView(state, id, view))
+                }
+                onOpenFile={(root, relative) => void openFile(relative, root)}
+                onKeepActivePane={async () => {
                   const kept = allPanes.find(
                     (pane) => pane.id === tab.activePaneId,
                   )!;
+                  const removed = allPanes.filter(
+                    (pane) => pane.id !== kept.id,
+                  );
+                  if (
+                    !(await closeGuard.confirm(
+                      new Set(
+                        removed
+                          .filter((pane) => pane.type === "file")
+                          .map((pane) => pane.id),
+                      ),
+                    ))
+                  )
+                    return;
                   closeTerminals(
-                    allPanes
-                      .filter((pane) => pane.id !== kept.id)
+                    removed
+                      .filter((pane) => pane.type === "terminal")
                       .map((pane) => pane.id),
                   );
                   modifyTab((tab) => ({ ...tab, layout: kept }));
@@ -1160,49 +1443,53 @@ export default function Workbench() {
         </main>
       </div>
       <footer className="statusbar">
-        <IconButton
-          title={shortcutTitle("Toggle file explorer", bindings.toggleExplorer)}
-          aria-pressed={sidebar === "files"}
-          onClick={() =>
-            change((state) => ({
-              ...state,
-              sidebar: state.sidebar === "files" ? null : "files",
-            }))
-          }
-        >
-          <PanelLeft size={15} />
-        </IconButton>
-        {git.status && (
-          <>
-            <IconButton
-              title={shortcutTitle(
-                "Toggle source control",
-                bindings.toggleSourceControl,
-              )}
-              aria-pressed={sidebar === "git"}
-              onClick={() =>
-                change((state) => ({
-                  ...state,
-                  sidebar: state.sidebar === "git" ? null : "git",
-                }))
+        {workspaceToggle}
+        {sidebarPanels.map((panel) => (
+          <div
+            key={panel}
+            className="status-panel-control"
+            data-side={session.sidebarSides[panel]}
+          >
+            <SidebarToggle
+              panel={panel}
+              side={session.sidebarSides[panel]}
+              active={sidebarOpen(panel)}
+              title={
+                panel === "files"
+                  ? shortcutTitle(
+                      "Toggle file explorer",
+                      bindings.toggleExplorer,
+                    )
+                  : shortcutTitle(
+                      "Toggle source control",
+                      bindings.toggleSourceControl,
+                    )
               }
-            >
-              <GitBranch size={15} />
-            </IconButton>
-            <span className="status-divider" />
-            <button
-              className="branch-status"
-              title="Show source control"
-              onClick={() => change((state) => ({ ...state, sidebar: "git" }))}
-            >
-              <GitBranch size={12} />
-              {git.status.branch}
-              {git.status.changes.length > 0 && (
-                <span className="count-badge">{git.status.changes.length}</span>
-              )}
-            </button>
-          </>
-        )}
+              onToggle={() => change((state) => toggleSidebar(state, panel))}
+              onMove={(side) =>
+                change((state) => moveSidebar(state, panel, side))
+              }
+            />
+            {panel === "git" && git.status && (
+              <>
+                <span className="status-divider" />
+                <button
+                  className="branch-status"
+                  title="Show source control"
+                  onClick={() => change((state) => showSidebar(state, "git"))}
+                >
+                  <GitBranch size={12} />
+                  {git.status.branch}
+                  {git.status.changes.length > 0 && (
+                    <span className="count-badge">
+                      {git.status.changes.length}
+                    </span>
+                  )}
+                </button>
+              </>
+            )}
+          </div>
+        ))}
         {git.error && (
           <span className="status-warning" title={git.error}>
             Git unavailable

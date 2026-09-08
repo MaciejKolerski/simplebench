@@ -1,5 +1,5 @@
-import Select from "./Select";
 import { useEffect, useRef, useState } from "react";
+import Select from "./Select";
 import { RotateCcw } from "lucide-react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -62,7 +62,8 @@ const labels: Record<string, string> = {
   wordSeparator: "Word separators",
 };
 const help: Record<string, string> = {
-  fontFamily: "Use an installed font or a comma-separated fallback list.",
+  fontFamily:
+    "Use an installed font or a comma-separated fallback list. JetBrains Mono is bundled.",
   fontSize: "6–72 px.",
   lineHeight: "1–3 times the font height.",
   letterSpacing: "−2 to 20 px between characters.",

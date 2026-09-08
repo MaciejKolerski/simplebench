@@ -10,22 +10,24 @@ import type { ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api, errorMessage, native } from "./api";
 import { defaultKeybindings, restoreKeybindings } from "./keybindings";
-import type { Keybindings } from "./keybindings";
+import type { Keybindings, KeybindingSettings } from "./keybindings";
 
 const mac = navigator.platform.startsWith("Mac");
 interface Preferences {
   bindings: Keybindings;
   defaults: Keybindings;
+  focusFollowsPointer: boolean;
   ready: boolean;
   error: string;
   reload: () => Promise<void>;
-  save: (bindings: Keybindings) => Promise<void>;
+  save: (bindings: Keybindings, focusFollowsPointer?: boolean) => Promise<void>;
 }
 const Context = createContext<Preferences | null>(null);
 const defaults = defaultKeybindings(mac);
 
 export function KeybindingsProvider({ children }: { children: ReactNode }) {
   const [bindings, setBindings] = useState(defaults);
+  const [focusFollowsPointer, setFocusFollowsPointer] = useState(false);
   const [ready, setReady] = useState(!native);
   const [error, setError] = useState("");
   const revision = useRef(0);
@@ -34,9 +36,11 @@ export function KeybindingsProvider({ children }: { children: ReactNode }) {
     if (!native) return;
     const request = ++revision.current;
     try {
-      const value = restoreKeybindings(await api("load_keybindings"), mac);
+      const data = await api<KeybindingSettings | null>("load_keybindings");
+      const value = restoreKeybindings(data, mac);
       if (mounted.current && request === revision.current) {
         setBindings(value);
+        setFocusFollowsPointer(data?.focusFollowsPointer ?? false);
         setError("");
       }
     } catch (error) {
@@ -74,19 +78,35 @@ export function KeybindingsProvider({ children }: { children: ReactNode }) {
       void unlisten.then((stop) => stop()).catch(() => {});
     };
   }, [reload]);
-  const save = async (next: Keybindings) => {
-    const data = { version: 1, bindings: next };
+  const save = async (
+    next: Keybindings,
+    pointerFocus = focusFollowsPointer,
+  ) => {
+    const data = {
+      version: 1,
+      bindings: next,
+      focusFollowsPointer: pointerFocus,
+    };
     restoreKeybindings(data, mac);
     if (native) await api("save_keybindings", { data });
     if (mounted.current) {
       ++revision.current;
       setBindings(next);
+      setFocusFollowsPointer(pointerFocus);
       setError("");
     }
   };
   return (
     <Context.Provider
-      value={{ bindings, defaults, ready, error, reload, save }}
+      value={{
+        bindings,
+        defaults,
+        focusFollowsPointer,
+        ready,
+        error,
+        reload,
+        save,
+      }}
     >
       {children}
     </Context.Provider>

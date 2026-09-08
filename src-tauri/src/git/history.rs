@@ -72,7 +72,12 @@ fn text(bytes: &[u8]) -> String {
     String::from_utf8_lossy(bytes).into_owned()
 }
 
-fn history(root: &Path, tips: Option<Vec<String>>, skip: u32) -> Result<HistoryPage, String> {
+fn history(
+    root: &Path,
+    tips: Option<Vec<String>>,
+    skip: u32,
+    path: Option<&str>,
+) -> Result<HistoryPage, String> {
     // Freeze the starting revisions so new commits cannot shift subsequent pages.
     let tips = match tips {
         Some(tips) => tips,
@@ -94,6 +99,7 @@ fn history(root: &Path, tips: Option<Vec<String>>, skip: u32) -> Result<HistoryP
     let count = format!("--max-count={}", PAGE_SIZE + 1);
     let skip = format!("--skip={skip}");
     let mut args = vec![
+        "--literal-pathspecs",
         "log",
         "--date-order",
         "--no-decorate",
@@ -108,6 +114,12 @@ fn history(root: &Path, tips: Option<Vec<String>>, skip: u32) -> Result<HistoryP
     ];
     args.extend(tips.iter().map(String::as_str));
     args.push("--");
+    if let Some(path) = path {
+        if !path.is_empty() {
+            relative(path)?;
+            args.push(path);
+        }
+    }
     let bytes = checked(root, &args)?;
     let mut fields = bytes.split(|byte| *byte == 0);
     let mut commits = Vec::new();
@@ -343,11 +355,14 @@ pub async fn git_history(
     root: String,
     tips: Option<Vec<String>>,
     skip: u32,
+    path: Option<String>,
 ) -> Result<HistoryPage, String> {
     main_window(&window)?;
-    tauri::async_runtime::spawn_blocking(move || history(&directory(&root)?, tips, skip))
-        .await
-        .map_err(|error| error.to_string())?
+    tauri::async_runtime::spawn_blocking(move || {
+        history(&directory(&root)?, tips, skip, path.as_deref())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -416,21 +431,40 @@ mod tests {
     }
 
     #[test]
+    fn filters_history_by_literal_file_or_folder() {
+        let root = repository();
+        std::fs::create_dir(root.path().join("src")).unwrap();
+        std::fs::write(root.path().join("src/[a].txt"), "first").unwrap();
+        let first = commit(root.path(), "feat(test): add literal filename");
+        std::fs::write(root.path().join("src/a.txt"), "second").unwrap();
+        let second = commit(root.path(), "feat(test): add another file");
+        std::fs::write(root.path().join("other.txt"), "unrelated").unwrap();
+        commit(root.path(), "feat(test): add unrelated file");
+        let file = history(root.path(), None, 0, Some("src/[a].txt")).unwrap();
+        assert_eq!(file.commits.len(), 1);
+        assert_eq!(file.commits[0].id, first);
+        let folder = history(root.path(), None, 0, Some("src")).unwrap();
+        assert_eq!(folder.commits.len(), 2);
+        assert_eq!(folder.commits[0].id, second);
+        assert!(history(root.path(), None, 0, Some("../outside")).is_err());
+    }
+
+    #[test]
     fn pages_entire_history_without_shifting_when_new_commits_arrive() {
         let root = repository();
-        let empty = history(root.path(), None, 0).unwrap();
+        let empty = history(root.path(), None, 0, None).unwrap();
         assert!(empty.commits.is_empty());
         assert!(!empty.has_more);
         let mut ids = Vec::new();
         for index in 0..56 {
             ids.push(commit(root.path(), &format!("chore(test): record {index}")));
         }
-        let first = history(root.path(), None, 0).unwrap();
+        let first = history(root.path(), None, 0, None).unwrap();
         assert_eq!(first.commits.len(), PAGE_SIZE);
         assert!(first.has_more);
         assert_eq!(first.commits[0].id, ids[55]);
         let added = commit(root.path(), "chore(test): add a newer commit");
-        let next = history(root.path(), Some(first.tips), PAGE_SIZE as u32).unwrap();
+        let next = history(root.path(), Some(first.tips), PAGE_SIZE as u32, None).unwrap();
         assert_eq!(next.commits.len(), 6);
         assert!(!next.has_more);
         let all: Vec<_> = first
@@ -440,7 +474,10 @@ mod tests {
             .map(|commit| &commit.id)
             .collect();
         assert_eq!(all, ids.iter().rev().collect::<Vec<_>>());
-        assert_eq!(history(root.path(), None, 0).unwrap().commits[0].id, added);
+        assert_eq!(
+            history(root.path(), None, 0, None).unwrap().commits[0].id,
+            added
+        );
     }
 
     #[test]
@@ -452,7 +489,7 @@ mod tests {
         checked(root.path(), &["checkout", "main"]).unwrap();
         checked(root.path(), &["checkout", "--detach"]).unwrap();
         let detached = commit(root.path(), "feat(test): change detached HEAD");
-        let page = history(root.path(), None, 0).unwrap();
+        let page = history(root.path(), None, 0, None).unwrap();
         let ids: Vec<_> = page
             .commits
             .iter()
@@ -570,7 +607,7 @@ mod tests {
         let id = commit(root.path(), "feat(test): add a large file");
         for invalid in ["--all", "HEAD", "HEAD~1", "../HEAD", ""] {
             assert!(metadata(root.path(), invalid).is_err());
-            assert!(history(root.path(), Some(vec![invalid.to_owned()]), 0).is_err());
+            assert!(history(root.path(), Some(vec![invalid.to_owned()]), 0, None).is_err());
         }
         assert!(patch(root.path(), &id, "../outside", None).is_err());
         assert!(patch(root.path(), &id, "large.txt", Some("../outside")).is_err());

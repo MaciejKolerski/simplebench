@@ -195,7 +195,7 @@ test("an oversized saved tab starts no shells and preserves its layout until rec
   await expect(page.locator(".layout-recovery")).toBeVisible();
   expect(await calls(page, "start_terminal")).toHaveLength(1);
   await page
-    .getByRole("button", { name: "Keep only the active terminal" })
+    .getByRole("button", { name: "Keep only the active panel" })
     .click();
   await expect(page.locator("[data-pane-id]")).toHaveAttribute(
     "data-pane-id",

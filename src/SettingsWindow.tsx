@@ -55,7 +55,10 @@ export default function SettingsWindow() {
     recordingButton.current?.focus();
   }, [recording]);
 
-  const persist = async (bindings: Keybindings) => {
+  const persist = async (
+    bindings: Keybindings,
+    focusFollowsPointer = preferences.focusFollowsPointer,
+  ) => {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
@@ -63,7 +66,7 @@ export default function SettingsWindow() {
     setStatus("Saving…");
     setRecording(null);
     try {
-      await preferences.save(bindings);
+      await preferences.save(bindings, focusFollowsPointer);
       setStatus("Saved");
     } catch (error) {
       setError(errorMessage(error));
@@ -145,7 +148,7 @@ export default function SettingsWindow() {
               <button
                 className="button"
                 disabled={!preferences.ready || busy}
-                onClick={() => void persist(preferences.defaults)}
+                onClick={() => void persist(preferences.defaults, false)}
               >
                 <RotateCcw size={14} />
                 Reset all
@@ -179,6 +182,34 @@ export default function SettingsWindow() {
                   ? "Press a shortcut, or Escape to cancel."
                   : status}
             </div>
+            <section className="keybindings-group" aria-label="Panel focus">
+              <h2>Panel focus</h2>
+              <div className="keybinding-row">
+                <label
+                  htmlFor="focus-follows-pointer"
+                  className="keybinding-label"
+                >
+                  Focus follows pointer
+                  <small id="pointer-focus-help">
+                    On: typing, pasting, and shortcuts use the panel under the
+                    mouse. Off: they use the panel you clicked. Moving outside
+                    the panels keeps the current panel active.
+                  </small>
+                </label>
+                <input
+                  id="focus-follows-pointer"
+                  className="settings-switch"
+                  type="checkbox"
+                  role="switch"
+                  aria-describedby="pointer-focus-help"
+                  checked={preferences.focusFollowsPointer}
+                  disabled={!preferences.ready || busy || !!preferences.error}
+                  onChange={(event) =>
+                    void persist(preferences.bindings, event.target.checked)
+                  }
+                />
+              </div>
+            </section>
             {(["Terminals", "Tabs", "Workspace"] as const).map((group) => (
               <section
                 className="keybindings-group"

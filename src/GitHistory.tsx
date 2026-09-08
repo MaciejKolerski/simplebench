@@ -5,9 +5,11 @@ import type { GitCommitSummary, GitHistoryPage } from "./api";
 
 export default function GitHistory({
   root,
+  path,
   onOpenCommit,
 }: {
   root: string;
+  path?: string;
   onOpenCommit: (commit: GitCommitSummary) => void;
 }) {
   const [history, setHistory] = useState<GitHistoryPage>();
@@ -19,7 +21,7 @@ export default function GitHistory({
   const [error, setError] = useState("");
   useEffect(() => {
     let current = true;
-    void api<GitHistoryPage>("git_history", { root, ...request })
+    void api<GitHistoryPage>("git_history", { root, path, ...request })
       .then((page) => {
         if (current)
           setHistory((previous) => ({
@@ -38,7 +40,7 @@ export default function GitHistory({
     return () => {
       current = false;
     };
-  }, [root, request]);
+  }, [root, path, request]);
   const load = (next: typeof request) => {
     setBusy(true);
     setError("");
@@ -47,7 +49,7 @@ export default function GitHistory({
   return (
     <div className="git-history">
       <div className="git-history-heading">
-        <span>All branches</span>
+        <span title={path}>{path || "All branches"}</span>
         {history && <span>{history.commits.length} loaded</span>}
       </div>
       <div className="git-history-scroll">

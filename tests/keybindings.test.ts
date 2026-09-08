@@ -125,8 +125,22 @@ test("invalid settings and duplicate bindings are rejected instead of discarded"
     { version: 1, bindings: [] },
     { version: 1, bindings: { newTerminal: "KeyD" } },
     { version: 1, bindings: { newTerminal: "Ctrl+KeyW" } },
+    { version: 1, bindings: {}, focusFollowsPointer: "false" },
+    { version: 1, bindings: {}, focusFollowsPointer: null },
   ])
     assert.throws(() => restoreKeybindings(data), /left intact/);
+});
+
+test("pointer focus settings preserve shortcut overrides in either mode", () => {
+  for (const focusFollowsPointer of [true, false]) {
+    const bindings = restoreKeybindings({
+      version: 1,
+      bindings: { newTerminal: "Ctrl+KeyK" },
+      focusFollowsPointer,
+    });
+    assert.equal(bindings.newTerminal, "Ctrl+KeyK");
+    assert.equal(bindings.closeTerminal, "Ctrl+KeyW");
+  }
 });
 
 test("macOS defaults use the same canonical modifier order as recorded keys", () => {
@@ -145,5 +159,18 @@ test("macOS defaults use the same canonical modifier order as recorded keys", ()
       true,
     ),
     defaultKeybindings(true),
+  );
+});
+
+test("workspace panel shortcuts are opt-in and restore custom assignments", () => {
+  assert.equal(defaultKeybindings().toggleWorkspaces, null);
+  assert.equal(defaultKeybindings(true).toggleWorkspaces, null);
+  const restored = restoreKeybindings({
+    version: 1,
+    bindings: { toggleWorkspaces: "Ctrl+Shift+KeyB" },
+  });
+  assert.equal(
+    actionForEvent(key({ code: "KeyB", key: "B", shiftKey: true }), restored),
+    "toggleWorkspaces",
   );
 });

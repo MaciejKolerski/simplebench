@@ -13,14 +13,46 @@ is developed incrementally with Tauri 2, Rust, React, TypeScript, and Vite.
 - Each project has named workspaces sharing its project folder. Each workspace
   has its own tabs. There is no hardcoded tab count limit; each terminal tab starts with
   one terminal and can contain nested horizontal or vertical splits.
-- Drag a tab along the title bar to reorder it. Drag an inactive terminal tab
+- The Workspaces button in the bottom bar opens a list of all workspaces with
+  their folder paths. Select a row to switch folders and workspaces in one click.
+  Use **New workspace** in this panel to choose a folder and name the workspace;
+  choosing the same folder again creates separate tabs and terminals for it.
+  Files remain shared. The workspace menu in the title bar renames and deletes
+  workspaces. A shortcut for the panel can be assigned in Settings → Keybinds.
+- Drag a tab along the title bar to reorder it. Drag an inactive terminal or file tab
   onto the active terminal view to combine them; the nearest edge selects the
   split direction. The source tab disappears and its panels keep their running
   shells, output, directories, and environments. Hold near the tab strip's edge
   to scroll, or press Escape to cancel. Both layouts must fit in the window.
-- The left sidebar contains a lazy file explorer with directory expansion,
+  File panels share the layout with terminals and retain unsaved edits and undo
+  history. Reopening a docked file selects its panel; Ctrl+W closes the active
+  panel and checks unsaved changes.
+- The file sidebar contains a lazy explorer with directory expansion,
   hidden-file visibility, refresh, file editing, path copying, and opening a
-  terminal in a directory. The bottom bar toggles the explorer and Source Control.
+  terminal in a directory. The bottom bar toggles Workspaces, Explorer, and Source Control.
+  Right-click a panel icon to place its panel on the left or right. Panels on
+  opposite sides can stay open together; panels on the same side switch between
+  views. Their bottom-bar controls follow the selected side. Positions, visibility,
+  and the width of each side are restored with the session.
+- Right-click a file or folder for creation, rename, cut/copy/paste, duplicate,
+  system opening, path copying, trash and permanent deletion. Folder operations
+  update open editors across workspaces and preserve their buffers and undo
+  history. Deletion checks unsaved files before removing their views; deleting
+  the project folder also closes its workspaces and terminals. Existing
+  destinations are not overwritten. Copies of symbolic links and special files
+  are rejected. Cut/copy/paste use an application clipboard; these file operations
+  do not have an application undo stack.
+- Use the Explorer search button or **Search in Folder…** on any folder, including
+  the project root, to search saved file contents. Results open the matching line
+  and selection. Search supports literal text, case matching, UTF-8 and UTF-16;
+  Git-ignored files are excluded unless **Include ignored files** is checked.
+  `.git` and symbolic links are not traversed. Binary, unreadable and over-16-MiB
+  files are skipped. Results stop at 1,000 matches, 100,000 entries or 15 seconds;
+  the panel reports incomplete results and allows a narrower query or folder.
+  Unsaved buffer contents are not searched.
+- **View History** in the Explorer menu filters Git commits to that file or
+  folder across local branches. The menu can also append an escaped path rule to
+  `.gitignore` or the repository's local `info/exclude`, including in worktrees.
 - Click a text file to open a CodeMirror 6 editor tab. Reopening the same file
   selects its tab. Editors support syntax highlighting, indentation, bracket
   matching, folding, multiple selections, undo/redo, find/replace, line navigation,
@@ -100,6 +132,12 @@ submitted. Titles are also accepted without shell hooks; in that case, the progr
 must clear or restore its title when it finishes. Titles stay with running terminals
 across tab and workspace switches; they are not saved as session data.
 
+On Linux, a program that does not publish a title gets a fallback showing the
+foreground process name (for example, `agy`). SimpleBench reads it from the PTY
+and operating system, without inspecting command arguments or CLI data files.
+Published terminal titles take precedence. The process name cannot identify a
+conversation selected inside a CLI. Other platforms use published titles only.
+
 Use the button beside the title to fill the central work area, then press it
 again to restore the split layout. Other shells continue parsing output in the
 background. Splitting or closing the maximized panel returns to the layout.
@@ -127,6 +165,17 @@ JavaScript/TypeScript/JSX, Python, Go, C/C++, Java, HTML, CSS, JSON, Markdown, Y
 SQL, XML, TOML, shell scripts, and Dockerfiles. Other text files use plain text.
 Completion is local and syntax based where supported by the language package;
 this milestone does not include language servers, AI, Vim, or media previews.
+
+Markdown files (`.md` and `.markdown`, case insensitive) have a **Preview**
+button in the bottom-right corner. Click it to see the source and rendered
+document side by side. Right-click it for **Preview beside editor** or
+**Preview only**; click **Editor** to return to the source. The preview updates
+from the current buffer, including unsaved edits. Switching modes preserves
+the selection, scroll position, and undo history. Each file tab remembers its
+preview mode across sessions, while its contents still load fresh from disk.
+Tables, task lists, code blocks, and local images are supported. Relative links
+open files inside the project; web links open in the browser. Local images are
+limited to 16 MiB. Remote images appear as links, and raw HTML is disabled.
 
 Click **Spaces: 4** in the bottom status bar to open the current file's
 indentation menu. **Indent Using Spaces** and **Indent Using Tabs** let you
@@ -201,7 +250,7 @@ remain unlimited.
 
 A restored tab whose panels do not fit shows a recovery view before starting
 any of its shells. Enlarge the window, hide the sidebar, close individual
-panels with the configured shortcut, or choose **Keep only the active terminal**
+panels with the configured shortcut, or choose **Keep only the active panel**
 to close the other panels in that tab. Resizing never deletes panels or stops
 existing shells; their output continues parsing while the recovery view is
 visible. Saved panels remain available until you explicitly close them.
@@ -224,8 +273,8 @@ The session layout file is limited to 8 MiB.
 
 Settings → Terminal customizes fonts, size, weight, spacing, the cursor, text
 and background colors, selection, the 16 ANSI colors, and search highlights.
-A terminal preview shows the applied appearance. Use an installed font;
-unavailable fonts fall back to the browser's fonts.
+A terminal preview shows the applied appearance. Use an installed font or the
+bundled JetBrains Mono; unavailable fonts fall back to the browser's fonts.
 Colors accept `#RRGGBB` and `#RRGGBBAA` (including opacity).
 
 Advanced settings control scrollback, scrolling speed and animation, tab stops,
@@ -253,11 +302,19 @@ serialized and atomic, and updates reach the main window without restarting
 PTYs. An invalid settings file remains intact until you choose Reset all.
 Application shortcuts do not intercept ordinary text-field editing.
 
+Settings → Keybinds → **Focus follows pointer** controls panel selection.
+It is off by default: typing, pasting, and panel shortcuts use the panel you
+clicked. When enabled, moving the mouse onto a terminal or file panel focuses
+it, and input goes there without another click. Moving outside the panels keeps
+the current panel active. Dialogs, ordinary form fields, text-selection drags,
+and in-progress input composition keep their focus. This preference is saved
+in `keybindings.json` and applies across windows without restarting terminals.
+
 | Shortcut                    | Action                                    |
 | --------------------------- | ----------------------------------------- |
 | Ctrl+D                      | New terminal panel in the current tab     |
 | Ctrl+Shift+D                | New terminal below the active panel       |
-| Ctrl+W                      | Close active terminal panel               |
+| Ctrl+W                      | Close active panel                        |
 | Ctrl+Shift+T                | New tab                                   |
 | Ctrl+Shift+W                | Close active tab                          |
 | Ctrl+S in an editor         | Save the active file                      |
@@ -334,6 +391,7 @@ src/keybindings.ts       Shortcut actions, defaults, and validation
 src/KeybindingsProvider.tsx Shared shortcut state and native synchronization
 src/SettingsWindow.tsx    Settings navigation and keybindings
 src/ThemesPage.tsx        Theme library, import, creation, and selection
+src/ThemeEditor.tsx       Theme token controls, layout presets, and JSON editing
 src/ThemeProvider.tsx     Theme persistence and cross-window synchronization
 src/themes.ts            Theme format and validation
 src/theme-runtime.ts     CSS application, local assets, and terminal appearance

@@ -35,6 +35,21 @@ struct Session {
 }
 
 impl Session {
+    #[cfg(target_os = "linux")]
+    fn foreground_program(&self) -> Option<String> {
+        let pid = self.master.lock().ok()?.process_group_leader()?;
+        if Some(pid as u32) == self.pid {
+            let executable = std::fs::read_link(format!("/proc/{pid}/exe")).ok()?;
+            if executable == std::fs::canonicalize(&self.profile.program).ok()? {
+                return None;
+            }
+        }
+        // Read only the process name, never command arguments or CLI state files.
+        std::fs::read_to_string(format!("/proc/{pid}/comm"))
+            .ok()
+            .map(|name| name.trim_end_matches('\n').to_owned())
+    }
+
     fn stop(&self) {
         if let Ok(mut flow) = self.flow.lock() {
             flow.closed = true;
@@ -377,29 +392,39 @@ pub async fn quote_paths(
     .map_err(|error| error.to_string())?
 }
 
+#[derive(Serialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct TerminalContext {
+    cwd: Option<String>,
+    foreground_program: Option<String>,
+}
+
 #[tauri::command]
-pub fn terminal_directories(
+pub fn terminal_contexts(
     window: WebviewWindow,
     state: State<'_, Terminals>,
-) -> Result<HashMap<String, String>, String> {
+) -> Result<HashMap<String, TerminalContext>, String> {
     main_window(&window)?;
     let sessions = state.sessions.lock().map_err(|error| error.to_string())?;
-    #[allow(unused_mut)]
-    let mut directories = HashMap::new();
+    let mut contexts = HashMap::new();
     for (id, session) in sessions.iter() {
         if session.profile.distro.is_some() {
             continue;
         }
+        #[allow(unused_mut)]
+        let mut context = TerminalContext::default();
         #[cfg(target_os = "linux")]
         if let Some(pid) = session.pid {
-            if let Ok(path) = std::fs::read_link(format!("/proc/{pid}/cwd")) {
-                directories.insert(id.clone(), path.to_string_lossy().into_owned());
-            }
+            context.cwd = std::fs::read_link(format!("/proc/{pid}/cwd"))
+                .ok()
+                .map(|path| path.to_string_lossy().into_owned());
+            context.foreground_program = session.foreground_program();
         }
         #[cfg(not(target_os = "linux"))]
-        let _ = (&directories, &id, &session.pid);
+        let _ = &session.pid;
+        contexts.insert(id.clone(), context);
     }
-    Ok(directories)
+    Ok(contexts)
 }
 
 #[cfg(test)]
@@ -465,6 +490,24 @@ mod tests {
             .unwrap()
             .resize(size(101, 31).unwrap())
             .unwrap();
+        #[cfg(target_os = "linux")]
+        {
+            let session = manager.get("test").unwrap();
+            manager.write("test", "sleep 30\r").unwrap();
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while session.foreground_program().as_deref() != Some("sleep")
+                && Instant::now() < deadline
+            {
+                thread::sleep(Duration::from_millis(10));
+            }
+            assert_eq!(session.foreground_program().as_deref(), Some("sleep"));
+            manager.write("test", "\u{3}").unwrap();
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while session.foreground_program().is_some() && Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(10));
+            }
+            assert_eq!(session.foreground_program(), None);
+        }
         manager
             .write("test", "printf 'UTF8: zażółć\\n'; stty size; exit\r")
             .unwrap();

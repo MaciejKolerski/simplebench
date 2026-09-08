@@ -5,6 +5,7 @@ import {
   ChevronRight,
   GitCommitHorizontal,
   FileCode,
+  Plus,
   Terminal,
   X,
 } from "lucide-react";
@@ -17,6 +18,8 @@ import type { TabMenuAnchor } from "./TabContextMenu";
 interface Props {
   tabs: Tab[];
   activeTabId: string;
+  newTabTitle: string;
+  onNew: () => void;
   onSelect: (id: string) => void;
   onClose: (id: string, action?: TabCloseAction) => void;
   onRename: (tab: Tab) => void;
@@ -29,6 +32,8 @@ interface Props {
 export default function TabBar({
   tabs,
   activeTabId,
+  newTabTitle,
+  onNew,
   onSelect,
   onClose,
   onRename,
@@ -224,6 +229,15 @@ export default function TabBar({
               </button>
             </div>
           ))}
+          <IconButton
+            title={newTabTitle}
+            onClick={() => {
+              dismissMenu();
+              onNew();
+            }}
+          >
+            <Plus size={16} aria-hidden="true" />
+          </IconButton>
         </div>
       </div>
       {(scroll.left || scroll.right) && (

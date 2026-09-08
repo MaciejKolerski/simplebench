@@ -253,5 +253,5 @@ test("failed saves retain working preferences and corrupt files require explicit
     .getByRole("button", { name: "Reset defaults", exact: true })
     .click();
   await expect(page.getByRole("alert")).toHaveCount(0);
-  await expect(page.getByLabel("Font size", { exact: true })).toHaveValue("13");
+  await expect(page.getByLabel("Font size", { exact: true })).toHaveValue("16");
 });

@@ -30,6 +30,7 @@ interface Snapshot {
   status: "starting" | "running" | "exited" | "error";
   title: string;
   titleBusy: boolean;
+  foregroundProgram: string;
   error: string | null;
   cwd: string;
   renderer: "WebGL" | "DOM";
@@ -38,6 +39,10 @@ interface Snapshot {
   searchOpen: boolean;
   composerOpen: boolean;
   blocksOpen: boolean;
+}
+export interface TerminalContext {
+  cwd: string | null;
+  foregroundProgram: string | null;
 }
 type DirectoryListener = (id: string, cwd: string) => void;
 let directoryListener: DirectoryListener = () => {};
@@ -89,6 +94,7 @@ export class TerminalRuntime {
       status: "starting",
       title: "",
       titleBusy: false,
+      foregroundProgram: "",
       error: null,
       cwd,
       renderer: "DOM",
@@ -199,6 +205,13 @@ export class TerminalRuntime {
     };
   };
   readonly getSnapshot = () => this.snapshot;
+  observeForegroundProgram(value: string | null) {
+    const foregroundProgram = this.atPrompt
+      ? ""
+      : (value ?? "").replace(/[\x00-\x1f\x7f-\x9f]/g, "").slice(0, 128);
+    if (foregroundProgram !== this.snapshot.foregroundProgram)
+      this.update({ foregroundProgram });
+  }
   setView(view: "searchOpen" | "composerOpen" | "blocksOpen", open: boolean) {
     this.update({ [view]: open });
   }
@@ -563,8 +576,12 @@ export class TerminalRuntime {
 
   private finishBlock(exitCode?: number) {
     this.atPrompt = true;
-    if (this.snapshot.title || this.snapshot.titleBusy)
-      this.update({ title: "", titleBusy: false });
+    if (
+      this.snapshot.title ||
+      this.snapshot.titleBusy ||
+      this.snapshot.foregroundProgram
+    )
+      this.update({ title: "", titleBusy: false, foregroundProgram: "" });
     if (!this.activeBlock) return;
     const id = this.activeBlock.id;
     this.activeBlock = undefined;
@@ -621,11 +638,15 @@ export function closeTerminals(ids: string[]) {
     runtimes.delete(id);
   }
 }
-export function observedDirectories(directories: Record<string, string>) {
+export function observeTerminalContexts(
+  contexts: Record<string, TerminalContext>,
+) {
   const result: Record<string, string> = {};
-  for (const [id, runtime] of runtimes)
-    if (directories[runtime.sessionId])
-      result[id] = directories[runtime.sessionId];
+  for (const [id, runtime] of runtimes) {
+    const context = contexts[runtime.sessionId];
+    runtime.observeForegroundProgram(context?.foregroundProgram ?? null);
+    if (context?.cwd) result[id] = context.cwd;
+  }
   return result;
 }
 if (import.meta.hot)

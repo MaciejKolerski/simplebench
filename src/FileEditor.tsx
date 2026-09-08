@@ -1,12 +1,22 @@
 import {
+  lazy,
+  Suspense,
   useEffect,
   useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
-import { FileCode, Redo2, RotateCcw, Save, Search, Undo2 } from "lucide-react";
-import type { EditorPosition, FileTab } from "./model";
+import {
+  FileCode,
+  Redo2,
+  RotateCcw,
+  Save,
+  Search,
+  Undo2,
+  X,
+} from "lucide-react";
+import type { EditorPosition, FileTab, MarkdownView } from "./model";
 import { errorMessage } from "./api";
 import { loadedEditor, openEditorDocument } from "./editor-service";
 import type { EditorDocument } from "./editor-runtime";
@@ -14,10 +24,18 @@ import { useKeybindings } from "./KeybindingsProvider";
 import { useEditorPreferences } from "./EditorPreferencesProvider";
 import { shortcutTitle } from "./keybindings";
 import { IconButton, Modal } from "./ui";
+import { isMarkdownFile } from "./markdown";
+import MarkdownPreviewToggle from "./MarkdownPreviewToggle";
+
+const MarkdownPreview = lazy(() => import("./MarkdownPreview"));
 
 interface Props {
   tab: FileTab;
+  active?: boolean;
+  onClose?: () => void;
   onPosition: (position: EditorPosition) => void;
+  onMarkdownView: (view: MarkdownView) => void;
+  onOpenFile: (root: string, relative: string) => void;
 }
 
 export default function FileEditor(props: Props) {
@@ -39,7 +57,7 @@ export default function FileEditor(props: Props) {
     return () => {
       current = false;
     };
-  }, [props.tab.id, attempt, ready]);
+  }, [props.tab.id, props.tab.root, props.tab.relative, attempt, ready]);
   if (!document)
     return (
       <div className="empty-message editor-loading" role="status">
@@ -61,8 +79,12 @@ export default function FileEditor(props: Props) {
 
 function DocumentEditor({
   tab,
+  active = true,
+  onClose,
   document,
   onPosition,
+  onMarkdownView,
+  onOpenFile,
 }: Props & { document: EditorDocument }) {
   const status = useSyncExternalStore(document.subscribe, document.getSnapshot);
   const { bindings } = useKeybindings();
@@ -73,14 +95,32 @@ function DocumentEditor({
     "reload" | "overwrite" | null
   >(null);
   const [busy, setBusy] = useState(false);
+  const markdown = isMarkdownFile(tab.relative);
+  const view = markdown ? (tab.markdownView ?? "editor") : "editor";
+  const sourceVisible = view !== "preview";
+  const wasSourceVisible = useRef(sourceVisible);
   useLayoutEffect(() => {
+    if (!sourceVisible) return;
     document.attach(host.current!, tab);
     return () => {
       const position = document.position();
       document.detach();
       positionCallback.current(position);
     };
-  }, [document, tab.id]);
+  }, [document, tab.id, sourceVisible]);
+  useEffect(() => {
+    const restoringSource = sourceVisible && !wasSourceVisible.current;
+    wasSourceVisible.current = sourceVisible;
+    if (
+      active &&
+      sourceVisible &&
+      (restoringSource ||
+        !host.current
+          ?.closest(".file-editor")
+          ?.contains(window.document.activeElement))
+    )
+      document.focus();
+  }, [active, document, sourceVisible]);
   const save = () =>
     void document
       .save()
@@ -104,24 +144,26 @@ function DocumentEditor({
         <FileCode size={15} />
         <span className="editor-path" title={document.path}>
           {tab.relative}
+          {status.dirty ? " •" : ""}
         </span>
         <div className="editor-actions">
           <IconButton
             title="Undo"
-            disabled={status.readOnly}
+            disabled={status.readOnly || !sourceVisible}
             onClick={() => document.command("undo")}
           >
             <Undo2 size={15} />
           </IconButton>
           <IconButton
             title="Redo"
-            disabled={status.readOnly}
+            disabled={status.readOnly || !sourceVisible}
             onClick={() => document.command("redo")}
           >
             <Redo2 size={15} />
           </IconButton>
           <IconButton
             title={shortcutTitle("Find in file", bindings.findFile)}
+            disabled={!sourceVisible}
             onClick={() => document.command("findFile")}
           >
             <Search size={15} />
@@ -147,6 +189,11 @@ function DocumentEditor({
             <Save size={14} />
             {status.saving ? "Saving…" : "Save"}
           </button>
+          {onClose && (
+            <IconButton title={`Close ${tab.title} panel`} onClick={onClose}>
+              <X size={15} />
+            </IconButton>
+          )}
         </div>
       </header>
       {status.conflict && (
@@ -172,7 +219,28 @@ function DocumentEditor({
           {status.error}
         </div>
       )}
-      <div className="editor-host" ref={host} />
+      <div
+        className={`editor-content${view === "split" ? " is-split" : ""}${markdown ? " has-markdown" : ""}`}
+      >
+        {sourceVisible && <div className="editor-host" ref={host} />}
+        {view !== "editor" && (
+          <Suspense
+            fallback={
+              <div
+                className="empty-message markdown-preview-loading"
+                role="status"
+              >
+                Loading preview…
+              </div>
+            }
+          >
+            <MarkdownPreview document={document} onOpenFile={onOpenFile} />
+          </Suspense>
+        )}
+        {markdown && (
+          <MarkdownPreviewToggle view={view} onChange={onMarkdownView} />
+        )}
+      </div>
       {confirmation && (
         <Modal
           title={

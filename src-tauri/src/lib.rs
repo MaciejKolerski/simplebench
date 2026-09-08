@@ -142,6 +142,7 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(terminal::Terminals::default())
         .manage(files::SessionFile::default())
+        .manage(files::search::ProjectSearch::default())
         .manage(files::editor::EditorFiles::default())
         .manage(keybindings::KeybindingsFile::default())
         .manage(editor_preferences::EditorPreferencesFile::default())
@@ -163,8 +164,15 @@ pub fn run() {
             finish_window_startup,
             open_settings,
             files::list_directory,
+            files::search::search_project,
+            files::search::cancel_project_search,
+            files::operations::file_operation,
+            files::operations::resolve_project_entry,
+            files::operations::open_project_item,
+            files::operations::ignore_project_item,
             files::validate_directory,
             files::preview_file,
+            files::markdown::read_markdown_image,
             files::editor::resolve_editor_file,
             files::editor::read_editor_file,
             files::editor::save_editor_file,
@@ -201,7 +209,7 @@ pub fn run() {
             terminal::close_terminal,
             terminal::reset_terminals,
             terminal::quote_paths,
-            terminal::terminal_directories
+            terminal::terminal_contexts
         ])
         .build(tauri::generate_context!())
         .expect("failed to build SimpleBench");

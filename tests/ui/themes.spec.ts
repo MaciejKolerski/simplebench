@@ -192,7 +192,7 @@ test("a theme updates both windows and hidden terminals without replacing PTYs",
   await preferences.getByRole("button", { name: "Restore DeepMono" }).click();
   await expect
     .poll(async () => (await terminal(page, first)).fontSize)
-    .toBe(13);
+    .toBe(16);
   await expect(page.locator(".statusbar")).toHaveCSS("height", "28px");
   await expect(page.locator('link[data-theme-layer="css"]')).toHaveCount(0);
   expect(

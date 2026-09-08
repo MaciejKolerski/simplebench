@@ -10,24 +10,47 @@ import {
   Folder,
   FolderOpen,
   RefreshCw,
+  Search,
   Terminal,
 } from "lucide-react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { api, errorMessage } from "./api";
-import type { FileEntry } from "./api";
+import type { FileEntry, GitCommitSummary } from "./api";
 import { basename } from "./model";
 import { beginFileDrag } from "./file-drag";
 import { IconButton } from "./ui";
 
+import ProjectSearch from "./ProjectSearch";
+import type { SearchMatch } from "./ProjectSearch";
+import type { FileOperation } from "./explorer-model";
+import { useExplorerActions } from "./ExplorerActions";
+
 interface Props {
   root: string;
   onTerminal: (path: string) => void;
-  onOpenFile: (relative: string) => void;
+  onOpenFile: (relative: string, match?: SearchMatch) => void;
+  repositoryRoot?: string;
+  onOpenCommit: (commit: GitCommitSummary) => void;
+  onOperation: (relative: string, operation: FileOperation) => Promise<boolean>;
   onError: (message: string) => void;
 }
 
 export default function Explorer(props: Props) {
   const [revision, setRevision] = useState(0);
+  const [searchScope, setSearchScope] = useState<string>();
+  const refresh = () => setRevision((revision) => revision + 1);
+  const actions = useExplorerActions({
+    ...props,
+    onSearch: setSearchScope,
+    onRefresh: refresh,
+  });
+  const rootEntry: FileEntry = {
+    name: basename(props.root),
+    relativePath: "",
+    path: props.root,
+    isDirectory: true,
+    isSymlink: false,
+  };
   const [showHidden, setShowHidden] = useState(true);
   const [expanded, setExpanded] = useState(new Set<string>());
   const toggle = (path: string) =>
@@ -37,11 +60,27 @@ export default function Explorer(props: Props) {
       else next.add(path);
       return next;
     });
+  if (searchScope !== undefined)
+    return (
+      <ProjectSearch
+        root={props.root}
+        relative={searchScope}
+        onClose={() => setSearchScope(undefined)}
+        onScope={setSearchScope}
+        onOpenFile={props.onOpenFile}
+      />
+    );
   return (
-    <div className="sidebar-panel explorer-panel">
+    <div className="sidebar-panel explorer-panel" aria-busy={actions.busy}>
       <header className="sidebar-heading">
         <span>EXPLORER</span>
         <div>
+          <IconButton
+            title="Search in project"
+            onClick={() => setSearchScope("")}
+          >
+            <Search size={14} />
+          </IconButton>
           <IconButton
             title={showHidden ? "Hide dotfiles" : "Show dotfiles"}
             onClick={() => setShowHidden(!showHidden)}
@@ -62,7 +101,14 @@ export default function Explorer(props: Props) {
           </IconButton>
         </div>
       </header>
-      <div className="project-tree-heading">
+      <div
+        className="project-tree-heading"
+        tabIndex={0}
+        role="button"
+        aria-label={`Project folder ${rootEntry.name}`}
+        onContextMenu={(event) => actions.onContext(event, rootEntry)}
+        onKeyDown={(event) => actions.onKey(event, rootEntry)}
+      >
         <FolderOpen size={14} />
         <span title={props.root}>{basename(props.root)}</span>
         <IconButton
@@ -81,13 +127,20 @@ export default function Explorer(props: Props) {
           showHidden={showHidden}
           expanded={expanded}
           toggle={toggle}
+          onContext={actions.onContext}
+          onKey={actions.onKey}
         />
       </div>
+      {actions.menu}
+      {actions.dialog}
+      {actions.historyDialog}
     </div>
   );
 }
 
 interface DirectoryProps extends Props {
+  onContext: ReturnType<typeof useExplorerActions>["onContext"];
+  onKey: ReturnType<typeof useExplorerActions>["onKey"];
   relative: string;
   depth: number;
   revision: number;
@@ -168,6 +221,8 @@ function Directory(props: DirectoryProps) {
           <div key={entry.relativePath}>
             <div
               className="tree-row"
+              onContextMenu={(event) => props.onContext(event, entry)}
+              onKeyDown={(event) => props.onKey(event, entry)}
               style={{
                 paddingLeft: `calc(${depth} * var(--tree-indent) + var(--space-10))`,
               }}

@@ -1,14 +1,31 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   layoutFits,
   MIN_PANE_HEIGHT,
   MIN_PANE_WIDTH,
-  panes,
+  layoutPanes,
   SPLIT_DIVIDER_SIZE,
   splitGeometry,
 } from "./model";
-import type { Layout, LayoutSize, ShellProfile, Split } from "./model";
+import type {
+  EditorPosition,
+  Layout,
+  LayoutSize,
+  MarkdownView,
+  ShellProfile,
+  Split,
+} from "./model";
 import TerminalPane from "./TerminalPane";
+
+const FileEditor = lazy(() => import("./FileEditor"));
 
 interface Props {
   layout: Layout;
@@ -18,6 +35,10 @@ interface Props {
   onFocus: (id: string) => void;
   onRestart: (id: string, useProjectDirectory?: boolean) => void;
   onResize: (id: string, ratio: number) => void;
+  onFilePosition: (id: string, position: EditorPosition) => void;
+  onMarkdownView: (id: string, view: MarkdownView) => void;
+  onOpenFile: (root: string, relative: string) => void;
+  onClosePane: (id: string) => void;
 }
 
 interface Bounds extends LayoutSize {
@@ -29,7 +50,7 @@ function layoutPositions(layout: Layout, size: LayoutSize) {
   const positions: { layout: Layout; bounds: Bounds }[] = [];
   const visit = (layout: Layout, bounds: Bounds) => {
     positions.push({ layout, bounds });
-    if (layout.type === "terminal") return;
+    if (layout.type !== "split") return;
     const geometry = splitGeometry(layout, bounds);
     visit(layout.first, { ...bounds, ...geometry.first });
     visit(layout.second, {
@@ -51,8 +72,11 @@ export default function SplitView({
   const root = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<LayoutSize>();
   const [maximizedPaneId, setMaximizedPaneId] = useState<string | null>(null);
-  const maximizedPane = panes(props.layout).find(
-    (pane) => pane.id === maximizedPaneId && pane.id === props.activePaneId,
+  const maximizedPane = layoutPanes(props.layout).find(
+    (pane) =>
+      pane.type === "terminal" &&
+      pane.id === maximizedPaneId &&
+      pane.id === props.activePaneId,
   );
   useEffect(() => {
     if (!maximizedPane) setMaximizedPaneId(null);
@@ -77,7 +101,7 @@ export default function SplitView({
     () =>
       size &&
       (maximizedPane ||
-        props.layout.type === "terminal" ||
+        props.layout.type !== "split" ||
         layoutFits(props.layout, size))
         ? layoutPositions(maximizedPane ?? props.layout, size)
         : null,
@@ -117,6 +141,36 @@ export default function SplitView({
                   }
                 />
               </div>
+            ) : layout.type === "file" ? (
+              <div
+                key={layout.id}
+                className="split-child"
+                style={bounds}
+                data-file-pane-id={layout.id}
+                onPointerDownCapture={() => props.onFocus(layout.id)}
+                onFocusCapture={() => props.onFocus(layout.id)}
+              >
+                <Suspense
+                  fallback={
+                    <div className="empty-message" role="status">
+                      Loading editor…
+                    </div>
+                  }
+                >
+                  <FileEditor
+                    tab={layout}
+                    onOpenFile={props.onOpenFile}
+                    onMarkdownView={(view) =>
+                      props.onMarkdownView(layout.id, view)
+                    }
+                    active={props.activePaneId === layout.id}
+                    onClose={() => props.onClosePane(layout.id)}
+                    onPosition={(position) =>
+                      props.onFilePosition(layout.id, position)
+                    }
+                  />
+                </Suspense>
+              </div>
             ) : (
               <Divider
                 key={layout.id}
@@ -128,22 +182,22 @@ export default function SplitView({
           )
         ) : (
           <div className="layout-recovery" role="status">
-            <h2>This terminal layout needs more space</h2>
+            <h2>This panel layout needs more space</h2>
             <p>
-              This tab has {panes(props.layout).length} panels. Each panel needs
-              at least {MIN_PANE_WIDTH} × {MIN_PANE_HEIGHT} pixels. Enlarge the
-              window or hide the sidebar to show them.
+              This tab has {layoutPanes(props.layout).length} panels. Each panel
+              needs at least {MIN_PANE_WIDTH} × {MIN_PANE_HEIGHT} pixels.
+              Enlarge the window or hide the sidebar to show them.
             </p>
             <p>
               Your layout is preserved. Existing shells keep running; saved
               terminals will start when the layout fits.
             </p>
             <button className="button" onClick={onKeepActivePane}>
-              Keep only the active terminal
+              Keep only the active panel
             </button>
             <p className="muted">
-              This closes the other {panes(props.layout).length - 1} panels in
-              this tab.
+              This closes the other {layoutPanes(props.layout).length - 1}{" "}
+              panels in this tab.
             </p>
           </div>
         ))}

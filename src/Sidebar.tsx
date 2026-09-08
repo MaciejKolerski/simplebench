@@ -1,13 +1,16 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import type { SidebarSide } from "./model";
 import { themeAppliedEvent } from "./theme-runtime";
 
 export default function Sidebar({
+  side,
   width,
   label,
   children,
   onResize,
 }: {
+  side: SidebarSide;
   width: number;
   label: string;
   children: ReactNode;
@@ -54,15 +57,23 @@ export default function Sidebar({
   }, []);
   const resize = (next: number) =>
     onResize(Math.max(minimum(), Math.min(limit(), next)));
+  const direction = side === "left" ? 1 : -1;
   return (
     <>
-      <aside ref={ref} className="sidebar" aria-label={label} style={{ width }}>
+      <aside
+        ref={ref}
+        className="sidebar"
+        aria-label={label}
+        data-side={side}
+        style={{ width, order: side === "left" ? 0 : 4 }}
+      >
         {children}
       </aside>
       <div
         className="sidebar-divider"
+        style={{ order: side === "left" ? 1 : 3 }}
         role="separator"
-        aria-label="Resize sidebar"
+        aria-label={side === "left" ? "Resize sidebar" : "Resize right sidebar"}
         aria-orientation="vertical"
         aria-valuenow={measuredWidth}
         aria-valuemin={minimumWidth}
@@ -71,7 +82,9 @@ export default function Sidebar({
         onKeyDown={(event) => {
           if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
           event.preventDefault();
-          resize(measuredWidth + (event.key === "ArrowLeft" ? -20 : 20));
+          resize(
+            measuredWidth + direction * (event.key === "ArrowLeft" ? -20 : 20),
+          );
         }}
         onPointerDown={(event) => {
           if (event.button !== 0) return;
@@ -87,7 +100,9 @@ export default function Sidebar({
             drag.current &&
             event.currentTarget.hasPointerCapture(event.pointerId)
           )
-            resize(drag.current.width + (event.clientX - drag.current.x));
+            resize(
+              drag.current.width + direction * (event.clientX - drag.current.x),
+            );
         }}
         onPointerUp={(event) => {
           if (event.currentTarget.hasPointerCapture(event.pointerId))

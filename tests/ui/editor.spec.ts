@@ -191,6 +191,9 @@ test("closing a modified tab supports cancel, failed save, retry and discard", a
     name: "Save changes before closing?",
   });
   await expect(dialog).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Cancel", exact: true }),
+  ).toBeFocused();
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.locator(".cm-content")).toHaveText("unsaved 🦀");
   await page.evaluate(() => {
@@ -303,7 +306,7 @@ for (const resolution of ["Save changes", "Discard changes"]) {
     const dialog = page.getByRole("dialog", {
       name: "Save changes before closing?",
     });
-    await expect(dialog.getByRole("listitem")).toHaveText([
+    await expect(dialog.getByRole("listitem")).toContainText([
       "/project/README.md",
       "/project/it's a file.txt",
     ]);

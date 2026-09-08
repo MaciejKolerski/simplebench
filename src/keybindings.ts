@@ -30,23 +30,21 @@ export const actions = [
   {
     id: "newTerminal",
     label: "New terminal",
-    description:
-      "Split the terminal under the pointer side by side, or the active panel when the pointer is outside.",
+    description: "Split the active panel side by side.",
     group: "Terminals",
     shortcut: "Ctrl+KeyD",
   },
   {
     id: "splitVertical",
     label: "Split terminal vertically",
-    description:
-      "Place a terminal below the terminal under the pointer, or the active panel when the pointer is outside.",
+    description: "Place a terminal below the active panel.",
     group: "Terminals",
     shortcut: "Ctrl+Shift+KeyD",
   },
   {
     id: "closeTerminal",
     label: "Close terminal",
-    description: "Close the active terminal panel.",
+    description: "Close the active panel.",
     group: "Terminals",
     shortcut: "Ctrl+KeyW",
   },
@@ -142,6 +140,13 @@ export const actions = [
     shortcut: "Ctrl+Shift+KeyG",
   },
   {
+    id: "toggleWorkspaces",
+    label: "Toggle workspaces",
+    description: "Show or hide the workspace list for all folders.",
+    group: "Workspace",
+    shortcut: null,
+  },
+  {
     id: "openSettings",
     label: "Open settings",
     description: "Open the settings window.",
@@ -155,6 +160,7 @@ export type Keybindings = Record<ActionId, string | null>;
 export interface KeybindingSettings {
   version: 1;
   bindings: Partial<Keybindings>;
+  focusFollowsPointer?: boolean;
 }
 
 const modifiers = ["Ctrl", "Alt", "Meta", "Shift"];
@@ -196,7 +202,7 @@ export function defaultKeybindings(mac = false): Keybindings {
   return Object.fromEntries(
     actions.map(({ id, shortcut }) => [
       id,
-      mac ? shortcut.replace("Ctrl", "Meta") : shortcut,
+      mac ? (shortcut?.replace("Ctrl", "Meta") ?? null) : shortcut,
     ]),
   ) as Keybindings;
 }
@@ -291,7 +297,9 @@ export function restoreKeybindings(value: unknown, mac = false): Keybindings {
     !("bindings" in value) ||
     !value.bindings ||
     typeof value.bindings !== "object" ||
-    Array.isArray(value.bindings)
+    Array.isArray(value.bindings) ||
+    ("focusFollowsPointer" in value &&
+      typeof value.focusFollowsPointer !== "boolean")
   ) {
     throw new Error(
       "The saved keybindings use an unsupported format. The file has been left intact.",
@@ -333,7 +341,7 @@ export function isTextInput(target: EventTarget | null): boolean {
     target instanceof Element &&
     !target.classList.contains("xterm-helper-textarea") &&
     !!target.closest(
-      "input, textarea, select, [contenteditable]:not([contenteditable='false'])",
+      "input, textarea, select, [role='combobox'], [contenteditable]:not([contenteditable='false'])",
     )
   );
 }

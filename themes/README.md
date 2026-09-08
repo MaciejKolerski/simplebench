@@ -406,6 +406,11 @@ the application's CSP. Local CSS imports work relative to their CSS file.
 
 ## Terminal options
 
+The built-in terminal uses bundled JetBrains Mono at 16 CSS pixels (12 points),
+including regular, bold, italic, and bold italic faces. It works offline without
+installing system fonts. Terminal rendering waits for the selected fonts before
+measuring the grid; theme overrides still take precedence.
+
 All 16 ANSI palette entries are configurable under `terminal.colors`:
 `black`, `red`, `green`, `yellow`, `blue`, `magenta`, `cyan`, `white`, and their
 `brightBlack` through `brightWhite` equivalents. Additional entries are

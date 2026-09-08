@@ -1,4 +1,4 @@
-import { fileTabs, updateTab } from "./model";
+import { fileTabs, updateFilePosition } from "./model";
 import type { FileTab, Session } from "./model";
 import type { EditorDocument } from "./editor-runtime";
 import { defaultEditorPreferences } from "./editor-preferences";
@@ -62,6 +62,18 @@ export function loadedEditor(tab: FileTab): EditorDocument | undefined {
   return runtime?.findDocument(tab);
 }
 
+export async function pauseEditorFileOperations() {
+  const documents = runtime?.documents() ?? [];
+  await Promise.all(
+    documents.map((document) => document.pauseFileOperations()),
+  );
+  return () => documents.forEach((document) => document.resumeFileOperations());
+}
+
+export function relocateEditorFiles(previous: Session, next: Session) {
+  runtime?.relocateDocuments(fileTabs(previous), fileTabs(next));
+}
+
 export function closingEditorDocuments(
   ids?: ReadonlySet<string>,
 ): EditorDocument[] {
@@ -77,10 +89,8 @@ export function closingEditorDocuments(
 }
 
 export function captureEditorPositions(session: Session): Session {
-  const current = runtime?.activeEditorPosition();
-  return current
-    ? updateTab(session, current.id, (tab) =>
-        tab.type === "file" ? { ...tab, position: current.position } : tab,
-      )
-    : session;
+  return (runtime?.editorPositions() ?? []).reduce(
+    (state, current) => updateFilePosition(state, current.id, current.position),
+    session,
+  );
 }

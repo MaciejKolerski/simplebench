@@ -71,6 +71,7 @@ export async function mockDesktop(
         emitEvent,
         calls,
         sessions,
+        terminalContexts: {},
         emit,
         failSave: false,
         gitHistory,
@@ -461,7 +462,8 @@ export async function mockDesktop(
             );
             return { cwd: args.request.cwd, profileId: args.request.profileId };
           }
-          if (command === "terminal_directories") return {};
+          if (command === "terminal_contexts")
+            return desktop.__nativeTest.terminalContexts;
           if (command === "quote_paths")
             return args.paths
               .map((path: string) => "'" + path.replaceAll("'", "'\\''") + "'")

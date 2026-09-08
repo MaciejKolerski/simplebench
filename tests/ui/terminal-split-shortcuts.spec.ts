@@ -4,6 +4,15 @@ import { newPane, newProject, newSession, splitPane } from "../../src/model";
 import { mockDesktop } from "./desktop";
 
 async function openSplit(page: Page, ratio = 0.5) {
+  await page.addInitScript(() => {
+    const saved = JSON.parse(
+      localStorage.getItem("test-keybindings") ?? '{"version":1,"bindings":{}}',
+    );
+    localStorage.setItem(
+      "test-keybindings",
+      JSON.stringify({ ...saved, focusFollowsPointer: true }),
+    );
+  });
   const project = newProject("/project", "local:bash");
   const tab = project.workspaces[0].tabs[0];
   if (tab.type !== "terminal") throw new Error("Expected terminal tab");
@@ -22,7 +31,7 @@ async function openSplit(page: Page, ratio = 0.5) {
   const hovered = page.locator(`[data-pane-id="${second.id}"]`);
   await first.click();
   await hovered.hover();
-  await expect(first.locator(".xterm-helper-textarea")).toBeFocused();
+  await expect(hovered.locator(".xterm-helper-textarea")).toBeFocused();
   return { first, hovered };
 }
 
@@ -37,7 +46,7 @@ async function calls(page: Page, command: string) {
 }
 
 for (const shortcut of ["Control+d", "Control+Shift+d"]) {
-  test(`${shortcut} splits the hovered terminal while typing keeps the clicked terminal focused`, async ({
+  test(`${shortcut} splits the hovered terminal in pointer focus mode`, async ({
     page,
   }, testInfo) => {
     await page.emulateMedia({
@@ -54,13 +63,12 @@ for (const shortcut of ["Control+d", "Control+Shift+d"]) {
           .join(""),
       )
       .toBe("pwd");
-    await expect(first.locator(".xterm-helper-textarea")).toBeFocused();
+    await expect(hovered.locator(".xterm-helper-textarea")).toBeFocused();
 
     await page.keyboard.press(shortcut);
     await expect(page.locator("[data-pane-id]")).toHaveCount(3);
     expect(await first.boundingBox()).toEqual(originalBounds);
-    const added = page.locator(".terminal-pane.is-active");
-    await expect(added.locator(".xterm-helper-textarea")).toBeFocused();
+    const added = page.locator("[data-pane-id]").last();
     const addedBounds = (await added.boundingBox())!;
     if (shortcut === "Control+d") {
       expect(addedBounds.x).toBeGreaterThan(hoveredBounds.x);
@@ -89,6 +97,7 @@ test("split shortcuts fall back to the active terminal after the pointer leaves 
   page,
 }) => {
   const { first, hovered } = await openSplit(page);
+  await first.click();
   const originalBounds = (await first.boundingBox())!;
   const hoveredBounds = await hovered.boundingBox();
   await page.locator(".sidebar-heading").hover();
@@ -109,6 +118,71 @@ test("a hovered terminal without room does not split the larger active terminal"
   await expect(page.locator("[data-pane-id]")).toHaveCount(2);
   expect(await first.boundingBox()).toEqual(originalBounds);
   expect(await hovered.boundingBox()).toEqual(hoveredBounds);
-  await expect(first.locator(".xterm-helper-textarea")).toBeFocused();
+  await expect(hovered.locator(".xterm-helper-textarea")).toBeFocused();
   expect(await calls(page, "write_terminal")).toHaveLength(0);
 });
+
+for (const key of ["w", "q"]) {
+  test(`Ctrl+${key} closes the hovered terminal and preserves the surviving shell`, async ({
+    page,
+  }, testInfo) => {
+    if (key === "q")
+      await page.addInitScript(() => {
+        localStorage.setItem(
+          "test-keybindings",
+          JSON.stringify({
+            version: 1,
+            bindings: { closeTerminal: "Ctrl+KeyQ" },
+          }),
+        );
+      });
+    const { first, hovered } = await openSplit(page);
+    await expect
+      .poll(async () => (await calls(page, "start_terminal")).length)
+      .toBe(2);
+    const started = await calls(page, "start_terminal");
+    const hoveredSession = started.find(
+      (call: any) => call.args.request.cwd === "/project/second",
+    ).args.request.id;
+    await page.keyboard.down("Control");
+    await page.keyboard.down(key);
+    await expect(hovered).toHaveCount(0);
+    await expect(first.locator(".xterm-helper-textarea")).toBeFocused();
+    await page.keyboard.down(key);
+    await page.keyboard.up(key);
+    await page.keyboard.up("Control");
+    await expect(page.locator("[data-pane-id]")).toHaveCount(1);
+    await expect
+      .poll(async () =>
+        (await calls(page, "close_terminal")).map((call: any) => call.args.id),
+      )
+      .toEqual([hoveredSession]);
+    expect(await calls(page, "start_terminal")).toEqual(started);
+    expect(await calls(page, "write_terminal")).toHaveLength(0);
+    await page.keyboard.type("pwd");
+    await expect
+      .poll(async () =>
+        (await calls(page, "write_terminal"))
+          .map((call: any) => call.args.data)
+          .join(""),
+      )
+      .toBe("pwd");
+    await page.screenshot({ path: testInfo.outputPath("hovered-close.png") });
+  });
+}
+
+for (const outside of [".sidebar-heading", ".split-divider"]) {
+  test(`Ctrl+W closes the active terminal when the pointer is over ${outside}`, async ({
+    page,
+  }) => {
+    const { first, hovered } = await openSplit(page);
+    await page.locator(outside).hover();
+    await first.click();
+    await page.locator(outside).hover();
+    await page.keyboard.press("Control+w");
+    await expect(first).toHaveCount(0);
+    await expect(hovered.locator(".xterm-helper-textarea")).toBeFocused();
+    await expect(page.locator("[data-pane-id]")).toHaveCount(1);
+    expect(await calls(page, "write_terminal")).toHaveLength(0);
+  });
+}

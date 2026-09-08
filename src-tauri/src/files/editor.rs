@@ -20,7 +20,7 @@ struct FileWatch {
 
 #[derive(Default)]
 pub struct EditorFiles {
-    writes: Mutex<()>,
+    pub(super) writes: Mutex<()>,
     watch: Mutex<FileWatch>,
     paths: Arc<Mutex<HashSet<PathBuf>>>,
 }
@@ -111,7 +111,7 @@ fn read_bytes(path: &Path) -> Result<(Vec<u8>, fs::Metadata), EditorError> {
     Ok((bytes, metadata))
 }
 
-fn decode(bytes: &[u8]) -> Result<(String, Encoding), EditorError> {
+pub(super) fn decode(bytes: &[u8]) -> Result<(String, Encoding), EditorError> {
     let invalid = || {
         EditorError::new(
             "unsupported",

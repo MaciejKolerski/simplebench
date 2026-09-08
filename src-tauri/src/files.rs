@@ -8,6 +8,9 @@ use std::{
 use tauri::{Manager, State, WebviewWindow};
 
 pub mod editor;
+pub mod markdown;
+pub mod operations;
+pub mod search;
 
 #[derive(Default)]
 pub struct SessionFile(pub Mutex<()>);

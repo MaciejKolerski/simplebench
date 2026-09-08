@@ -221,6 +221,41 @@ test("terminal titles work without any shell reports", async ({ page }) => {
   ]);
 });
 
+test("a foreground process supplies a fallback without replacing a published title", async ({
+  page,
+}, testInfo) => {
+  const { first } = await setup(page);
+  const pane = page.locator(`[data-pane-id="${first}"]`);
+  const title = pane.locator(".terminal-title");
+  await emit(page, first, "agy\r\n\x1b]133;C\x07");
+  await page.evaluate(async (id) => {
+    const { runningTerminal } = await import("/src/terminal-runtime.ts");
+    (window as any).__nativeTest.terminalContexts[
+      runningTerminal(id)!.sessionId
+    ] = { cwd: "/project", foregroundProgram: "agy" };
+  }, first);
+  await expect(title).toHaveText("agy");
+  await pane.locator(".terminal-title-box").screenshot({
+    path: testInfo.outputPath("foreground-program.png"),
+  });
+  await emit(page, first, "\x1b]2;Rozmowa udostępniona przez CLI\x07");
+  await expect(title).toHaveText("Rozmowa udostępniona przez CLI");
+  await emit(page, first, "\x1b]2;\x07");
+  await expect(title).toHaveText("agy");
+  await emit(page, first, "\x1b]133;D;0\x07\x1b]133;A\x07");
+  await expect(title).toHaveCount(0);
+  const observations = () =>
+    page.evaluate(
+      () =>
+        (window as any).__nativeTest.calls.filter(
+          (call: any) => call.command === "terminal_contexts",
+        ).length,
+    );
+  const before = await observations();
+  await expect.poll(observations).toBeGreaterThan(before);
+  await expect(title).toHaveCount(0);
+});
+
 for (const colorScheme of ["dark", "light"] as const) {
   test(`CLI activity uses a stable SVG spinner in ${colorScheme} mode`, async ({
     page,
@@ -437,3 +472,57 @@ for (const colorScheme of ["dark", "light"] as const) {
     ).toHaveCount(0);
   });
 }
+
+test("maximizing a terminal retains a hidden editor's unsaved text and undo history", async ({
+  page,
+}) => {
+  const project = newProject("/project", "local:bash");
+  const tab = project.workspaces[0].tabs[0];
+  if (tab.type !== "terminal") throw new Error("Expected terminal tab");
+  tab.layout = {
+    type: "split",
+    id: newId(),
+    axis: "horizontal",
+    ratio: 0.5,
+    first: tab.layout,
+    second: {
+      type: "file",
+      id: newId(),
+      title: "main.ts",
+      root: "/project",
+      relative: "main.ts",
+    },
+  };
+  await mockDesktop(page, false, {
+    ...newSession(),
+    projects: [project],
+    activeProjectId: project.id,
+  });
+  await page.goto("/");
+  await expect(page.locator(".xterm-screen")).toBeVisible();
+  await expect.poll(() => buffer(page, tab.activePaneId)).toContain("bash $ ");
+  await emit(page, tab.activePaneId, "codex\r\n\x1b]133;C\x07\x1b]2;Codex\x07");
+  const editor = page.locator(".cm-content");
+  await expect(editor).toBeVisible();
+  const original = await editor.innerText();
+  await editor.click();
+  await page.keyboard.press("Control+End");
+  await page.keyboard.insertText("\nUnsaved work");
+  await expect(editor).toContainText("Unsaved work");
+  await page
+    .getByRole("button", { name: "Maximize terminal", exact: true })
+    .click();
+  await expect(editor).toHaveCount(0);
+  await page.getByRole("button", { name: "Restore terminal size" }).click();
+  await expect(editor).toContainText("Unsaved work");
+  await editor.click();
+  await page.keyboard.press("Control+z");
+  await expect.poll(() => editor.innerText()).toBe(original);
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.calls.filter(
+        (call: any) => call.command === "save_editor_file",
+      ),
+    ),
+  ).toEqual([]);
+});

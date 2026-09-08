@@ -1,7 +1,9 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useId, useRef, useState } from "react";
+import { CircleAlert, FileText, Save } from "lucide-react";
 import { closingEditorDocuments } from "./editor-service";
 import type { EditorDocument } from "./editor-runtime";
 import { errorMessage } from "./api";
+import { basename } from "./model";
 import { Modal } from "./ui";
 
 interface Request {
@@ -10,10 +12,12 @@ interface Request {
 }
 
 export function useEditorCloseGuard() {
+  const descriptionId = useId();
   const [request, setRequest] = useState<Request>();
   const current = useRef<Request>(undefined);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const cancelButton = useRef<HTMLButtonElement>(null);
   const confirm = useCallback((ids?: ReadonlySet<string>): Promise<boolean> => {
     if (current.current) return Promise.resolve(false);
     const documents = closingEditorDocuments(ids);
@@ -52,33 +56,55 @@ export function useEditorCloseGuard() {
   return {
     confirm,
     dialog: request && (
-      <Modal title="Save changes before closing?" onClose={() => finish(false)}>
-        <p>
-          These files have unsaved changes. Save them, discard the changes, or
-          return to the editor.
-        </p>
-        <ul className="editor-unsaved-files">
-          {request.documents.map((document) => (
-            <li key={document.path} title={document.path}>
-              {document.path}
-            </li>
-          ))}
-        </ul>
-        {error && (
-          <p className="text-error" role="alert">
-            {error}
+      <Modal
+        title="Save changes before closing?"
+        className="editor-close-dialog"
+        descriptionId={descriptionId}
+        initialFocus={cancelButton}
+        onClose={() => finish(false)}
+      >
+        <div className="editor-close-content">
+          <p id={descriptionId} className="editor-close-description">
+            {request.documents.length === 1
+              ? "This file has unsaved changes."
+              : `${request.documents.length} files have unsaved changes.`}{" "}
+            Your edits will be lost if you discard them.
           </p>
-        )}
-        <div className="dialog-actions">
+          <ul
+            className="editor-unsaved-files"
+            aria-label="Files with unsaved changes"
+          >
+            {request.documents.map((document) => (
+              <li key={document.path} title={document.path}>
+                <FileText size={18} aria-hidden="true" />
+                <span className="editor-unsaved-file">
+                  <span className="editor-unsaved-name">
+                    {basename(document.path)}
+                  </span>
+                  <span className="editor-unsaved-path">{document.path}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+          {error && (
+            <p className="editor-close-error" role="alert">
+              <CircleAlert size={16} aria-hidden="true" />
+              <span>{error}</span>
+            </p>
+          )}
+        </div>
+        <div className="editor-close-actions">
           <button
-            className="button"
-            autoFocus
+            ref={cancelButton}
+            type="button"
+            className="button editor-close-cancel"
             disabled={busy}
             onClick={() => finish(false)}
           >
             Cancel
           </button>
           <button
+            type="button"
             className="button"
             disabled={busy}
             onClick={() => finish(true)}
@@ -86,10 +112,12 @@ export function useEditorCloseGuard() {
             Discard changes
           </button>
           <button
+            type="button"
             className="button button-primary"
             disabled={busy}
             onClick={() => void save()}
           >
+            <Save size={14} aria-hidden="true" />
             {busy ? "Saving…" : "Save changes"}
           </button>
         </div>

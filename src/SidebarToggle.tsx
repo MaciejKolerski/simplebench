@@ -1,0 +1,170 @@
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { Check, GitBranch, Layers, PanelLeft, PanelRight } from "lucide-react";
+import type { SidebarPanel, SidebarSide } from "./model";
+import { IconButton } from "./ui";
+
+export default function SidebarToggle({
+  panel,
+  side,
+  active,
+  title,
+  onToggle,
+  onMove,
+}: {
+  panel: SidebarPanel;
+  side: SidebarSide;
+  active: boolean;
+  title: string;
+  onToggle: () => void;
+  onMove: (side: SidebarSide) => void;
+}) {
+  const [anchor, setAnchor] = useState<{ x: number; y: number }>();
+  const trigger = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLDivElement>(null);
+  const name =
+    panel === "files"
+      ? "Explorer"
+      : panel === "git"
+        ? "Source Control"
+        : "Workspaces";
+  const dismiss = () => {
+    setAnchor(undefined);
+    trigger.current?.focus({ preventScroll: true });
+  };
+  useLayoutEffect(() => {
+    if (!anchor) return;
+    const element = menu.current!;
+    const bounds = element.getBoundingClientRect();
+    element.style.left = `${Math.max(8, Math.min(anchor.x, innerWidth - bounds.width - 8))}px`;
+    element.style.top = `${Math.max(8, Math.min(anchor.y, innerHeight - bounds.height - 8))}px`;
+    element.querySelector<HTMLButtonElement>('[aria-checked="true"]')?.focus();
+  }, [anchor]);
+  useEffect(() => {
+    if (!anchor) return;
+    const close = () => setAnchor(undefined);
+    const outside = (event: Event) => {
+      if (!menu.current?.contains(event.target as Node)) close();
+    };
+    document.addEventListener("pointerdown", outside);
+    document.addEventListener("scroll", outside, true);
+    window.addEventListener("resize", close);
+    window.addEventListener("blur", close);
+    return () => {
+      document.removeEventListener("pointerdown", outside);
+      document.removeEventListener("scroll", outside, true);
+      window.removeEventListener("resize", close);
+      window.removeEventListener("blur", close);
+    };
+  }, [anchor]);
+  return (
+    <>
+      <IconButton
+        title={title}
+        aria-pressed={active}
+        aria-haspopup="menu"
+        aria-expanded={!!anchor}
+        onClick={onToggle}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          trigger.current = event.currentTarget;
+          const bounds = event.currentTarget.getBoundingClientRect();
+          setAnchor({
+            x: event.clientX || bounds.left,
+            y: event.clientY || bounds.top,
+          });
+        }}
+        onKeyDown={(event) => {
+          if (
+            event.key === "ContextMenu" ||
+            (event.shiftKey && event.key === "F10")
+          ) {
+            event.preventDefault();
+            trigger.current = event.currentTarget;
+            const bounds = event.currentTarget.getBoundingClientRect();
+            setAnchor({ x: bounds.left, y: bounds.top });
+          }
+        }}
+      >
+        {panel === "workspaces" ? (
+          <Layers size={15} />
+        ) : panel === "git" ? (
+          <GitBranch size={15} />
+        ) : side === "left" ? (
+          <PanelLeft size={15} />
+        ) : (
+          <PanelRight size={15} />
+        )}
+      </IconButton>
+      {anchor &&
+        createPortal(
+          <div
+            ref={menu}
+            className="menu sidebar-context-menu"
+            role="menu"
+            aria-label={`${name} panel position`}
+            style={{ left: anchor.x, top: anchor.y }}
+            onContextMenu={(event) => event.preventDefault()}
+            onBlur={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget))
+                setAnchor(undefined);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Escape" || event.key === "Tab") {
+                if (event.key === "Escape") event.preventDefault();
+                event.stopPropagation();
+                dismiss();
+              } else if (
+                ["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)
+              ) {
+                event.preventDefault();
+                const items = [
+                  ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                    "button",
+                  ),
+                ];
+                const index = items.indexOf(
+                  document.activeElement as HTMLButtonElement,
+                );
+                items[
+                  event.key === "Home"
+                    ? 0
+                    : event.key === "End"
+                      ? 1
+                      : (index + 1) % 2
+                ]?.focus();
+              }
+            }}
+          >
+            {(["left", "right"] as const).map((position) => (
+              <button
+                key={position}
+                type="button"
+                role="menuitemradio"
+                className="menu-item"
+                aria-checked={side === position}
+                tabIndex={-1}
+                onClick={() => {
+                  dismiss();
+                  onMove(position);
+                }}
+              >
+                {position === "left" ? (
+                  <PanelLeft size={15} />
+                ) : (
+                  <PanelRight size={15} />
+                )}
+                <span>
+                  {position === "left"
+                    ? "Panel on the left"
+                    : "Panel on the right"}
+                </span>
+                {side === position && <Check size={14} />}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
+    </>
+  );
+}

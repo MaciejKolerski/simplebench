@@ -31,7 +31,7 @@ fn command(root: &Path, args: &[&str]) -> Result<Output, String> {
         .map_err(|error| format!("Cannot run Git: {error}"))
 }
 
-fn checked(root: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
+pub(crate) fn checked(root: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
     let output = command(root, args)?;
     if !output.status.success() {
         return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
@@ -51,7 +51,7 @@ pub struct Change {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitStatus {
-    root: String,
+    pub(crate) root: String,
     branch: String,
     changes: Vec<Change>,
 }

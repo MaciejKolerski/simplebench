@@ -62,7 +62,7 @@ const buffers = new Map<string, EditorDocument>();
 const aliases = new Map<string, EditorDocument>();
 const opening = new Map<string, Promise<EditorDocument>>();
 let retained = new Set<string>();
-let activeView: { id: string; document: EditorDocument } | undefined;
+const attachedViews = new Map<EditorDocument, string>();
 let notifyAll = () => {};
 let watchQueue = Promise.resolve();
 let listening: Promise<unknown> | undefined;
@@ -142,12 +142,38 @@ export function retainDocuments(tabs: FileTab[]) {
 }
 
 export const documents = () => [...buffers.values()];
+export function relocateDocuments(previous: FileTab[], next: FileTab[]) {
+  const before = new Map(
+    previous.map((tab) => [
+      tab.id,
+      { tab, document: aliases.get(editorFileKey(tab)) },
+    ]),
+  );
+  const changes = next.flatMap((tab) => {
+    const old = before.get(tab.id);
+    return old?.document && editorFileKey(old.tab) !== editorFileKey(tab)
+      ? [{ tab, old }]
+      : [];
+  });
+  for (const { old } of changes) aliases.delete(editorFileKey(old.tab));
+  for (const { tab, old } of changes) {
+    const document = old.document!;
+    buffers.delete(document.path);
+    document.relocate(tab);
+    buffers.set(document.path, document);
+    aliases.set(editorFileKey(tab), document);
+  }
+  if (changes.length) {
+    updateWatches();
+    notifyAll();
+  }
+}
 export const findDocument = (tab: FileTab) => aliases.get(editorFileKey(tab));
-export const activeEditorPosition = () =>
-  activeView && {
-    id: activeView.id,
-    position: activeView.document.position(),
-  };
+export const editorPositions = () =>
+  [...attachedViews].map(([document, id]) => ({
+    id,
+    position: document.position(),
+  }));
 
 export function openDocument(tab: FileTab): Promise<EditorDocument> {
   const key = editorFileKey(tab);
@@ -184,8 +210,10 @@ export function openDocument(tab: FileTab): Promise<EditorDocument> {
 }
 
 export class EditorDocument {
-  readonly location: { root: string; relative: string };
-  readonly path: string;
+  location: { root: string; relative: string };
+  path: string;
+  private fileOperationsPaused = false;
+  private pendingMatch?: { line: number; column: number; length: number };
   state: EditorState;
   private view?: EditorView;
   private savedDoc: Text;
@@ -213,6 +241,7 @@ export class EditorDocument {
   private dirtyTimer?: ReturnType<typeof setTimeout>;
   private restoreFrame?: number;
   private listeners = new Set<() => void>();
+  private textListeners = new Set<() => void>();
   private snapshot: EditorSnapshot;
 
   constructor(tab: FileTab, data: DiskFile) {
@@ -304,7 +333,10 @@ export class EditorDocument {
       (!definition && mode !== "auto" && mode !== "Plain text")
     )
       return;
-    if (mode !== this.snapshot.languageMode) {
+    if (
+      mode !== this.snapshot.languageMode ||
+      definition !== this.languageDefinition
+    ) {
       ++this.languageVersion;
       this.languageDefinition = definition;
       this.syntaxDefinition = undefined;
@@ -403,6 +435,13 @@ export class EditorDocument {
     this.view?.focus();
   }
   getSnapshot = () => this.snapshot;
+  getTextSnapshot = () => this.state.doc;
+  subscribeText = (listener: () => void) => {
+    this.textListeners.add(listener);
+    return () => {
+      this.textListeners.delete(listener);
+    };
+  };
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
     return () => {
@@ -448,8 +487,8 @@ export class EditorDocument {
         this.afterTransactions(transactions);
       },
     });
-    activeView = { id: tab.id, document: this };
-    if (position) {
+    attachedViews.set(this, tab.id);
+    if (position && !this.pendingMatch) {
       this.view.requestMeasure({
         read: () => null,
         write: () => {
@@ -463,14 +502,17 @@ export class EditorDocument {
       });
     }
     this.updateCursor();
-    this.view.focus();
+    if (this.pendingMatch) {
+      this.selectMatch(this.pendingMatch);
+      this.pendingMatch = undefined;
+    }
     return this.view;
   }
 
   detach() {
     if (this.restoreFrame !== undefined)
       cancelAnimationFrame(this.restoreFrame);
-    if (activeView?.document === this) activeView = undefined;
+    attachedViews.delete(this);
     this.view?.destroy();
     this.view = undefined;
   }
@@ -496,6 +538,7 @@ export class EditorDocument {
   }
   private afterTransactions(transactions: readonly Transaction[]) {
     if (transactions.some((transaction) => transaction.docChanged)) {
+      for (const listener of this.textListeners) listener();
       this.publish({ dirty: true });
       clearTimeout(this.dirtyTimer);
       this.dirtyTimer = setTimeout(
@@ -551,6 +594,10 @@ export class EditorDocument {
   }
 
   save(overwrite = false): Promise<void> {
+    if (this.fileOperationsPaused)
+      return Promise.reject(
+        new Error("A file operation is in progress. Please try saving again."),
+      );
     if (this.savePromise)
       return this.savePromise.then(() =>
         this.dirty ? this.save(overwrite) : undefined,
@@ -610,12 +657,50 @@ export class EditorDocument {
   }
 
   scheduleRefresh() {
-    if (this.disposed) return;
+    if (this.disposed || this.fileOperationsPaused) return;
     clearTimeout(this.refreshTimer);
     this.refreshTimer = setTimeout(() => void this.refresh(), 150);
   }
+  async pauseFileOperations() {
+    this.fileOperationsPaused = true;
+    ++this.reloadVersion;
+    clearTimeout(this.refreshTimer);
+    await this.savePromise?.catch(() => {});
+  }
+  resumeFileOperations() {
+    this.fileOperationsPaused = false;
+    this.scheduleRefresh();
+  }
+  relocate(tab: FileTab) {
+    ++this.reloadVersion;
+    this.location = { root: tab.root, relative: tab.relative };
+    const separator = tab.root.includes("\\") ? "\\" : "/";
+    this.path =
+      tab.root.replace(/[\\/]$/, "") +
+      separator +
+      tab.relative.replace(/[\\/]/g, separator);
+    if (this.diskError === this.snapshot.error) this.publish({ error: "" });
+    this.diskError = "";
+    if (this.snapshot.languageMode === "auto") this.setLanguage("auto");
+  }
+  selectMatch(match: { line: number; column: number; length: number }) {
+    if (!this.view) {
+      this.pendingMatch = match;
+      return;
+    }
+    const line = this.state.doc.line(
+      Math.max(1, Math.min(match.line, this.state.doc.lines)),
+    );
+    const anchor = Math.min(line.to, line.from + Math.max(0, match.column - 1));
+    const head = Math.min(line.to, anchor + match.length);
+    this.dispatch({
+      selection: EditorSelection.single(anchor, head),
+      effects: EditorView.scrollIntoView(anchor, { y: "center" }),
+    });
+    this.view.focus();
+  }
   private async refresh() {
-    if (this.disposed) return;
+    if (this.disposed || this.fileOperationsPaused) return;
     if (this.checking || this.savePromise) {
       this.recheck = true;
       return;
@@ -648,6 +733,7 @@ export class EditorDocument {
         this.publish({ conflict: true, error: "" });
       } else this.replaceFromDisk(data);
     } catch (error) {
+      if (this.disposed || reloadVersion !== this.reloadVersion) return;
       this.diskError = `Cannot check the file on disk: ${errorMessage(error)}`;
       this.reportError(this.diskError);
     } finally {
@@ -681,6 +767,7 @@ export class EditorDocument {
     this.savedEndings = this.state.field(lineEndings);
     this.external = undefined;
     this.view?.setState(this.state);
+    for (const listener of this.textListeners) listener();
     if (this.view) {
       this.view.scrollDOM.scrollTop = position.scrollTop;
       this.view.scrollDOM.scrollLeft = position.scrollLeft;
@@ -699,6 +786,7 @@ export class EditorDocument {
     this.updateCursor();
   }
   async reload() {
+    if (this.fileOperationsPaused) return;
     if (this.savePromise) await this.savePromise;
     const version = ++this.reloadVersion;
     const data = await api<DiskFile>("read_editor_file", this.location);
@@ -715,5 +803,6 @@ export class EditorDocument {
     clearTimeout(this.dirtyTimer);
     this.detach();
     this.listeners.clear();
+    this.textListeners.clear();
   }
 }
