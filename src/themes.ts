@@ -84,6 +84,11 @@ export interface ThemeManifest {
   author?: string;
   description?: string;
   appearance?: "dark" | "light";
+  layout?: {
+    tabs?: "inline" | "above" | "below";
+    statusbar?: "top" | "bottom";
+    settingsNavigation?: "left" | "right" | "top" | "bottom";
+  };
   tokens?: Record<string, string>;
   styles?: Record<string, Record<string, string>>;
   assets?: Record<string, string>;
@@ -197,6 +202,7 @@ export function parseTheme(value: unknown): ThemeManifest {
       "author",
       "description",
       "appearance",
+      "layout",
       "tokens",
       "styles",
       "assets",
@@ -217,6 +223,18 @@ export function parseTheme(value: unknown): ThemeManifest {
     !["dark", "light"].includes(data.appearance as string)
   )
     throw new Error("appearance must be dark or light.");
+  if (data.layout !== undefined) {
+    const layout = object(data.layout, "layout");
+    const options = {
+      tabs: ["inline", "above", "below"],
+      statusbar: ["top", "bottom"],
+      settingsNavigation: ["left", "right", "top", "bottom"],
+    };
+    keys(layout, Object.keys(options), "layout");
+    for (const [key, values] of Object.entries(options))
+      if (layout[key] !== undefined && !values.includes(layout[key] as string))
+        throw new Error(`Invalid layout.${key}.`);
+  }
   if (data.stylesheet !== undefined && data.stylesheets !== undefined)
     throw new Error(
       "Use stylesheets or the legacy stylesheet field, not both.",

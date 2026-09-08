@@ -834,6 +834,462 @@
           "minLength": 1,
           "maxLength": 2000,
           "default": "calc(70px * var(--density))"
+        },
+        "--app-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "0px"
+        },
+        "--app-gap": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "0px"
+        },
+        "--work-area-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "0px"
+        },
+        "--work-area-gap": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "0px"
+        },
+        "--stage-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "0px"
+        },
+        "--pane-spacing": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "0px"
+        },
+        "--sidebar-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "0px"
+        },
+        "--radius-sidebar": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "0px"
+        },
+        "--sidebar-section-gap": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "0px"
+        },
+        "--radius-editor": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--radius-pane)"
+        },
+        "--git-section-margin": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "0px"
+        },
+        "--settings-gap": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "0px"
+        },
+        "--settings-layout-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "0px"
+        },
+        "--titlebar-padding-left": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-8)"
+        },
+        "--titlebar-gap": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-3)"
+        },
+        "--tab-bar-gap": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-6)"
+        },
+        "--tab-gap": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-4)"
+        },
+        "--tab-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "0 var(--space-5) 0 var(--space-9)"
+        },
+        "--sidebar-heading-height": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "38px"
+        },
+        "--sidebar-heading-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-5) var(--space-10) var(--space-5) var(--space-16)"
+        },
+        "--tree-heading-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-3) var(--space-10) var(--space-3) var(--space-14)"
+        },
+        "--tree-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-4) 0 var(--space-16)"
+        },
+        "--tree-entry-gap": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-6)"
+        },
+        "--terminal-heading-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-4) var(--space-8) 0"
+        },
+        "--terminal-heading-align": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "center"
+        },
+        "--terminal-title-gap": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-8)"
+        },
+        "--editor-heading-gap": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-12)"
+        },
+        "--editor-heading-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-4) var(--space-12)"
+        },
+        "--editor-heading-height": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "38px"
+        },
+        "--editor-font-family": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--font-family-mono)"
+        },
+        "--editor-font-size": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--font-size-13)"
+        },
+        "--editor-line-height": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "1.6"
+        },
+        "--editor-content-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-12) 0"
+        },
+        "--editor-line-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "0 var(--space-12)"
+        },
+        "--markdown-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-24) clamp(16px, 4%, 48px) 72px"
+        },
+        "--markdown-max-width": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "80ch"
+        },
+        "--markdown-line-height": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "1.7"
+        },
+        "--button-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-7) var(--space-12)"
+        },
+        "--button-gap": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-7)"
+        },
+        "--menu-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-7)"
+        },
+        "--menu-item-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-8)"
+        },
+        "--menu-item-gap": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-8)"
+        },
+        "--statusbar-gap": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-10)"
+        },
+        "--statusbar-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "0 var(--space-12) 0 var(--space-6)"
+        },
+        "--settings-nav-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-18) var(--space-10)"
+        },
+        "--settings-nav-item-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-9) var(--space-12)"
+        },
+        "--settings-nav-item-gap": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-9)"
+        },
+        "--settings-heading-margin": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-22)"
+        },
+        "--settings-row-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-14) 0"
+        },
+        "--editor-setting-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-18) 0"
+        },
+        "--theme-library-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-18)"
+        },
+        "--theme-card-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-16)"
+        },
+        "--theme-list-gap": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-10)"
+        },
+        "--git-toolbar-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-5) var(--space-8)"
+        },
+        "--git-repository-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-5) var(--space-10)"
+        },
+        "--git-commit-flex": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "0 0 clamp(112px, 21vh, 184px)"
+        },
+        "--git-commit-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-10)"
+        },
+        "--git-file-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "0 var(--space-5) 0 var(--space-8)"
+        },
+        "--git-file-gap": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-4)"
+        },
+        "--commit-file-list-flex": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "0 0 26%"
+        },
+        "--modal-heading-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-10) var(--space-12) var(--space-10) var(--space-18)"
+        },
+        "--modal-content-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-18)"
+        },
+        "--titlebar-border-width": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--border-width)"
+        },
+        "--statusbar-border-width": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--border-width)"
+        },
+        "--tab-border-width": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--border-width)"
+        },
+        "--control-border-width": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--border-width)"
+        },
+        "--menu-border-width": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--border-width)"
+        },
+        "--modal-border-width": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--border-width)"
+        },
+        "--editor-heading-border-width": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--border-width)"
+        },
+        "--pane-border": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "0px solid var(--color-outline)"
+        },
+        "--pane-shadow": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "none"
+        },
+        "--editor-border": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--pane-border)"
+        },
+        "--editor-shadow": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--pane-shadow)"
+        },
+        "--editor-overflow": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "hidden"
+        },
+        "--input-padding": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "var(--space-8) var(--space-10)"
+        },
+        "--sidebar-max-width": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000,
+          "default": "520px"
         }
       }
     },
@@ -1536,6 +1992,26 @@
         "pattern": "\\.css$"
       },
       "description": "Local CSS files relative to the theme folder, loaded automatically in this order after JSON styles. Omit or use an empty array for JSON-only themes."
+    },
+    "layout": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tabs": {
+          "enum": ["inline", "above", "below"],
+          "default": "inline",
+          "description": "Place tabs in the title bar or in their own row above or below its controls."
+        },
+        "statusbar": {
+          "enum": ["top", "bottom"],
+          "default": "bottom",
+          "description": "Place the status bar above or below the work area."
+        },
+        "settingsNavigation": {
+          "enum": ["left", "right", "top", "bottom"],
+          "default": "left"
+        }
+      }
     }
   },
   "not": {

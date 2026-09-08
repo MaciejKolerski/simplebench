@@ -5,47 +5,11 @@ import {
   Transaction,
 } from "@codemirror/state";
 import type { Extension, Text, TransactionSpec } from "@codemirror/state";
-import {
-  EditorView,
-  drawSelection,
-  highlightActiveLine,
-  highlightActiveLineGutter,
-  highlightSpecialChars,
-  keymap,
-  lineNumbers,
-  rectangularSelection,
-} from "@codemirror/view";
-import {
-  defaultKeymap,
-  history,
-  historyKeymap,
-  indentLess,
-  indentMore,
-  redo,
-  undo,
-} from "@codemirror/commands";
-import {
-  HighlightStyle,
-  bracketMatching,
-  foldGutter,
-  foldKeymap,
-  indentOnInput,
-  indentUnit,
-  syntaxHighlighting,
-} from "@codemirror/language";
-import {
-  autocompletion,
-  closeBrackets,
-  closeBracketsKeymap,
-  completionKeymap,
-} from "@codemirror/autocomplete";
-import {
-  gotoLine,
-  openSearchPanel,
-  search,
-  searchKeymap,
-} from "@codemirror/search";
-import { tags } from "@lezer/highlight";
+import { EditorView } from "@codemirror/view";
+import { redo, undo } from "@codemirror/commands";
+import { indentUnit } from "@codemirror/language";
+import { gotoLine, openSearchPanel } from "@codemirror/search";
+import { codeEditorExtensions } from "./editor-extensions";
 import { listen } from "@tauri-apps/api/event";
 import { api, errorMessage } from "./api";
 import type { EditorPosition, FileTab } from "./model";
@@ -93,39 +57,6 @@ export interface EditorSnapshot {
   line: number;
   column: number;
 }
-
-const syntax = HighlightStyle.define([
-  {
-    tag: [tags.keyword, tags.modifier, tags.operatorKeyword],
-    color: "var(--color-accent-text)",
-    fontWeight: "600",
-  },
-  {
-    tag: [tags.string, tags.special(tags.string), tags.regexp],
-    color: "var(--color-info)",
-  },
-  {
-    tag: [tags.number, tags.bool, tags.null, tags.atom],
-    color: "var(--color-warning)",
-  },
-  {
-    tag: [tags.comment, tags.meta],
-    color: "var(--color-surface-variant-text)",
-    fontStyle: "italic",
-  },
-  {
-    tag: [tags.typeName, tags.className, tags.namespace],
-    color: "var(--color-muted-text)",
-  },
-  {
-    tag: [tags.function(tags.variableName), tags.function(tags.propertyName)],
-    color: "var(--color-background-text)",
-  },
-  { tag: [tags.heading, tags.strong], fontWeight: "bold" },
-  { tag: tags.emphasis, fontStyle: "italic" },
-  { tag: tags.link, textDecoration: "underline" },
-  { tag: tags.invalid, color: "var(--color-error)" },
-]);
 
 const buffers = new Map<string, EditorDocument>();
 const aliases = new Map<string, EditorDocument>();
@@ -318,11 +249,13 @@ export class EditorDocument {
   }
 
   private applyAppearance = () => {
+    if (this.disposed) return;
     const dark = document.documentElement.dataset.appearance !== "light";
-    if (!this.disposed && this.state.facet(EditorView.darkTheme) !== dark)
+    if (this.state.facet(EditorView.darkTheme) !== dark)
       this.dispatch({
         effects: this.appearance.reconfigure(EditorView.darkTheme.of(dark)),
       });
+    this.view?.requestMeasure();
   };
 
   private loadSyntax() {
@@ -396,14 +329,7 @@ export class EditorDocument {
     return EditorState.create({
       doc: parsed.doc,
       extensions: [
-        lineNumbers(),
-        highlightSpecialChars(),
-        history({ minDepth: large ? 30 : 100 }),
-        drawSelection(),
-        rectangularSelection(),
-        EditorState.allowMultipleSelections.of(true),
-        highlightActiveLine(),
-        highlightActiveLineGutter(),
+        codeEditorExtensions(large),
         lineEndings.init(() => parsed.lineEndings),
         lineEndingHistory,
         this.indentation.of(indentation(this.currentIndentation())),
@@ -413,52 +339,11 @@ export class EditorDocument {
           EditorState.readOnly.of(readOnly),
           EditorView.editable.of(!readOnly),
         ]),
-        search(),
-        keymap.of([
-          ...closeBracketsKeymap,
-          ...defaultKeymap,
-          ...historyKeymap,
-          ...searchKeymap.filter(
-            (binding) => !["Mod-f", "Alt-g"].includes(binding.key ?? ""),
-          ),
-          ...foldKeymap,
-          ...completionKeymap,
-          {
-            key: "Tab",
-            run: ({ state, dispatch }) => {
-              if (state.readOnly) return false;
-              if (state.selection.ranges.some((range) => !range.empty))
-                return indentMore({ state, dispatch });
-              dispatch(
-                state.update(state.replaceSelection(state.facet(indentUnit)), {
-                  scrollIntoView: true,
-                  userEvent: "input.indent",
-                }),
-              );
-              return true;
-            },
-            shift: indentLess,
-          },
-        ]),
-        ...(large
-          ? []
-          : [
-              indentOnInput(),
-              bracketMatching(),
-              closeBrackets(),
-              foldGutter(),
-              autocompletion(),
-              syntaxHighlighting(syntax),
-            ]),
         EditorView.contentAttributes.of({
           "aria-label": "File contents",
           spellcheck: "false",
           autocapitalize: "off",
           autocorrect: "off",
-        }),
-        EditorView.theme({
-          "&": { height: "100%" },
-          ".cm-scroller": { overflow: "auto" },
         }),
         this.appearance.of(
           EditorView.darkTheme.of(

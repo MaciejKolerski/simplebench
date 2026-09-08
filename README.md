@@ -364,6 +364,13 @@ shadows, transparency, terminal appearance, and local image backgrounds. JSON
 styles and ordered CSS files declared in `stylesheets` provide element-level
 customization. All declared sheets load automatically.
 
+**Edit theme** exposes searchable controls for all theme tokens and a JSON
+editor. Section tokens independently control padding, gaps, borders, and corners.
+Layout presets place tabs above/below the title controls, move the status bar,
+and position settings navigation on any edge. Saves update active themes in both
+windows, retain drafts on failure, and detect external changes before replacing
+the manifest. Create theme opens this editor for its new starter package.
+
 The default **Color mode → System** follows the operating system at startup and
 when its appearance changes. Select **Light** or **Dark** for a persistent
 override. Both windows, editors, and running terminals update together. Custom

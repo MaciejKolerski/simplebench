@@ -1,3 +1,4 @@
+import Select from "./Select";
 import { useEffect, useRef, useState } from "react";
 import { RotateCcw } from "lucide-react";
 import { Terminal } from "@xterm/xterm";
@@ -125,19 +126,16 @@ function Setting({
             onChange={(event) => change(event.target.checked)}
           />
         ) : choices ? (
-          <select
+          <Select
             id={id}
             value={String(value)}
             disabled={disabled}
             aria-describedby={help[name] ? `${id}-help` : undefined}
-            onChange={(event) => change(event.target.value)}
-          >
-            {[...new Set([String(value), ...choices])].map((choice) => (
-              <option key={choice} value={choice}>
-                {labelFor(choice)}
-              </option>
-            ))}
-          </select>
+            onChange={change}
+            options={[...new Set([String(value), ...choices])].map(
+              (choice) => ({ value: choice, label: labelFor(choice) }),
+            )}
+          />
         ) : (
           <>
             {color && (

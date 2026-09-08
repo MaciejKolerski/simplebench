@@ -1,7 +1,8 @@
 # SimpleBench themes
 
 Open **Settings → Themes**. **Create theme** makes a complete starter folder
-and opens it in the file manager. Edit `theme.json`, then select the theme.
+and opens its editor. Change the controls or use **Edit JSON**, save, then select
+the theme. **Open theme folder** opens its files in the file manager.
 **Open folder** opens the theme library. Copy theme folders into it and press
 **Refresh**, or use **Import folder** / drop a folder onto the Themes page.
 Imports copy the complete folder, keep the original, and add a numeric suffix
@@ -179,10 +180,122 @@ Useful selectors include `.app-shell`, `.titlebar`, `.project-switcher`,
 Use `:root[data-appearance="light"]` or `.settings-window` to scope CSS.
 
 The cascade is: built-in CSS → JSON tokens and terminal/background options →
-JSON `styles` → CSS files in `stylesheets` order, subject to normal CSS specificity and
+JSON `layout` → JSON `styles` → CSS files in `stylesheets` order, subject to normal CSS specificity and
 `!important`. Terminal/background sections override tokens for those same
 options. Application state still owns project selection, pane geometry/minimum
 sizes, tab order, and other behavior. Themes configure their appearance.
+
+## Editing a theme in Settings
+
+Use **Edit theme** on a custom theme card. The editor exposes all default tokens,
+plus any custom tokens already defined by that theme. Search by name (for example,
+`radius`, `border`, `padding`, `sidebar`, or `font`), or enable **Overrides only**.
+Inputs accept CSS values, including units, `calc()`, variables, gradients, and
+multi-value shorthands where the corresponding property permits them. Clear an
+input to inherit its default again. Use **Edit JSON** for palette, terminal,
+background, asset, selector, and stylesheet configuration in the same manifest.
+JSON opens in the same CodeMirror editor as project files, with syntax coloring,
+line numbers, folding, search, and undo/redo. **Format JSON** uses the Editor
+indentation preferences; invalid JSON stays untouched and reports an error.
+The configured save, find, go-to-line, and word-wrap shortcuts work in this editor.
+JSON and the controls edit the same draft; switching views retains editor history
+and preserves other fields.
+
+**Save theme** validates the manifest, CSS declarations, and declared resources,
+then atomically replaces that theme's `theme.json`. An active theme updates both
+windows immediately. Saving an inactive theme keeps the current selection.
+Failed saves retain the draft. If the file changed outside the app, saving stops
+without replacing it; copy your draft from **Edit JSON**, reopen the editor, and
+reconcile it with the external changes. Closing an edited draft offers discard
+or continued editing. DeepMono is built in; create a theme to customize it.
+
+The editor changes JSON only. Stylesheets remain editable in the theme folder
+and retain their precedence. Invalid CSS custom-property values follow the
+browser's normal fallback behavior; the editor cannot validate arbitrary custom
+variables against the properties where your CSS will eventually use them.
+
+## Layout and section dimensions
+
+`layout` supplies convenient arrangements without changing project/workspace
+state, tab order, pane identities, or running shells:
+
+```json
+{
+  "version": 1,
+  "name": "Spacious workspace",
+  "layout": {
+    "tabs": "below",
+    "statusbar": "top",
+    "settingsNavigation": "right"
+  },
+  "tokens": {
+    "--work-area-padding": "12px",
+    "--stage-padding": "0px 8px",
+    "--pane-spacing": "6px",
+    "--pane-border": "2px solid var(--color-outline)",
+    "--pane-shadow": "var(--shadow-menu)",
+    "--radius-pane": "18px 4px 18px 4px",
+    "--radius-sidebar": "12px",
+    "--sidebar-padding": "8px",
+    "--sidebar-section-gap": "10px",
+    "--sidebar-heading-padding": "12px 16px",
+    "--tab-gap": "10px",
+    "--tab-border-width": "2px",
+    "--tab-height": "36px",
+    "--editor-content-padding": "20px 0",
+    "--editor-line-padding": "0 24px",
+    "--settings-row-padding": "22px 0",
+    "--git-section-margin": "12px 0"
+  },
+  "styles": {
+    ".explorer-panel": { "gap": "16px" },
+    ".menu-item": { "border-radius": "12px", "padding": "12px 16px" },
+    ".theme-card": { "border-width": "2px", "margin-block": "8px" }
+  }
+}
+```
+
+| Layout field         | Values                                              | Default  |
+| -------------------- | --------------------------------------------------- | -------- |
+| `tabs`               | `inline`, `above`, `below` the title bar's controls | `inline` |
+| `statusbar`          | `top`, `bottom` of the work area                    | `bottom` |
+| `settingsNavigation` | `left`, `right`, `top`, `bottom`                    | `left`   |
+
+These are optional presets. JSON `styles` and stylesheets can further change
+CSS layout, alignment, wrapping, margins, padding, borders, corner shapes,
+shadows, and typography. Standard media queries support different arrangements
+at different window sizes. The existing sidebar placement context menus control
+which side owns Explorer and Source Control, independently of theme selection.
+
+Section tokens inherit the common spacing scale and borders by default:
+
+| Section                 | Selected tokens                                                                                                                                                                                                                                                                                                   |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Window and work area    | `--app-padding`, `--app-gap`, `--work-area-padding`, `--work-area-gap`, `--stage-padding`                                                                                                                                                                                                                         |
+| Title bar and tabs      | `--titlebar-padding-left`, `--titlebar-gap`, `--titlebar-border-width`, `--tab-bar-gap`, `--tab-gap`, `--tab-padding`, `--tab-border-width`                                                                                                                                                                       |
+| Panels                  | `--pane-spacing`, `--pane-border`, `--pane-shadow`, `--radius-pane`                                                                                                                                                                                                                                               |
+| Sidebars                | `--sidebar-padding`, `--sidebar-section-gap`, `--radius-sidebar`, `--sidebar-min-width`, `--sidebar-max-width`, `--sidebar-heading-height`, `--sidebar-heading-padding`                                                                                                                                           |
+| File tree               | `--tree-padding`, `--tree-heading-padding`, `--tree-entry-gap`, `--tree-row-height`, `--tree-indent`                                                                                                                                                                                                              |
+| Editor and preview      | `--editor-border`, `--editor-shadow`, `--radius-editor`, `--editor-heading-height`, `--editor-heading-padding`, `--editor-font-family`, `--editor-font-size`, `--editor-line-height`, `--editor-content-padding`, `--editor-line-padding`, `--markdown-padding`, `--markdown-max-width`, `--markdown-line-height` |
+| Git                     | `--git-toolbar-padding`, `--git-repository-padding`, `--git-commit-flex`, `--git-commit-padding`, `--git-file-padding`, `--git-file-gap`, `--git-section-margin`, `--commit-file-list-flex`                                                                                                                       |
+| Status bar              | `--statusbar-padding`, `--statusbar-gap`, `--statusbar-border-width`                                                                                                                                                                                                                                              |
+| Settings                | `--settings-layout-padding`, `--settings-gap`, `--settings-nav-padding`, `--settings-nav-item-padding`, `--settings-heading-margin`, `--settings-row-padding`, `--editor-setting-padding`                                                                                                                         |
+| Controls and menus      | `--button-padding`, `--button-gap`, `--input-padding`, `--control-border-width`, `--menu-padding`, `--menu-item-padding`, `--menu-item-gap`, `--menu-border-width`                                                                                                                                                |
+| Dialogs and theme cards | `--modal-heading-padding`, `--modal-content-padding`, `--modal-border-width`, `--theme-library-padding`, `--theme-card-padding`, `--theme-list-gap`                                                                                                                                                               |
+
+`--pane-spacing` adds padding inside each pane's allocated rectangle; adjacent
+panes contribute spacing on both sides of the resize handle. It leaves the
+handle and split geometry aligned, including nested splits. `--pane-border`
+and `--pane-shadow` apply to terminal panels; file panels inherit these through
+`--editor-border` and `--editor-shadow`. More spacing leaves less space for
+content. Test ambitious themes at the minimum window size as well as full size.
+Sidebar resizing reads the theme's computed width limits and available space;
+saved widths survive switching back to a theme with wider limits.
+
+CSS operates on the existing interface. It cannot introduce new application
+commands, change the saved split tree, reorder actual tabs, or style text cells
+inside xterm's canvas individually. Use the terminal options for canvas fonts
+and colors. Window decorations provided by the OS remain outside the DOM.
 
 ## CSS files declared by JSON
 

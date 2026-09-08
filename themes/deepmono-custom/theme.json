@@ -2,7 +2,7 @@
   "$schema": "./theme.schema.json",
   "version": 1,
   "name": "DeepMono Custom",
-  "description": "A starting point with soft corners and a subtle terminal background.",
+  "description": "A spacious layout with separate tab rows, soft corners, and a subtle terminal background.",
   "appearance": "dark",
   "tokens": {
     "--radius-control": "8px",
@@ -10,7 +10,13 @@
     "--radius-pane": "8px",
     "--radius-window": "10px",
     "--terminal-padding": "12px",
-    "--settings-page-padding": "28px"
+    "--settings-page-padding": "28px",
+    "--work-area-padding": "8px",
+    "--pane-spacing": "4px",
+    "--pane-border": "1px solid var(--color-outline)",
+    "--radius-sidebar": "8px",
+    "--sidebar-section-gap": "4px",
+    "--tab-gap": "6px"
   },
   "backgrounds": {
     "terminal": {
@@ -27,5 +33,10 @@
     "cursorStyle": "bar",
     "cursorBlink": true
   },
-  "stylesheets": ["theme.css", "styles/components.css"]
+  "stylesheets": ["theme.css", "styles/components.css"],
+  "layout": {
+    "tabs": "below",
+    "statusbar": "bottom",
+    "settingsNavigation": "left"
+  }
 }

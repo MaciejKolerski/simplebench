@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { newProject, newSession, openFileTab } from "../../src/model";
-import { mockDesktop } from "./desktop";
+import { chooseOption, mockDesktop } from "./desktop";
 
 const indentationButton = (page: Page) =>
   page.getByRole("button", {
@@ -37,7 +37,10 @@ test("indentation changes reach visible and hidden buffers, keep undo, and survi
   await expect(page.getByText("Ln 2, Col 4", { exact: true })).toBeVisible();
   const settings = await context.newPage();
   await openSettings(settings);
-  await settings.getByRole("combobox", { name: "Tab size" }).selectOption("2");
+  await chooseOption(
+    settings.getByRole("combobox", { name: "Tab size" }),
+    "2 spaces",
+  );
   await expect(indentationButton(page)).toHaveText("Spaces: 2");
   expect(await editorText(page)).toBe("    existing\nkeep");
   await expect(page.getByText("Ln 2, Col 4", { exact: true })).toBeVisible();
@@ -56,7 +59,10 @@ test("indentation changes reach visible and hidden buffers, keep undo, and survi
     .getByRole("button", { name: "it's a file.txt", exact: true })
     .click();
   await expect(page.locator(".cm-content")).toContainText("Hello, 🦀!");
-  await settings.getByRole("combobox", { name: "Tab size" }).selectOption("8");
+  await chooseOption(
+    settings.getByRole("combobox", { name: "Tab size" }),
+    "8 spaces",
+  );
   await expect(indentationButton(page)).toHaveText("Spaces: 8");
   await page.getByRole("tab", { name: /README.md/ }).click();
   await page.keyboard.press("Control+End");
@@ -67,9 +73,9 @@ test("indentation changes reach visible and hidden buffers, keep undo, and survi
     page.getByRole("button", { name: "Save", exact: true }),
   ).toBeDisabled();
   await settings.reload();
-  await expect(
-    settings.getByRole("combobox", { name: "Tab size" }),
-  ).toHaveValue("8");
+  await expect(settings.getByRole("combobox", { name: "Tab size" })).toHaveText(
+    "8 spaces",
+  );
   await page.reload();
   await expect(indentationButton(page)).toHaveText("Spaces: 8");
   await page.locator(".cm-content").focus();
@@ -108,7 +114,10 @@ test("Tab and Shift+Tab indent selected lines using spaces or literal tabs at th
   await expect(indentationButton(page)).toBeVisible();
   const settings = await context.newPage();
   await openSettings(settings);
-  await settings.getByRole("combobox", { name: "Tab size" }).selectOption("2");
+  await chooseOption(
+    settings.getByRole("combobox", { name: "Tab size" }),
+    "2 spaces",
+  );
   await expect(indentationButton(page)).toHaveText("Spaces: 2");
   await replaceText(page, "first\nsecond");
   await page.keyboard.press("Control+a");
@@ -117,11 +126,15 @@ test("Tab and Shift+Tab indent selected lines using spaces or literal tabs at th
   await page.keyboard.press("Shift+Tab");
   expect(await editorText(page)).toBe("first\nsecond");
 
-  await settings
-    .getByRole("combobox", { name: "Indent using" })
-    .selectOption("tabs");
+  await chooseOption(
+    settings.getByRole("combobox", { name: "Indent using" }),
+    "Tab characters",
+  );
   await expect(indentationButton(page)).toHaveText("Tabs: 2");
-  await settings.getByRole("combobox", { name: "Tab size" }).selectOption("8");
+  await chooseOption(
+    settings.getByRole("combobox", { name: "Tab size" }),
+    "8 spaces",
+  );
   await expect(indentationButton(page)).toHaveText("Tabs: 8");
   await expect
     .poll(() =>
@@ -156,7 +169,10 @@ test("Enter uses the selected width in Rust while exact line endings survive sav
 }) => {
   const settings = await context.newPage();
   await openSettings(settings);
-  await settings.getByRole("combobox", { name: "Tab size" }).selectOption("2");
+  await chooseOption(
+    settings.getByRole("combobox", { name: "Tab size" }),
+    "2 spaces",
+  );
   await expect(settings.getByRole("status")).toHaveText("Saved");
   const project = newProject("/project", "local:bash");
   const session = openFileTab(
@@ -201,14 +217,14 @@ test("failed saves keep working settings and unsupported files require an explic
 }) => {
   await openSettings(page);
   const width = page.getByRole("combobox", { name: "Tab size" });
-  await width.selectOption("2");
+  await chooseOption(width, "2 spaces");
   await expect(page.getByRole("status")).toHaveText("Saved");
   await page.evaluate(() => {
     (window as any).__nativeTest.failEditorPreferencesSave = true;
   });
-  await width.selectOption("8");
+  await chooseOption(width, "8 spaces");
   await expect(page.getByRole("alert")).toContainText("Disk is full");
-  await expect(width).toHaveValue("2");
+  await expect(width).toHaveText("2 spaces");
   expect(
     await page.evaluate(
       () =>
@@ -226,7 +242,7 @@ test("failed saves keep working settings and unsupported files require an explic
   }, invalid);
   await expect(page.getByRole("alert")).toContainText("left intact");
   await expect(width).toBeDisabled();
-  await expect(width).toHaveValue("2");
+  await expect(width).toHaveText("2 spaces");
   await page
     .getByRole("button", { name: "Retry loading", exact: true })
     .click();
@@ -243,7 +259,7 @@ test("failed saves keep working settings and unsupported files require an explic
     .click();
   await expect(page.getByRole("alert")).toHaveCount(0);
   await expect(width).toBeEnabled();
-  await expect(width).toHaveValue("4");
+  await expect(width).toHaveText("4 spaces");
   expect(
     await page.evaluate(() =>
       JSON.parse(localStorage.getItem("test-editor-preferences")!),

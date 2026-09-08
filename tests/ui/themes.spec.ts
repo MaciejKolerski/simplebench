@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { buffer, mockDesktop } from "./desktop";
+import { buffer, chooseOption, mockDesktop } from "./desktop";
 
 const theme = {
   version: 1,
@@ -388,4 +388,249 @@ test("legacy CSS preferences cannot disable a stylesheet declared by JSON", asyn
       (await page.evaluate(() => localStorage.getItem("test-theme-settings")))!,
     ),
   ).toEqual({ version: 1, active: null, appearance: "light" });
+});
+
+test("theme controls save section spacing and layouts in both windows without replacing panels", async ({
+  page,
+  context,
+}, testInfo) => {
+  await install(page);
+  await page.goto("/");
+  await expect(page.locator(".xterm-screen")).toBeVisible();
+  await page.locator(".xterm-helper-textarea").focus();
+  await page.keyboard.press("Control+d");
+  await expect(page.locator(".terminal-pane")).toHaveCount(2);
+  const pane = (await page
+    .locator("[data-pane-id]")
+    .first()
+    .getAttribute("data-pane-id"))!;
+  const before = await terminal(page, pane);
+  await page
+    .locator(".split-child")
+    .first()
+    .evaluate((element) => {
+      (window as any).__themePanel = element;
+    });
+  const preferences = await context.newPage();
+  await install(preferences);
+  await settings(preferences);
+  await preferences
+    .getByRole("button", { name: "Use Graphite Glass theme" })
+    .click();
+  await preferences
+    .getByRole("button", { name: "Edit theme", exact: true })
+    .click();
+  const editor = preferences.getByRole("dialog", {
+    name: "Edit theme: Graphite Glass",
+    exact: true,
+  });
+  await chooseOption(editor.getByLabel("Tab placement"), "Below");
+  await chooseOption(editor.getByLabel("Status bar placement"), "Top");
+  await chooseOption(
+    editor.getByLabel("Settings navigation", { exact: true }),
+    "Right",
+  );
+  const overrides = {
+    "--work-area-padding": "12px",
+    "--sidebar-section-gap": "10px",
+    "--pane-spacing": "6px",
+    "--pane-border": "3px solid var(--color-outline)",
+    "--radius-pane": "18px",
+    "--tab-gap": "12px",
+    "--editor-font-size": "18px",
+    "--sidebar-min-width": "140px",
+    "--sidebar-max-width": "700px",
+  };
+  for (const [name, value] of Object.entries(overrides)) {
+    await editor.getByRole("searchbox").fill(name);
+    await editor.getByRole("textbox", { name, exact: true }).fill(value);
+  }
+  await editor.getByRole("button", { name: "Save theme", exact: true }).click();
+  await expect(editor.getByRole("status")).toContainText(
+    "applied to all windows",
+  );
+  await expect(page.locator(".work-area")).toHaveCSS("padding", "12px");
+  await expect(page.locator(".terminal-pane").first()).toHaveCSS(
+    "border-top-width",
+    "3px",
+  );
+  await expect(page.locator(".terminal-pane").first()).toHaveCSS(
+    "border-radius",
+    "18px",
+  );
+  await expect(page.locator(".split-child").first()).toHaveCSS(
+    "padding",
+    "6px",
+  );
+  await expect(page.locator(".tab-strip")).toHaveCSS("gap", "12px");
+  const tabs = (await page.locator(".tab-bar").boundingBox())!;
+  const project = (await page.locator(".project-switcher").boundingBox())!;
+  const statusbar = (await page.locator(".statusbar").boundingBox())!;
+  const work = (await page.locator(".work-area").boundingBox())!;
+  expect(tabs.y).toBeGreaterThanOrEqual(project.y + project.height);
+  expect(statusbar.y + statusbar.height).toBeLessThanOrEqual(work.y + 1);
+  expect((await terminal(page, pane)).id).toBe(before.id);
+  expect(
+    await page
+      .locator(".split-child")
+      .first()
+      .evaluate((element) => element === (window as any).__themePanel),
+  ).toBe(true);
+  expect(await calls(page, "start_terminal")).toHaveLength(2);
+  expect(await calls(page, "close_terminal")).toHaveLength(0);
+  await editor.getByRole("searchbox").fill("radius");
+  const fields = (await editor.locator(".theme-editor-fields").boundingBox())!;
+  const footer = (await editor.locator(".theme-editor-footer").boundingBox())!;
+  expect(fields.y + fields.height).toBeLessThanOrEqual(footer.y + 1);
+  await preferences.screenshot({
+    path: testInfo.outputPath("theme-editor.png"),
+  });
+  await editor.getByRole("button", { name: "Close", exact: true }).click();
+  const navigation = (await preferences
+    .locator(".settings-navigation")
+    .boundingBox())!;
+  const content = (await preferences.locator(".themes-page").boundingBox())!;
+  expect(navigation.x).toBeGreaterThanOrEqual(content.x + content.width - 1);
+  await page.setViewportSize({ width: 800, height: 420 });
+  await expect(
+    page.getByRole("button", { name: "Close window" }),
+  ).toBeInViewport();
+  await expect(page.locator(".terminal-pane").first()).toBeInViewport();
+  await page.screenshot({
+    path: testInfo.outputPath("theme-layout-minimum.png"),
+  });
+  await preferences.reload();
+  await preferences
+    .getByRole("button", { name: "Themes", exact: true })
+    .click();
+  await expect(preferences.locator(".settings-layout")).toHaveCSS(
+    "flex-direction",
+    "row-reverse",
+  );
+  await preferences.getByRole("button", { name: "Restore DeepMono" }).click();
+  await expect(page.locator(".work-area")).toHaveCSS("padding", "0px");
+  await expect(page.locator(".tab-bar")).toHaveCSS("order", "0");
+  await expect(page.locator(".terminal-pane").first()).toHaveCSS(
+    "border-top-width",
+    "0px",
+  );
+  await expect(preferences.locator(".settings-layout")).toHaveCSS(
+    "flex-direction",
+    "row",
+  );
+  await preferences
+    .getByRole("button", { name: "Create theme", exact: true })
+    .click();
+  const starter = preferences.getByRole("dialog", {
+    name: "Edit theme: Imported theme",
+    exact: true,
+  });
+  await expect(starter).toBeVisible();
+  await preferences.setViewportSize({ width: 560, height: 420 });
+  await expect(
+    starter.getByRole("button", { name: "Close", exact: true }),
+  ).toBeInViewport();
+  expect(
+    await starter.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true);
+});
+
+test("above-tab and horizontal settings navigation layouts fit without moving DOM nodes", async ({
+  page,
+  context,
+}) => {
+  await install(page);
+  await page.goto("/");
+  await expect(page.locator(".xterm-screen")).toBeVisible();
+  const preferences = await context.newPage();
+  await install(preferences);
+  await settings(preferences);
+  for (const settingsNavigation of ["top", "bottom"] as const) {
+    for (const target of [page, preferences]) {
+      await target.evaluate(async (settingsNavigation) => {
+        const { prepareTheme } = await import("/src/theme-runtime.ts");
+        const prepared = await prepareTheme(
+          {
+            id: "layout",
+            manifest: {
+              version: 1,
+              name: "Layout",
+              layout: { tabs: "above", settingsNavigation },
+            },
+          },
+          { version: 1, active: "layout", appearance: "dark" },
+        );
+        prepared.commit();
+      }, settingsNavigation);
+    }
+    const tabs = (await page.locator(".tab-bar").boundingBox())!;
+    const project = (await page.locator(".project-switcher").boundingBox())!;
+    expect(tabs.y + tabs.height).toBeLessThanOrEqual(project.y);
+    const navigation = (await preferences
+      .locator(".settings-navigation")
+      .boundingBox())!;
+    const content = (await preferences.locator(".themes-page").boundingBox())!;
+    if (settingsNavigation === "top")
+      expect(navigation.y + navigation.height).toBeLessThanOrEqual(
+        content.y + 1,
+      );
+    else
+      expect(navigation.y).toBeGreaterThanOrEqual(
+        content.y + content.height - 1,
+      );
+    await expect(
+      preferences.getByRole("button", { name: "Themes", exact: true }),
+    ).toBeInViewport();
+  }
+});
+
+test("theme editing preserves drafts on validation, disk failures, external edits and cancellation", async ({
+  page,
+}) => {
+  await install(page);
+  await settings(page);
+  await page.getByRole("button", { name: "Edit theme", exact: true }).click();
+  const editor = page.getByRole("dialog", {
+    name: "Edit theme: Graphite Glass",
+    exact: true,
+  });
+  await editor.getByRole("button", { name: "Edit JSON", exact: true }).click();
+  const json = editor.getByRole("textbox", { name: "Theme JSON", exact: true });
+  await json.fill('{"version":1,"name":"Draft","layout":{"tabs":"broken"}}');
+  await editor.getByRole("button", { name: "Save theme", exact: true }).click();
+  await expect(editor.getByRole("alert")).toContainText("layout.tabs");
+  expect(await calls(page, "save_theme_manifest")).toHaveLength(0);
+  const draft = JSON.stringify({ ...theme, name: "My draft", stylesheets: [] });
+  await json.fill(draft);
+  await page.evaluate(() => {
+    (window as any).__nativeTest.failThemeSave = true;
+  });
+  await editor.getByRole("button", { name: "Save theme", exact: true }).click();
+  await expect(editor.getByRole("alert")).toContainText("Disk is full");
+  await expect(json).toHaveText(draft);
+  await page.evaluate(() => {
+    (window as any).__nativeTest.failThemeSave = false;
+    const manifests = JSON.parse(localStorage.getItem("test-theme-manifests")!);
+    manifests.glass.name = "External edit";
+    localStorage.setItem("test-theme-manifests", JSON.stringify(manifests));
+  });
+  await editor.getByRole("button", { name: "Save theme", exact: true }).click();
+  await expect(editor.getByRole("alert")).toContainText("changed on disk");
+  await expect(json).toHaveText(draft);
+  await editor.getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByRole("button", { name: "Keep editing", exact: true }).click();
+  await expect(json).toHaveText(draft);
+  await editor.getByRole("button", { name: "Close", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Discard changes", exact: true })
+    .click();
+  await expect(editor).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () =>
+        JSON.parse(localStorage.getItem("test-theme-manifests")!).glass.name,
+    ),
+  ).toBe("External edit");
 });

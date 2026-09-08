@@ -15,8 +15,9 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { api, errorMessage, native } from "./api";
 import { useThemes } from "./ThemeProvider";
-import { builtinTheme } from "./themes";
-import type { ThemeCatalog } from "./themes";
+import { builtinTheme, parseTheme } from "./themes";
+import type { ThemeBundle, ThemeCatalog, ThemeManifest } from "./themes";
+import ThemeEditor from "./ThemeEditor";
 
 export default function ThemesPage() {
   const themes = useThemes();
@@ -28,6 +29,10 @@ export default function ThemesPage() {
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [dragging, setDragging] = useState(false);
+  const [editing, setEditing] = useState<{
+    id: string;
+    manifest: ThemeManifest;
+  } | null>(null);
   const working = useRef(false);
   const mounted = useRef(false);
   const refreshCatalog = useCallback(async () => {
@@ -94,6 +99,10 @@ export default function ThemesPage() {
   }, [refreshCatalog, importFolder]);
   const select = (id: string | null) =>
     void run(() => themes.select(id), "Theme applied to all windows.");
+  const edit = async (id: string) => {
+    const bundle = await api<ThemeBundle>("load_theme", { id });
+    setEditing({ id, manifest: parseTheme(bundle.manifest) });
+  };
   return (
     <main
       className={`themes-page${dragging ? " theme-dragging" : ""}`}
@@ -158,7 +167,7 @@ export default function ThemesPage() {
           <FolderOpen size={19} />
           <div>
             <h2>Your theme folder</h2>
-            <p>Add a folder containing theme.json, styles, and images.</p>
+            <p>Manage colors, spacing, borders, layouts, styles, and images.</p>
           </div>
         </div>
         {catalog.directory && (
@@ -216,8 +225,8 @@ export default function ThemesPage() {
               void run(async () => {
                 const id = await api<string>("create_theme");
                 await refreshCatalog();
-                await api("open_themes_folder", { id });
-              }, "Starter theme created. Edit its files, then select it below.")
+                await edit(id);
+              }, "Starter theme created. Customize it, then select it below.")
             }
           >
             <Plus size={14} />
@@ -290,23 +299,41 @@ export default function ThemesPage() {
                 )}
               </button>
               {entry.id && (
-                <button
-                  className="text-button theme-edit"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(
-                      () => api("open_themes_folder", { id: entry.id }),
-                      "",
-                    )
-                  }
-                >
-                  Open theme folder
-                </button>
+                <div className="theme-card-actions">
+                  <button
+                    className="text-button theme-edit"
+                    disabled={busy || !!entry.error}
+                    onClick={() => void run(() => edit(entry.id!), "")}
+                  >
+                    Edit theme
+                  </button>
+                  <button
+                    className="text-button theme-edit"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(
+                        () => api("open_themes_folder", { id: entry.id }),
+                        "",
+                      )
+                    }
+                  >
+                    Open theme folder
+                  </button>
+                </div>
               )}
             </article>
           );
         })}
       </div>
+      {editing && (
+        <ThemeEditor
+          key={editing.id}
+          id={editing.id}
+          initial={editing.manifest}
+          onClose={() => setEditing(null)}
+          onSaved={refreshCatalog}
+        />
+      )}
     </main>
   );
 }

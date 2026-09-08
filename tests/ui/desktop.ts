@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { newProject, newSession } from "../../src/model";
 import type {
   GitCommitDetails,
@@ -282,6 +282,28 @@ export async function mockDesktop(
             await emitEvent("theme-changed");
             return;
           }
+          if (command === "save_theme_manifest") {
+            if (desktop.__nativeTest.failThemeSave)
+              throw new Error("Cannot save theme: Disk is full");
+            const manifests = JSON.parse(
+              localStorage.getItem("test-theme-manifests") ?? "{}",
+            );
+            if (
+              JSON.stringify(manifests[args.id]) !==
+              JSON.stringify(args.expected)
+            )
+              throw new Error(
+                "This theme changed on disk. Reopen the editor before saving; your draft is still available.",
+              );
+            manifests[args.id] = args.data;
+            localStorage.setItem(
+              "test-theme-manifests",
+              JSON.stringify(manifests),
+            );
+            localStorage.setItem("test-theme-refresh", String(Date.now()));
+            await emitEvent("theme-changed");
+            return;
+          }
           if (command === "refresh_themes") {
             localStorage.setItem("test-theme-refresh", String(Date.now()));
             await emitEvent("theme-changed");
@@ -513,4 +535,12 @@ export async function buffer(page: Page, paneId: string) {
       buffer.getLine(row)?.translateToString(true),
     ).join("\n");
   }, paneId);
+}
+
+export async function chooseOption(control: Locator, label: string) {
+  await control.click();
+  await control
+    .page()
+    .getByRole("option", { name: label, exact: true })
+    .click();
 }

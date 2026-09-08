@@ -170,6 +170,66 @@ export function compileTheme(
     }
   }
   rule(":root", tokens);
+  const layout = theme.layout;
+  if (layout?.tabs && layout.tabs !== "inline") {
+    const titlebar = ".app-shell:not(.settings-window) > .titlebar";
+    rule(`${titlebar}:has(.tab-bar)`, {
+      height: "auto",
+      "min-height": "var(--titlebar-height)",
+      "flex-wrap": "wrap",
+    });
+    rule(`${titlebar} > .tab-bar`, {
+      order: layout.tabs === "above" ? "-1" : "1",
+      flex: "1 0 100%",
+      height: "calc(var(--tab-height) + var(--space-8))",
+    });
+    rule(`${titlebar} > .titlebar-space`, { flex: "1" });
+    rule(`${titlebar} > .window-controls`, {
+      height: "var(--titlebar-height)",
+    });
+  }
+  if (layout?.statusbar === "top") {
+    rule(".app-shell > .titlebar", { order: "-3" });
+    rule(".app-shell > .notice", { order: "-2" });
+    rule(".app-shell > .statusbar", {
+      order: "-1",
+      "border-top-width": "0",
+      "border-bottom":
+        "var(--statusbar-border-width) solid var(--color-outline)",
+    });
+  }
+  const navigation = layout?.settingsNavigation;
+  if (navigation && navigation !== "left") {
+    rule(".settings-layout", {
+      "flex-direction":
+        navigation === "right"
+          ? "row-reverse"
+          : navigation === "top"
+            ? "column"
+            : "column-reverse",
+    });
+    rule(".settings-navigation", {
+      "border-right-width": "0",
+      [navigation === "right"
+        ? "border-left"
+        : navigation === "top"
+          ? "border-bottom"
+          : "border-top"]: "var(--border-width) solid var(--color-outline)",
+      ...(navigation !== "right"
+        ? {
+            display: "flex",
+            "flex-wrap": "wrap",
+            flex: "0 0 auto",
+            gap: "var(--space-4)",
+          }
+        : {}),
+    });
+    if (navigation !== "right")
+      rule(".settings-navigation > .settings-nav-item", {
+        width: "auto",
+        margin: "0",
+      });
+  }
   for (const [selector, declarations] of Object.entries(theme.styles ?? {}))
     rule(selector, declarations);
   return Array.from(sheet.cssRules, (rule) => rule.cssText).join("\n");

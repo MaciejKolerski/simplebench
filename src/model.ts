@@ -666,7 +666,9 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
     sidebarWidth:
       typeof data.sidebarWidth === "number" &&
       Number.isFinite(data.sidebarWidth)
-        ? Math.max(180, Math.min(520, data.sidebarWidth))
+        ? data.sidebarWidth > 0
+          ? data.sidebarWidth
+          : 180
         : 250,
   };
 }

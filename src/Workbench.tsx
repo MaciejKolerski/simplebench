@@ -1,3 +1,5 @@
+import Sidebar from "./Sidebar";
+import Select from "./Select";
 import {
   lazy,
   Suspense,
@@ -1040,7 +1042,13 @@ export default function Workbench() {
       <div className="work-area">
         {sidebar && (
           <>
-            <aside className="sidebar" style={{ width: session.sidebarWidth }}>
+            <Sidebar
+              width={session.sidebarWidth}
+              label={sidebar === "files" ? "Explorer" : "Source control"}
+              onResize={(width) =>
+                change((state) => ({ ...state, sidebarWidth: width }))
+              }
+            >
               {sidebar === "files" ? (
                 <Explorer
                   key={project.path}
@@ -1071,51 +1079,7 @@ export default function Workbench() {
                   onError={setError}
                 />
               )}
-            </aside>
-            <div
-              className="sidebar-divider"
-              role="separator"
-              aria-label="Resize sidebar"
-              aria-orientation="vertical"
-              aria-valuenow={session.sidebarWidth}
-              aria-valuemin={180}
-              aria-valuemax={520}
-              tabIndex={0}
-              onKeyDown={(event) => {
-                if (["ArrowLeft", "ArrowRight"].includes(event.key)) {
-                  event.preventDefault();
-                  change((state) => ({
-                    ...state,
-                    sidebarWidth: Math.max(
-                      180,
-                      Math.min(
-                        520,
-                        state.sidebarWidth +
-                          (event.key === "ArrowLeft" ? -20 : 20),
-                      ),
-                    ),
-                  }));
-                }
-              }}
-              onPointerDown={(event) => {
-                event.preventDefault();
-                event.currentTarget.setPointerCapture(event.pointerId);
-              }}
-              onPointerMove={(event) => {
-                if (event.currentTarget.hasPointerCapture(event.pointerId))
-                  change((state) => ({
-                    ...state,
-                    sidebarWidth: Math.max(
-                      180,
-                      Math.min(520, window.innerWidth * 0.5, event.clientX),
-                    ),
-                  }));
-              }}
-              onPointerUp={(event) => {
-                if (event.currentTarget.hasPointerCapture(event.pointerId))
-                  event.currentTarget.releasePointerCapture(event.pointerId);
-              }}
-            />
+            </Sidebar>
           </>
         )}
         <main
@@ -1313,26 +1277,31 @@ function AppDialog({
             <>
               <label>
                 Terminal environment
-                <select
+                <Select
                   autoFocus
+                  aria-label="Terminal environment"
                   value={value}
-                  onChange={(event) => setValue(event.target.value)}
-                >
-                  {!dialog.profiles.some(
-                    (profile) => profile.id === dialog.selected,
-                  ) && (
-                    <option value={dialog.selected} disabled>
-                      Unavailable environment
-                    </option>
-                  )}
-                  {dialog.profiles.map((profile) => (
-                    <option key={profile.id} value={profile.id}>
-                      {profile.distro
+                  onChange={setValue}
+                  options={[
+                    ...(!dialog.profiles.some(
+                      (profile) => profile.id === dialog.selected,
+                    )
+                      ? [
+                          {
+                            value: dialog.selected,
+                            label: "Unavailable environment",
+                            disabled: true,
+                          },
+                        ]
+                      : []),
+                    ...dialog.profiles.map((profile) => ({
+                      value: profile.id,
+                      label: profile.distro
                         ? profile.name
-                        : `Local · ${profile.name}`}
-                    </option>
-                  ))}
-                </select>
+                        : `Local · ${profile.name}`,
+                    })),
+                  ]}
+                />
               </label>
               <p>
                 Changing the environment restarts all terminals in this tab in

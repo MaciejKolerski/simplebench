@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { buffer, mockDesktop } from "./desktop";
+import { buffer, chooseOption, mockDesktop } from "./desktop";
 
 async function settingsPage(page: Page) {
   await mockDesktop(page, false);
@@ -57,9 +57,10 @@ test("settings update visible and hidden terminals without restarting PTYs and s
   await field(settings, "Font family", "monospace");
   await field(settings, "Font size", "22");
   await field(settings, "Line height", "1.35");
-  await settings
-    .getByLabel("Cursor style", { exact: true })
-    .selectOption("block");
+  await chooseOption(
+    settings.getByLabel("Cursor style", { exact: true }),
+    "Block",
+  );
   await expect(
     settings.getByLabel("Cursor style", { exact: true }),
   ).toBeEnabled();

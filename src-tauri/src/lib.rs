@@ -181,6 +181,7 @@ pub fn run() {
             themes::load_theme,
             themes::list_themes,
             themes::save_theme_preferences,
+            themes::save_theme_manifest,
             themes::refresh_themes,
             themes::open_themes_folder,
             themes::import_theme,

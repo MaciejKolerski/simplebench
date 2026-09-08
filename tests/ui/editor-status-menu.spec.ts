@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { mockDesktop } from "./desktop";
+import { chooseOption, mockDesktop } from "./desktop";
 
 const indentButton = (page: Page) =>
   page.getByRole("button", {
@@ -98,7 +98,10 @@ test("the footer changes indentation inline for the current buffer without chang
   const settings = await context.newPage();
   await mockDesktop(settings);
   await settings.goto("/?window=settings&page=editor");
-  await settings.getByRole("combobox", { name: "Tab size" }).selectOption("8");
+  await chooseOption(
+    settings.getByRole("combobox", { name: "Tab size" }),
+    "8 spaces",
+  );
   await expect(settings.getByRole("status")).toHaveText("Saved");
   await expect(indentButton(page)).toHaveText("Spaces: 2");
   await indentButton(page).click();

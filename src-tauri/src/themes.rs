@@ -225,6 +225,11 @@ fn manifest(root: &Path) -> Result<Value, String> {
     let bytes = read_limited(&inside(root, "theme.json")?, JSON_LIMIT)?;
     let data: Value =
         serde_json::from_slice(&bytes).map_err(|error| format!("theme.json: {error}"))?;
+    validate_manifest(root, &data)?;
+    Ok(data)
+}
+
+fn validate_manifest(root: &Path, data: &Value) -> Result<(), String> {
     let object = data.as_object().ok_or("theme.json must be an object.")?;
     if data["version"] != 1 {
         return Err("Unsupported theme version. Expected version 1.".into());
@@ -241,6 +246,7 @@ fn manifest(root: &Path) -> Result<Value, String> {
             "author",
             "description",
             "appearance",
+            "layout",
             "tokens",
             "styles",
             "assets",
@@ -264,6 +270,20 @@ fn manifest(root: &Path) -> Result<Value, String> {
     if let Some(value) = object.get("appearance") {
         if !matches!(value.as_str(), Some("dark" | "light")) {
             return Err("appearance must be dark or light.".into());
+        }
+    }
+    if let Some(layout) = object.get("layout") {
+        let layout = layout.as_object().ok_or("layout must be an object.")?;
+        for (key, value) in layout {
+            let allowed: &[&str] = match key.as_str() {
+                "tabs" => &["inline", "above", "below"],
+                "statusbar" => &["top", "bottom"],
+                "settingsNavigation" => &["left", "right", "top", "bottom"],
+                _ => return Err(format!("Unknown layout field: {key}")),
+            };
+            if value.as_str().is_none_or(|value| !allowed.contains(&value)) {
+                return Err(format!("Invalid layout.{key}."));
+            }
         }
     }
     for key in ["tokens", "styles", "assets", "backgrounds", "terminal"] {
@@ -333,7 +353,7 @@ fn manifest(root: &Path) -> Result<Value, String> {
             }
         }
     }
-    Ok(data)
+    Ok(())
 }
 
 fn bundle(root: &Path, id: &str) -> Result<Bundle, String> {
@@ -471,6 +491,61 @@ pub fn refresh_themes(window: WebviewWindow, app: tauri::AppHandle) -> Result<()
     authorize(window.label(), true)?;
     app.emit("theme-changed", ())
         .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn save_theme_manifest(
+    window: WebviewWindow,
+    app: tauri::AppHandle,
+    state: State<'_, Themes>,
+    id: String,
+    expected: Value,
+    data: Value,
+) -> Result<(), String> {
+    authorize(window.label(), true)?;
+    let _guard = state.0.lock().map_err(|error| error.to_string())?;
+    save_manifest(&library(&app)?, &id, &expected, &data)?;
+    app.emit("theme-changed", ())
+        .map_err(|error| error.to_string())
+}
+
+fn save_manifest(root: &Path, id: &str, expected: &Value, data: &Value) -> Result<(), String> {
+    use std::io::Write;
+    valid_id(id)?;
+    let folder = inside(root, id)?;
+    let path = inside(&folder, "theme.json")?;
+    let permissions = fs::metadata(&path)
+        .map_err(|error| error.to_string())?
+        .permissions();
+    if permissions.readonly() {
+        return Err("This theme file is read-only.".into());
+    }
+    validate_manifest(&folder, data)?;
+    let bytes = serde_json::to_vec_pretty(data).map_err(|error| error.to_string())?;
+    if bytes.len() as u64 > JSON_LIMIT {
+        return Err("theme.json exceeds 256 KiB.".into());
+    }
+    let mut temporary =
+        tempfile::NamedTempFile::new_in(&folder).map_err(|error| error.to_string())?;
+    temporary
+        .write_all(&bytes)
+        .map_err(|error| error.to_string())?;
+    temporary
+        .as_file()
+        .set_permissions(permissions)
+        .map_err(|error| error.to_string())?;
+    temporary
+        .as_file()
+        .sync_all()
+        .map_err(|error| error.to_string())?;
+    // Check immediately before replacement so an external edit is not silently lost.
+    if &manifest(&folder)? != expected {
+        return Err("This theme changed on disk. Reopen the editor before saving; your draft is still available.".into());
+    }
+    temporary
+        .persist(&path)
+        .map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -743,6 +818,54 @@ pub fn protocol(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn saves_layouts_atomically_and_preserves_external_changes_and_invalid_drafts() {
+        let root = tempfile::tempdir().unwrap();
+        let folder = fixture(root.path());
+        let original = manifest(&folder).unwrap();
+        let mut data = original.clone();
+        data["layout"] =
+            serde_json::json!({"tabs":"below", "statusbar":"top", "settingsNavigation":"right"});
+        data["tokens"] = serde_json::json!({"--pane-spacing":"10px", "--pane-border":"3px solid var(--color-outline)"});
+        save_manifest(root.path(), "sample", &original, &data).unwrap();
+        assert_eq!(manifest(&folder).unwrap(), data);
+        assert!(save_manifest(root.path(), "sample", &original, &original)
+            .unwrap_err()
+            .contains("changed on disk"));
+        for layout in [
+            serde_json::json!(null),
+            serde_json::json!({"tabs":"vertical"}),
+            serde_json::json!({"unknown":"left"}),
+        ] {
+            let mut invalid = data.clone();
+            invalid["layout"] = layout;
+            assert!(save_manifest(root.path(), "sample", &data, &invalid).is_err());
+            assert_eq!(manifest(&folder).unwrap(), data);
+        }
+        let mut missing = data.clone();
+        missing["stylesheet"] = serde_json::json!("missing.css");
+        assert!(save_manifest(root.path(), "sample", &data, &missing).is_err());
+        assert_eq!(manifest(&folder).unwrap(), data);
+        assert_eq!(fs::read_dir(&folder).unwrap().count(), 3);
+        assert!(save_manifest(root.path(), "../sample", &data, &data).is_err());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let path = folder.join("theme.json");
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+            save_manifest(root.path(), "sample", &data, &data).unwrap();
+            assert_eq!(
+                fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+                0o640
+            );
+            fs::set_permissions(&path, fs::Permissions::from_mode(0o440)).unwrap();
+            assert!(save_manifest(root.path(), "sample", &data, &original)
+                .unwrap_err()
+                .contains("read-only"));
+            assert_eq!(manifest(&folder).unwrap(), data);
+        }
+    }
 
     fn fixture(root: &Path) -> PathBuf {
         let theme = root.join("sample");

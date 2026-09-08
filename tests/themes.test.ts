@@ -1,11 +1,28 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { newSession, restoreSession } from "../src/model.ts";
 import {
   builtinPreferences,
   parseTheme,
   relativeAsset,
   resolveAppearance,
 } from "../src/themes.ts";
+
+test("theme-sized sidebars retain widths outside the built-in drag limits", () => {
+  const info = {
+    directory: "/project",
+    home: "/home",
+    platform: "linux",
+    profiles: [],
+  };
+  for (const width of [140, 720]) {
+    const restored = restoreSession(
+      { ...newSession(), sidebarWidth: width },
+      info,
+    );
+    assert.equal(restored.sidebarWidth, width);
+  }
+});
 
 test("system appearance follows either OS mode while explicit choices take precedence", () => {
   assert.equal(builtinPreferences.appearance, "system");
@@ -98,4 +115,25 @@ test("stylesheet lists retain order and reject ambiguous or invalid paths", () =
       () => parseTheme({ ...base, ...patch }),
       JSON.stringify(patch),
     );
+});
+
+test("theme layout choices are optional, validated, and independent", () => {
+  const layout = {
+    tabs: "below",
+    statusbar: "top",
+    settingsNavigation: "right",
+  };
+  assert.deepEqual(
+    parseTheme({ version: 1, name: "Layout", layout }).layout,
+    layout,
+  );
+  for (const layout of [
+    null,
+    [],
+    { tabs: "vertical" },
+    { statusbar: false },
+    { settingsNavigation: "floating" },
+    { unknown: "left" },
+  ])
+    assert.throws(() => parseTheme({ version: 1, name: "Invalid", layout }));
 });

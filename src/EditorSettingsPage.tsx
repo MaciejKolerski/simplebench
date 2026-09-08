@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { RotateCcw } from "lucide-react";
 import { errorMessage } from "./api";
 import { useEditorPreferences } from "./EditorPreferencesProvider";
+import Select from "./Select";
 import { defaultEditorPreferences } from "./editor-preferences";
 import type { EditorPreferences } from "./editor-preferences";
 
@@ -77,43 +78,42 @@ export default function EditorSettingsPage() {
             Number of spaces per indentation level and width of a tab character.
           </small>
         </label>
-        <select
+        <Select
           id="editor-tab-size"
-          value={tabSize}
+          value={String(tabSize)}
           disabled={disabled}
-          onChange={(event) =>
+          onChange={(value) =>
             void persist({
               ...preferences.value,
-              tabSize: Number(event.target.value),
+              tabSize: Number(value),
             })
           }
-        >
-          {Array.from({ length: 16 }, (_, index) => index + 1).map((size) => (
-            <option key={size} value={size}>
-              {size} {size === 1 ? "space" : "spaces"}
-            </option>
-          ))}
-        </select>
+          options={Array.from({ length: 16 }, (_, index) => ({
+            value: String(index + 1),
+            label: `${index + 1} ${index === 0 ? "space" : "spaces"}`,
+          }))}
+        />
       </div>
       <div className="editor-setting-row">
         <label htmlFor="editor-indent-style" className="keybinding-label">
           Indent using
           <small>Choose which characters Tab inserts into the file.</small>
         </label>
-        <select
+        <Select
           id="editor-indent-style"
           value={insertSpaces ? "spaces" : "tabs"}
           disabled={disabled}
-          onChange={(event) =>
+          onChange={(value) =>
             void persist({
               ...preferences.value,
-              insertSpaces: event.target.value === "spaces",
+              insertSpaces: value === "spaces",
             })
           }
-        >
-          <option value="spaces">Spaces</option>
-          <option value="tabs">Tab characters</option>
-        </select>
+          options={[
+            { value: "spaces", label: "Spaces" },
+            { value: "tabs", label: "Tab characters" },
+          ]}
+        />
       </div>
       <p className="settings-help editor-indentation-help">
         {insertSpaces
