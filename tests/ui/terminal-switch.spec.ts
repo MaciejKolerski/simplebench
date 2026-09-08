@@ -43,6 +43,15 @@ test("switching tabs paints the final renderer without changing the terminal gri
       },
       frames: [],
       resizes: [],
+      atlasChanges: 0,
+    };
+    const loadAddon = runtime.terminal.loadAddon.bind(runtime.terminal);
+    runtime.terminal.loadAddon = (addon: any) => {
+      if ("onChangeTextureAtlas" in addon)
+        addon.onChangeTextureAtlas(() => {
+          (window as any).__switchTest.atlasChanges++;
+        });
+      loadAddon(addon);
     };
     runtime.terminal.onResize((size) =>
       (window as any).__switchTest.resizes.push(size),
@@ -101,6 +110,7 @@ test("switching tabs paints the final renderer without changing the terminal gri
       before: state.before,
       frames: state.frames,
       resizes: state.resizes,
+      atlasChanges: state.atlasChanges,
       selection: state.runtime.terminal.getSelection(),
     };
   });
@@ -116,6 +126,7 @@ test("switching tabs paints the final renderer without changing the terminal gri
   ).toBe(false);
   expect(result.frames.some((frame: any) => frame.visible)).toBe(true);
   expect(result.resizes).toEqual([]);
+  expect(result.atlasChanges).toBe(0);
   expect(result.selection).toBe(result.before.selection);
   for (const frame of result.frames)
     expect(frame.scroll).toBe(result.before.scroll);

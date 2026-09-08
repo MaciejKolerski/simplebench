@@ -75,8 +75,28 @@ test("file tabs keep their buffers and history while native terminals keep strea
   await expect
     .poll(() => buffer(page, paneId!))
     .toContain("EDITOR BACKGROUND 🦀");
+  await page.evaluate(() => {
+    (window as any).__editorLoadingFlashes = 0;
+    const observer = new MutationObserver((records) => {
+      for (const record of records)
+        for (const node of record.addedNodes)
+          if (
+            node instanceof Element &&
+            (node.matches(".editor-loading") ||
+              node.querySelector(".editor-loading"))
+          )
+            (window as any).__editorLoadingFlashes++;
+    });
+    observer.observe(document.querySelector(".terminal-stage")!, {
+      childList: true,
+      subtree: true,
+    });
+  });
   await page.getByRole("tab", { name: /README.md/ }).click();
   await expect(page.locator(".cm-content")).toContainText("Zażółć 🦀");
+  expect(
+    await page.evaluate(() => (window as any).__editorLoadingFlashes),
+  ).toBe(0);
   await expect(fileInfo).toContainText("Modified");
   await page.keyboard.press("Control+z");
   await expect(page.locator(".cm-content")).toContainText(

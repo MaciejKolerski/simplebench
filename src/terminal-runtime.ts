@@ -12,6 +12,7 @@ import { newId } from "./model";
 import type { Pane, ShellProfile } from "./model";
 import { inputChunks } from "./terminal-utils";
 import {
+  loadTerminalFonts,
   terminalAppearance,
   terminalSearchColors,
   themeAppliedEvent,
@@ -228,6 +229,18 @@ export class TerminalRuntime {
   }
 
   private async initializeWebgl(generation: number) {
+    await loadTerminalFonts(this.terminal.options);
+    if (
+      this.attached &&
+      !this.disposed &&
+      generation === this.rendererGeneration
+    ) {
+      // Measure loaded fonts before WebGL allocates its glyph atlas; changing
+      // font options afterwards rebuilds the atlas for each option assignment.
+      const fontFamily = this.terminal.options.fontFamily;
+      this.terminal.options.fontFamily = `${fontFamily} `;
+      this.terminal.options.fontFamily = fontFamily;
+    }
     let webgl: WebglAddon | undefined;
     try {
       const { WebglAddon } = await (webglModule ??=
@@ -299,10 +312,10 @@ export class TerminalRuntime {
     this.firstRender?.dispose();
     this.firstRender = undefined;
     this.observer?.disconnect();
+    this.host.remove();
     // Terminal.dispose owns addon teardown on close, avoiding an intermediate DOM renderer.
     if (!this.disposed) this.webgl?.dispose();
     this.webgl = undefined;
-    this.host.remove();
   }
 
   scheduleFit() {

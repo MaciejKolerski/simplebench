@@ -8,7 +8,7 @@ import {
 import { FileCode, Redo2, RotateCcw, Save, Search, Undo2 } from "lucide-react";
 import type { EditorPosition, FileTab } from "./model";
 import { errorMessage } from "./api";
-import { openEditorDocument } from "./editor-service";
+import { loadedEditor, openEditorDocument } from "./editor-service";
 import type { EditorDocument } from "./editor-runtime";
 import { useKeybindings } from "./KeybindingsProvider";
 import { useEditorPreferences } from "./EditorPreferencesProvider";
@@ -22,7 +22,7 @@ interface Props {
 
 export default function FileEditor(props: Props) {
   const { ready } = useEditorPreferences();
-  const [document, setDocument] = useState<EditorDocument>();
+  const [document, setDocument] = useState(() => loadedEditor(props.tab));
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
