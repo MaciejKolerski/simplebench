@@ -36,7 +36,7 @@ is developed incrementally with Tauri 2, Rust, React, TypeScript, and Vite.
   committer, dates, hashes, changed files, line counts, and a selectable file
   diff. Merge commits are compared with their first parent; initial commits
   show the files they introduced. Reopening a commit selects its existing tab.
-- Settings opens a separate native window with Keybinds, Editor, and Themes pages.
+- Settings opens a separate native window with Keybinds, Editor, Terminal, and Themes pages.
   Record, clear, or reset shortcuts. Create/import JSON theme folders with local
   backgrounds, fonts, and CSS files declared in JSON. Changes apply to both
   windows immediately and persist across launches without restarting terminals.
@@ -188,13 +188,35 @@ React state. Acknowledgements follow xterm parsing and bound data in flight to
 roughly 128 KiB per PTY. Hidden terminals retain their parsers and scrollback but
 release WebGL renderers. Visible panes use WebGL when available, with a DOM
 fallback after initialization failure or graphics context loss. Scrollback is
-bounded to 10,000 lines per terminal and command block metadata to 100 entries.
+10,000 lines per terminal by default (configurable up to 100,000), with command
+block metadata bounded to 100 entries.
 Actual speed and resource use depend on the shell, output volume, and hardware.
 
 Git diff display is limited to 2 MiB.
 Commit file diffs also stop at 20,000 lines and clearly indicate truncation;
 their file statistics still describe the complete change.
 The session layout file is limited to 8 MiB.
+
+## Terminal settings
+
+Settings → Terminal customizes fonts, size, weight, spacing, the cursor, text
+and background colors, selection, the 16 ANSI colors, and search highlights.
+A terminal preview shows the applied appearance. Use an installed font;
+unavailable fonts fall back to the browser's fonts.
+Colors accept `#RRGGBB` and `#RRGGBBAA` (including opacity).
+
+Advanced settings control scrollback, scrolling speed and animation, tab stops,
+mouse selection, macOS Option behavior, screen readers, glyph rendering, and
+minimum text contrast. Reducing scrollback permanently drops older output.
+Changes save when you leave a text/number field; choices apply immediately.
+They reach visible and hidden terminals without restarting shells.
+
+Preferences are saved atomically in `terminal-preferences.json` beside
+`session.json`. Only the settings window can write them. Appearance inherits the
+active theme until overridden; individual resets restore inheritance, and Reset
+defaults clears all overrides and restores terminal behavior. An invalid file
+is preserved until an explicit reset. Custom colors stay fixed across light and
+dark mode changes.
 
 ## Keyboard shortcuts
 

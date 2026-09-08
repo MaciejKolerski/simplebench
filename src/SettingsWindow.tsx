@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Code, Keyboard, Palette, RotateCcw, X } from "lucide-react";
+import { Code, Keyboard, Palette, Terminal, RotateCcw, X } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import ThemesPage from "./ThemesPage";
+import TerminalSettingsPage from "./TerminalSettingsPage";
 import EditorSettingsPage from "./EditorSettingsPage";
 import { IconButton, WindowControls } from "./ui";
 import { errorMessage, native } from "./api";
@@ -17,7 +18,9 @@ import { useKeybindings } from "./KeybindingsProvider";
 export default function SettingsWindow() {
   const [page, setPage] = useState(() => {
     const requested = new URLSearchParams(window.location.search).get("page");
-    return requested === "editor" || requested === "themes"
+    return requested === "editor" ||
+      requested === "themes" ||
+      requested === "terminal"
       ? requested
       : "keybinds";
   });
@@ -32,7 +35,10 @@ export default function SettingsWindow() {
     if (!native) return;
     let current = true;
     const unlisten = listen<string>("settings-page-changed", ({ payload }) => {
-      if (current && ["keybinds", "editor", "themes"].includes(payload)) {
+      if (
+        current &&
+        ["keybinds", "editor", "themes", "terminal"].includes(payload)
+      ) {
         setRecording(null);
         setPage(payload);
       }
@@ -106,6 +112,14 @@ export default function SettingsWindow() {
           </button>
           <button
             className="settings-nav-item"
+            aria-current={page === "terminal" ? "page" : undefined}
+            onClick={() => setPage("terminal")}
+          >
+            <Terminal size={16} />
+            Terminal
+          </button>
+          <button
+            className="settings-nav-item"
             aria-current={page === "themes" ? "page" : undefined}
             onClick={() => setPage("themes")}
           >
@@ -113,7 +127,9 @@ export default function SettingsWindow() {
             Themes
           </button>
         </nav>
-        {page === "themes" ? (
+        {page === "terminal" ? (
+          <TerminalSettingsPage />
+        ) : page === "themes" ? (
           <ThemesPage />
         ) : page === "editor" ? (
           <EditorSettingsPage />

@@ -2216,6 +2216,7 @@ svg {
 }
 .keybindings-page,
 .editor-settings-page,
+.terminal-settings-page,
 .themes-page {
   flex: 1;
   min-width: 0;
@@ -2386,6 +2387,7 @@ svg {
   }
   .keybindings-page,
   .editor-settings-page,
+  .terminal-settings-page,
   .themes-page {
     padding: var(--space-20);
   }
@@ -2394,6 +2396,7 @@ svg {
     flex-wrap: wrap;
     gap: var(--space-8);
   }
+  .terminal-settings-page .settings-page-heading,
   .editor-settings-page .settings-page-heading {
     flex-wrap: wrap;
   }
@@ -2719,4 +2722,89 @@ select {
   opacity: var(--background-modal-opacity, 1);
   filter: blur(var(--background-modal-blur, 0px));
   mix-blend-mode: var(--background-modal-blend-mode, normal);
+}
+
+.terminal-preview {
+  display: block;
+  flex: none;
+  height: 170px;
+  min-height: 0;
+  overflow: hidden;
+  padding: var(--space-12);
+  margin-bottom: var(--space-24);
+  border: var(--border-width) solid var(--color-outline);
+  border-radius: var(--radius-control);
+}
+.terminal-setting-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-10) var(--space-16);
+  padding: var(--space-14) 0;
+  border-bottom: var(--border-width) solid var(--color-surface-variant);
+}
+.terminal-setting-row > .keybinding-label {
+  flex: 1 1 180px;
+}
+.terminal-setting-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-8);
+  max-width: 100%;
+}
+.terminal-setting-controls input:not([type="checkbox"]):not([type="color"]),
+.terminal-setting-controls select {
+  width: 170px;
+  min-width: 0;
+}
+.terminal-setting-controls input[type="color"] {
+  width: 32px;
+  height: 30px;
+  padding: var(--space-2);
+}
+.terminal-settings-details {
+  margin-top: var(--space-20);
+}
+.terminal-settings-details > summary {
+  cursor: pointer;
+  padding: var(--space-12) 0;
+  font-size: var(--font-size-12);
+  border-bottom: var(--border-width) solid var(--color-outline);
+}
+.terminal-settings-page .keybindings-group > .settings-help {
+  margin-top: var(--space-10);
+}
+
+.settings-switch {
+  appearance: none;
+  position: relative;
+  flex-shrink: 0;
+  width: 36px;
+  height: 22px;
+  margin: 0;
+  padding: 2px;
+  border: var(--border-width) solid var(--color-outline);
+  border-radius: 22px;
+  background: var(--color-surface-container-high);
+  cursor: pointer;
+}
+.settings-switch::before {
+  content: "";
+  display: block;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-surface-text);
+}
+.settings-switch:checked {
+  background: var(--color-primary-container);
+}
+.settings-switch:checked::before {
+  transform: translateX(14px);
+}
+.settings-switch:disabled {
+  cursor: default;
+  opacity: 0.5;
 }

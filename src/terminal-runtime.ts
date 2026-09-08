@@ -95,7 +95,6 @@ export class TerminalRuntime {
     this.terminal = new Terminal({
       allowProposedApi: true,
       allowTransparency: true,
-      scrollback: 10_000,
       ...terminalAppearance(),
     });
     window.addEventListener(themeAppliedEvent, this.applyTheme);

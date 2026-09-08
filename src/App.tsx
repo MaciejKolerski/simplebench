@@ -3,6 +3,8 @@ import { KeybindingsProvider } from "./KeybindingsProvider";
 import { ThemeProvider } from "./ThemeProvider";
 import { EditorPreferencesProvider } from "./EditorPreferencesProvider";
 
+import { TerminalPreferencesProvider } from "./TerminalPreferencesProvider";
+
 const Workbench = lazy(() => import("./Workbench"));
 const SettingsWindow = lazy(() => import("./SettingsWindow"));
 
@@ -13,15 +15,17 @@ export default function App() {
     <ThemeProvider>
       <KeybindingsProvider>
         <EditorPreferencesProvider>
-          <Suspense
-            fallback={
-              <main className="empty-message">
-                {settings ? "Opening settings…" : "Opening workspace…"}
-              </main>
-            }
-          >
-            {settings ? <SettingsWindow /> : <Workbench />}
-          </Suspense>
+          <TerminalPreferencesProvider>
+            <Suspense
+              fallback={
+                <main className="empty-message">
+                  {settings ? "Opening settings…" : "Opening workspace…"}
+                </main>
+              }
+            >
+              {settings ? <SettingsWindow /> : <Workbench />}
+            </Suspense>
+          </TerminalPreferencesProvider>
         </EditorPreferencesProvider>
       </KeybindingsProvider>
     </ThemeProvider>

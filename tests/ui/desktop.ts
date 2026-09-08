@@ -83,6 +83,7 @@ export async function mockDesktop(
         directoryError: "",
         failKeybindingsSave: false,
         failEditorPreferencesSave: false,
+        failTerminalPreferencesSave: false,
         failThemeSave: false,
         themeLoadError: "",
         themeImportError: "",
@@ -91,6 +92,8 @@ export async function mockDesktop(
         },
       };
       window.addEventListener("storage", (event) => {
+        if (event.key === "test-terminal-preferences")
+          void emitEvent("terminal-preferences-changed");
         if (event.key === "test-editor-preferences")
           void emitEvent("editor-preferences-changed");
         if (event.key === "test-keybindings")
@@ -207,6 +210,10 @@ export async function mockDesktop(
             return JSON.parse(
               localStorage.getItem("test-keybindings") ?? "null",
             );
+          if (command === "load_terminal_preferences")
+            return JSON.parse(
+              localStorage.getItem("test-terminal-preferences") ?? "null",
+            );
           if (command === "load_editor_preferences")
             return JSON.parse(
               localStorage.getItem("test-editor-preferences") ?? "null",
@@ -304,6 +311,16 @@ export async function mockDesktop(
               throw new Error("Cannot save shortcuts: Disk is full");
             localStorage.setItem("test-keybindings", JSON.stringify(args.data));
             await emitEvent("keybindings-changed");
+            return;
+          }
+          if (command === "save_terminal_preferences") {
+            if (desktop.__nativeTest.failTerminalPreferencesSave)
+              throw "Disk is full";
+            localStorage.setItem(
+              "test-terminal-preferences",
+              JSON.stringify(args.data),
+            );
+            await emitEvent("terminal-preferences-changed");
             return;
           }
           if (command === "save_editor_preferences") {

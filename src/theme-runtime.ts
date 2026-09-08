@@ -15,6 +15,37 @@ import type {
   ThemePreferences,
 } from "./themes";
 
+import { defaultTerminalPreferences } from "./terminal-preferences";
+import type { TerminalPreferences } from "./terminal-preferences";
+
+let terminalPreferences = defaultTerminalPreferences;
+export function applyTerminalPreferences(next: TerminalPreferences) {
+  const root = document.documentElement.style;
+  for (const [key, value] of Object.entries(terminalPreferences.appearance)) {
+    if (key === "colors") {
+      for (const name of Object.keys(value))
+        root.removeProperty(`--terminal-${kebab(name)}`);
+    } else root.removeProperty(`--terminal-${kebab(key)}`);
+  }
+  terminalPreferences = next;
+  for (const [key, value] of Object.entries(next.appearance)) {
+    if (key === "colors") {
+      for (const [name, color] of Object.entries(next.appearance.colors ?? {}))
+        root.setProperty(`--terminal-${kebab(name)}`, color);
+    } else
+      root.setProperty(
+        `--terminal-${kebab(key)}`,
+        `${typeof value === "boolean" ? Number(value) : value}${key === "fontSize" || key === "letterSpacing" ? "px" : ""}`,
+      );
+  }
+  refreshTerminalAppearance();
+}
+
+export function terminalPalette() {
+  terminalAppearance();
+  return { ...searchPalette };
+}
+
 export const themeAppliedEvent = "simplebench-theme-applied";
 let revision = 0;
 let appliedRevision = 0;
@@ -35,22 +66,32 @@ export function initializeAppearance(
 export function applyAppearance(preference: AppearancePreference) {
   terminalAppearance();
   initializeAppearance(preference);
+  refreshTerminalAppearance();
+}
+
+function refreshTerminalAppearance() {
   const request = ++appliedRevision;
   // WebKit applies media changes after this task. Canvas fonts need an explicit load.
   requestAnimationFrame(() => {
     const next = readTerminalAppearance();
-    void Promise.all(
-      [next.fontWeight, next.fontWeightBold].map((weight) =>
-        document.fonts.load(`${weight} ${next.fontSize}px ${next.fontFamily}`),
-      ),
-    )
-      .catch(() => {})
-      .then(() => {
-        if (request !== appliedRevision) return;
-        terminalOptions = next;
-        window.dispatchEvent(new Event(themeAppliedEvent));
-      });
+    void loadTerminalFonts(next).then(() => {
+      if (request !== appliedRevision) return;
+      terminalOptions = next;
+      window.dispatchEvent(new Event(themeAppliedEvent));
+    });
   });
+}
+
+export async function loadTerminalFonts(options: ITerminalOptions) {
+  await Promise.allSettled(
+    ["normal", "italic"].flatMap((style) =>
+      [options.fontWeight, options.fontWeightBold].map((weight) =>
+        document.fonts.load(
+          `${style} ${weight} ${options.fontSize}px ${options.fontFamily}`,
+        ),
+      ),
+    ),
+  );
 }
 
 export function themeAssetUrl(id: string, path: string, revision: string) {
@@ -298,6 +339,7 @@ function readTerminalAppearance(): ITerminalOptions {
       : numeric(name, fallback === "bold" ? 700 : 400, 1, 1000);
   };
   return {
+    ...terminalPreferences.behavior,
     fontFamily: token("fontFamily"),
     fontSize: numeric("fontSize", 13, 6, 72),
     fontWeight: weight("fontWeight", "normal"),

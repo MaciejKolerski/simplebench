@@ -4,6 +4,7 @@ mod git;
 mod keybindings;
 mod shell;
 mod terminal;
+mod terminal_preferences;
 mod themes;
 
 use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
@@ -45,7 +46,7 @@ async fn open_settings(
     files::main_window(&window)?;
     if page
         .as_deref()
-        .is_some_and(|page| !matches!(page, "keybinds" | "themes" | "editor"))
+        .is_some_and(|page| !matches!(page, "keybinds" | "themes" | "editor" | "terminal"))
     {
         return Err("Unknown settings page.".into());
     }
@@ -90,6 +91,7 @@ pub fn run() {
         .manage(files::editor::EditorFiles::default())
         .manage(keybindings::KeybindingsFile::default())
         .manage(editor_preferences::EditorPreferencesFile::default())
+        .manage(terminal_preferences::TerminalPreferencesFile::default())
         .manage(themes::Themes::default())
         .register_asynchronous_uri_scheme_protocol("theme", themes::protocol)
         .setup(|app| {
@@ -117,6 +119,8 @@ pub fn run() {
             keybindings::save_keybindings,
             editor_preferences::load_editor_preferences,
             editor_preferences::save_editor_preferences,
+            terminal_preferences::load_terminal_preferences,
+            terminal_preferences::save_terminal_preferences,
             themes::load_theme_preferences,
             themes::load_theme,
             themes::list_themes,

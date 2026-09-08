@@ -47,6 +47,11 @@ or acronym.
 - `src/keybindings.ts` defines shortcut actions, defaults, and validation;
   `src/KeybindingsProvider.tsx` synchronizes them between native windows.
   `src/SettingsWindow.tsx` edits them on the Keybinds page.
+- `src/terminal-preferences.ts` validates terminal appearance overrides and bounded
+  behavior settings; `src/TerminalPreferencesProvider.tsx` synchronizes them across
+  windows. Settings → Terminal owns writes to `terminal-preferences.json` through
+  `src-tauri/src/terminal_preferences.rs`. Apply changes to live and hidden xterm
+  instances without restarting PTYs; unset appearance options inherit the theme.
 - xterm.js renders terminals; `src/terminal-runtime.ts` owns their lifecycle and
   streaming independently of React. Rust `portable-pty` owns native processes.
 - `src-tauri/src/shell.rs` discovers shell environments and quotes dropped paths;
@@ -107,7 +112,7 @@ or acronym.
   windows without restarting terminals, and preserve invalid settings until
   explicit recovery. Prevent conflicting shortcut assignments.
 - Keep project, editor, Git, and terminal commands restricted to the main window.
-  Settings may manage keybindings, editor preferences, and theme packages, listen for updates, and
+  Settings may manage keybindings, editor preferences, terminal preferences, and theme packages, listen for updates, and
   use its own window controls. Only settings may write these preferences or
   import/create theme packages; both windows may read and apply themes.
 - Git mutations must follow an explicit UI action. Preserve the user's identity
