@@ -12,9 +12,13 @@ import {
   Code,
   Command,
   Copy,
+  LoaderCircle,
+  Maximize2,
+  Minimize2,
   Play,
   RotateCcw,
   Search,
+  Terminal,
   X,
 } from "lucide-react";
 import type { Pane, ShellProfile } from "./model";
@@ -27,6 +31,8 @@ interface Props {
   pane: Pane;
   profile?: ShellProfile;
   active: boolean;
+  maximized: boolean;
+  onToggleMaximize: () => void;
   onFocus: () => void;
   onRestart: (useProjectDirectory?: boolean) => void;
 }
@@ -52,6 +58,8 @@ function LiveTerminal({
   pane,
   profile,
   active,
+  maximized,
+  onToggleMaximize,
   onFocus,
   onRestart,
 }: Props & { profile: ShellProfile }) {
@@ -103,6 +111,8 @@ function LiveTerminal({
     runtime.execute(command);
     setCommand("");
   };
+  const title = snapshot.status === "running" ? snapshot.title : "";
+  const titleBusy = snapshot.status === "running" && snapshot.titleBusy;
   return (
     <section
       className={`terminal-pane${active ? " is-active" : ""}`}
@@ -168,6 +178,43 @@ function LiveTerminal({
       )}
       <div className="terminal-body">
         <div className="terminal-mount" ref={container} />
+        {(title || titleBusy || maximized) && (
+          <div className="terminal-heading">
+            <div className="terminal-title-box">
+              {(title || titleBusy) && (
+                <>
+                  {titleBusy ? (
+                    <LoaderCircle
+                      size={13}
+                      className="terminal-spinner"
+                      role="img"
+                      aria-label="Working"
+                    />
+                  ) : (
+                    <Terminal size={13} aria-hidden="true" />
+                  )}
+                  {title && (
+                    <span className="terminal-title" title={title} dir="auto">
+                      {title}
+                    </span>
+                  )}
+                </>
+              )}
+              <IconButton
+                title={
+                  maximized ? "Restore terminal size" : "Maximize terminal"
+                }
+                aria-pressed={maximized}
+                onClick={() => {
+                  onToggleMaximize();
+                  runtime.terminal.focus();
+                }}
+              >
+                {maximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+              </IconButton>
+            </div>
+          </div>
+        )}
         {snapshot.status === "error" && (
           <div className="terminal-error">
             <p>{snapshot.error}</p>

@@ -27,6 +27,8 @@ export interface CommandBlock {
 }
 interface Snapshot {
   status: "starting" | "running" | "exited" | "error";
+  title: string;
+  titleBusy: boolean;
   error: string | null;
   cwd: string;
   renderer: "WebGL" | "DOM";
@@ -71,6 +73,7 @@ export class TerminalRuntime {
   private listeners = new Set<() => void>();
   private snapshot: Snapshot;
   private promptEnd?: { marker: IMarker; column: number };
+  private atPrompt = false;
   private activeBlock?: CommandBlock;
   private nextCommand?: string;
   private eof = false;
@@ -83,6 +86,8 @@ export class TerminalRuntime {
   ) {
     this.snapshot = {
       status: "starting",
+      title: "",
+      titleBusy: false,
       error: null,
       cwd,
       renderer: "DOM",
@@ -95,7 +100,24 @@ export class TerminalRuntime {
     this.terminal = new Terminal({
       allowProposedApi: true,
       allowTransparency: true,
+      windowOptions: { pushTitle: true, popTitle: true },
       ...terminalAppearance(),
+    });
+    this.terminal.onTitleChange((value) => {
+      if (this.atPrompt) return;
+      let title = value
+        .slice(0, 1024)
+        .replace(/[\x00-\x1f\x7f-\x9f]/g, "")
+        .trim();
+      // Normalize leading dot-spinner frames without interpreting the title text.
+      const spinner = /^[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏](?:\s+|$)/u.exec(title);
+      const titleBusy = spinner !== null;
+      if (spinner) title = title.slice(spinner[0].length);
+      if (
+        title !== this.snapshot.title ||
+        titleBusy !== this.snapshot.titleBusy
+      )
+        this.update({ title, titleBusy });
     });
     window.addEventListener(themeAppliedEvent, this.applyTheme);
     this.host.className = "terminal-host";
@@ -108,11 +130,7 @@ export class TerminalRuntime {
           void openUrl(uri).catch((error) => reportError(errorMessage(error)));
       }),
     );
-    this.terminal.onData((data) => {
-      if (data === "\r" && ["cmd", "pwsh", "powershell"].includes(profile.kind))
-        this.startBlock();
-      this.send(data);
-    });
+    this.terminal.onData((data) => this.send(data));
     this.terminal.parser.registerOscHandler(7, (value) => {
       try {
         const url = new URL(value);
@@ -135,6 +153,7 @@ export class TerminalRuntime {
     });
     this.terminal.parser.registerOscHandler(133, (value) => {
       const [event, status] = value.split(";");
+      if (event === "A") this.finishBlock();
       if (event === "B") {
         this.promptEnd?.marker.dispose();
         this.promptEnd = {
@@ -405,6 +424,13 @@ export class TerminalRuntime {
       this.snapshot.status === "error"
     )
       return;
+    // Accept titles after submission even when a shell has no pre-execution hook.
+    if (data === "\r" || data === "\n") this.atPrompt = false;
+    if (
+      data === "\r" &&
+      ["cmd", "pwsh", "powershell"].includes(this.profile.kind)
+    )
+      this.startBlock();
     this.input = this.input
       .then(async () => {
         await this.startPromise;
@@ -484,6 +510,7 @@ export class TerminalRuntime {
   }
 
   private startBlock() {
+    this.atPrompt = false;
     if (this.activeBlock || this.terminal.buffer.active.type !== "normal")
       return;
     const buffer = this.terminal.buffer.active;
@@ -522,6 +549,9 @@ export class TerminalRuntime {
   }
 
   private finishBlock(exitCode?: number) {
+    this.atPrompt = true;
+    if (this.snapshot.title || this.snapshot.titleBusy)
+      this.update({ title: "", titleBusy: false });
     if (!this.activeBlock) return;
     const id = this.activeBlock.id;
     this.activeBlock = undefined;

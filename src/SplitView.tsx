@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   layoutFits,
   MIN_PANE_HEIGHT,
@@ -50,6 +50,13 @@ export default function SplitView({
 }: Props & { onKeepActivePane: () => void }) {
   const root = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<LayoutSize>();
+  const [maximizedPaneId, setMaximizedPaneId] = useState<string | null>(null);
+  const maximizedPane = panes(props.layout).find(
+    (pane) => pane.id === maximizedPaneId && pane.id === props.activePaneId,
+  );
+  useEffect(() => {
+    if (!maximizedPane) setMaximizedPaneId(null);
+  }, [maximizedPane]);
   useLayoutEffect(() => {
     const container = root.current!;
     const measure = () => {
@@ -69,10 +76,12 @@ export default function SplitView({
   const positions = useMemo(
     () =>
       size &&
-      (props.layout.type === "terminal" || layoutFits(props.layout, size))
-        ? layoutPositions(props.layout, size)
+      (maximizedPane ||
+        props.layout.type === "terminal" ||
+        layoutFits(props.layout, size))
+        ? layoutPositions(maximizedPane ?? props.layout, size)
         : null,
-    [props.layout, size],
+    [props.layout, size, maximizedPane],
   );
   return (
     <div
@@ -97,6 +106,11 @@ export default function SplitView({
                       : props.profile
                   }
                   active={props.activePaneId === layout.id}
+                  maximized={maximizedPane?.id === layout.id}
+                  onToggleMaximize={() => {
+                    props.onFocus(layout.id);
+                    setMaximizedPaneId(maximizedPane ? null : layout.id);
+                  }}
                   onFocus={() => props.onFocus(layout.id)}
                   onRestart={(useProjectDirectory) =>
                     props.onRestart(layout.id, useProjectDirectory)

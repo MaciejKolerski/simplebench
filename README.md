@@ -43,7 +43,7 @@ is developed incrementally with Tauri 2, Rust, React, TypeScript, and Vite.
 - Terminals use xterm.js with WebGL, a native `portable-pty` backend, true color,
   inline search, and Ctrl/Cmd-clickable HTTP(S) links. Running terminals continue
   receiving output while their tab or workspace is inactive.
-- Terminal pages show the terminal without permanent toolbars. Shortcuts open
+- Terminal panels have a centered title and a maximize/restore button. Shortcuts open
   splits, search, command blocks, and an optional multiline command input.
   Enter commands normally in the terminal, or use Ctrl/Cmd+Enter
   in the command input. Command blocks record command output positions, duration,
@@ -88,6 +88,29 @@ provide command boundaries and exit status. PowerShell/cmd use prompt hooks and
 Enter events, so completion status and multiline command boundaries are less
 precise. Custom prompt frameworks can also affect these hooks. The `sh` fallback
 provides a terminal without command block integration.
+
+### Terminal titles and maximized panels
+
+Each panel displays the window title sent by any program through standard OSC 0
+or OSC 2 sequences. Conversation renames and resumed sessions appear when the
+program publishes them as its title. Programs can save and restore titles with
+the standard terminal title stack. Titles overlay the terminal without reducing
+its usable rows. Shell prompt reports hide the title until the next command is
+submitted. Titles are also accepted without shell hooks; in that case, the program
+must clear or restore its title when it finishes. Titles stay with running terminals
+across tab and workspace switches; they are not saved as session data.
+
+Use the button beside the title to fill the central work area, then press it
+again to restore the split layout. Other shells continue parsing output in the
+background. Splitting or closing the maximized panel returns to the layout.
+
+Title handling is independent of CLI names and vendors. SimpleBench does not wrap
+CLI commands, inject arguments, change their configuration, or read conversation
+histories. A terminal stream has no standard flag identifying an AI agent and
+cannot expose a conversation name or activity state that the program does not
+send. If a CLI disables title updates or only sends a project name, SimpleBench
+cannot supply a conversation title on its behalf. Leading dot-spinner frames in
+received titles use a font-independent loading icon.
 
 File drops use POSIX quoting, PowerShell literal strings, or cmd double quotes.
 Paths containing `%`, `!`, or quotes are rejected for cmd because they cannot be

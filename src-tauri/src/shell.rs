@@ -302,6 +302,62 @@ pub fn quote(path: &str, shell: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn shell_hooks_preserve_cli_arguments_status_and_custom_commands() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().unwrap();
+        let bin = directory.path().join("installed cli");
+        fs::create_dir(&bin).unwrap();
+        let codex = bin.join("codex");
+        fs::write(&codex, "#!/bin/sh\nprintf '%s\\0' \"$@\"\nexit 7\n").unwrap();
+        fs::set_permissions(&codex, fs::Permissions::from_mode(0o755)).unwrap();
+        let path = env::join_paths(
+            std::iter::once(bin).chain(env::split_paths(&env::var_os("PATH").unwrap())),
+        )
+        .unwrap();
+        let run = |setup: &str, args: &[&str]| {
+            Command::new("bash")
+                .args(["--noprofile", "--norc", "-c"])
+                // Source the integration without loading the user's startup files.
+                .arg(format!(
+                    "source() {{ :; }}\n{setup}\n{}\ncodex \"$@\"",
+                    include_str!("../shell/bash.sh")
+                ))
+                .arg("bash")
+                .args(args)
+                .env("PATH", &path)
+                .current_dir(directory.path())
+                .output()
+                .unwrap()
+        };
+        let args = [
+            "resume",
+            "Dodaj edytor kodu w aplikacji 🦀",
+            "",
+            "quotes '\"; $(touch should-not-exist)",
+            "-c",
+            "tui.terminal_title=['project']",
+        ];
+        let output = run("", &args);
+        assert_eq!(output.status.code(), Some(7));
+        let expected = args
+            .into_iter()
+            .flat_map(|arg| arg.bytes().chain(std::iter::once(0)))
+            .collect::<Vec<_>>();
+        assert_eq!(output.stdout, expected);
+        assert!(!directory.path().join("should-not-exist").exists());
+        for setup in [
+            "function codex { printf custom; return 9; }",
+            "shopt -s expand_aliases\nalias codex='printf custom'",
+        ] {
+            let output = run(setup, &[]);
+            assert_eq!(output.stdout, b"custom");
+        }
+    }
+
     #[test]
     fn quotes_metacharacters_without_execution() {
         assert_eq!(

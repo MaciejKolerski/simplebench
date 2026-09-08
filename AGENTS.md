@@ -149,7 +149,8 @@ or acronym.
   Keep the selected colors in the repository; do not read that path at runtime.
 - Keep the initial interface minimal and usable at the configured minimum window
   size. Use semantic HTML and preserve readable contrast.
-- Keep terminal pages free of permanent pane toolbars and environment selectors.
+- Keep terminal pages free of permanent pane toolbars and environment selectors,
+  except for the centered terminal title and its maximize/restore control.
   Search, command input, command blocks, and environment selection are shown
   only when requested through their configurable shortcuts.
 
