@@ -72,6 +72,9 @@ export async function mockDesktop(
         calls,
         sessions,
         terminalContexts: {},
+        cliTitleSetup: null,
+        cliTitleError: "",
+        cliTitleSaveDelay: 0,
         emit,
         failSave: false,
         gitHistory,
@@ -464,6 +467,17 @@ export async function mockDesktop(
           }
           if (command === "terminal_contexts")
             return desktop.__nativeTest.terminalContexts;
+          if (command === "inspect_cli_titles")
+            return desktop.__nativeTest.cliTitleSetup;
+          if (command === "enable_cli_titles") {
+            await new Promise((resolve) =>
+              setTimeout(resolve, desktop.__nativeTest.cliTitleSaveDelay),
+            );
+            if (desktop.__nativeTest.cliTitleError)
+              throw new Error(desktop.__nativeTest.cliTitleError);
+            desktop.__nativeTest.cliTitleSetup = null;
+            return;
+          }
           if (command === "quote_paths")
             return args.paths
               .map((path: string) => "'" + path.replaceAll("'", "'\\''") + "'")

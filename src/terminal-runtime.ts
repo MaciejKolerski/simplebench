@@ -40,9 +40,15 @@ interface Snapshot {
   composerOpen: boolean;
   blocksOpen: boolean;
 }
+export interface TitleProcess {
+  cli: "codex" | "agy" | "cursor" | "claude";
+  pid: number;
+}
+
 export interface TerminalContext {
   cwd: string | null;
   foregroundProgram: string | null;
+  titleCli: TitleProcess | null;
 }
 type DirectoryListener = (id: string, cwd: string) => void;
 let directoryListener: DirectoryListener = () => {};

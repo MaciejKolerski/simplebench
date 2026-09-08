@@ -98,6 +98,7 @@ import {
   subscribeEditors,
 } from "./editor-service";
 import { useEditorCloseGuard } from "./EditorCloseGuard";
+import { useCliTitleSetup } from "./CliTitleSetup";
 import {
   absoluteFilePath,
   applyFileChange,
@@ -222,6 +223,7 @@ export default function Workbench() {
   const [error, setError] = useState("");
   const [restoreError, setRestoreError] = useState("");
   const [paneNotice, setPaneNotice] = useState("");
+  const cliTitles = useCliTitleSetup(setError, setPaneNotice);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const terminalLayout = useRef<HTMLDivElement>(null);
@@ -284,6 +286,7 @@ export default function Workbench() {
       void api<Record<string, TerminalContext>>("terminal_contexts")
         .then((contexts) => {
           const directories = observeTerminalContexts(contexts);
+          void cliTitles.observe(contexts);
           setSession((state) =>
             state ? updateDirectories(state, directories) : state,
           );
@@ -291,7 +294,7 @@ export default function Workbench() {
         .catch(() => {});
     }, 1000);
     return () => clearInterval(timer);
-  }, [info]);
+  }, [info, cliTitles.observe]);
   useEffect(() => {
     if (!info) return;
     let current = true;
@@ -839,6 +842,7 @@ export default function Workbench() {
           <AppDialog dialog={dialog} onClose={() => setDialog(null)} />
         )}
         {closeGuard.dialog}
+        {cliTitles.dialog}
       </div>
     );
   const { project, workspace, tab } = selected;
@@ -1403,6 +1407,7 @@ export default function Workbench() {
       </footer>
       {dialog && <AppDialog dialog={dialog} onClose={() => setDialog(null)} />}
       {closeGuard.dialog}
+      {cliTitles.dialog}
     </div>
   );
 }

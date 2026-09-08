@@ -66,6 +66,13 @@ or acronym.
   instances without restarting PTYs; unset appearance options inherit the theme.
 - xterm.js renders terminals; `src/terminal-runtime.ts` owns their lifecycle and
   streaming independently of React. Rust `portable-pty` owns native processes.
+- `src/CliTitleSetup.tsx` requests consent when a local Linux terminal runs
+  Codex, agy, Cursor CLI, or Claude Code without terminal titles configured.
+  `src-tauri/src/cli_titles.rs` locates that process's user configuration and
+  changes only title settings after approval in the main window, preserving
+  other settings and a backup. The `--agy-terminal-title` entry point formats
+  agy's supplied JSON state without starting the GUI or reading transcripts. Never
+  configure a CLI silently or restart it automatically.
 - `src-tauri/src/shell.rs` discovers shell environments and quotes dropped paths;
   `src-tauri/shell/` contains integration hooks. Do not edit user shell profiles.
 - `src-tauri/src/files.rs` handles file access and session saving;

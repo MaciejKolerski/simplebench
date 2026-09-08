@@ -1,3 +1,5 @@
+mod cli_titles;
+pub use cli_titles::print_agy_title;
 mod editor_preferences;
 mod files;
 mod git;
@@ -141,6 +143,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .manage(terminal::Terminals::default())
+        .manage(cli_titles::CliTitleConfig::default())
         .manage(files::SessionFile::default())
         .manage(files::search::ProjectSearch::default())
         .manage(files::editor::EditorFiles::default())
@@ -209,7 +212,9 @@ pub fn run() {
             terminal::close_terminal,
             terminal::reset_terminals,
             terminal::quote_paths,
-            terminal::terminal_contexts
+            terminal::terminal_contexts,
+            cli_titles::inspect_cli_titles,
+            cli_titles::enable_cli_titles
         ])
         .build(tauri::generate_context!())
         .expect("failed to build SimpleBench");

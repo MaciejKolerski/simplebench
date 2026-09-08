@@ -145,12 +145,71 @@ again to restore the split layout. Other shells continue parsing output in the
 background. Splitting or closing the maximized panel returns to the layout.
 
 Title handling is independent of CLI names and vendors. SimpleBench does not wrap
-CLI commands, inject arguments, change their configuration, or read conversation
-histories. A terminal stream has no standard flag identifying an AI agent and
+CLI commands, inject arguments, or read conversation histories.
+A terminal stream has no standard flag identifying an AI agent and
 cannot expose a conversation name or activity state that the program does not
 send. If a CLI disables title updates or only sends a project name, SimpleBench
 cannot supply a conversation title on its behalf. Leading dot-spinner frames in
 received titles use a font-independent loading icon.
+
+On Linux, SimpleBench detects local Codex, agy, Cursor CLI (`agent` or
+`cursor-agent`), and Claude Code processes in the terminal's foreground process
+group, including their native and Node launchers. Detection examines executable
+and launcher paths; prompt text is not interpreted. When a CLI's user settings
+need title support enabled, a dialog asks permission. **Not now**, Escape, and
+closing the dialog leave the file untouched. A declined request is not repeated
+for the same configuration until SimpleBench restarts. Existing dialogs take
+priority.
+
+The dialog shows the configuration path. **Allow changes** makes these updates:
+
+| CLI         | User configuration                                                                                                        | Title settings                                                                                           |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| Codex       | `$CODEX_HOME/config.toml`, default `~/.codex/config.toml`                                                                 | `tui.terminal_title = ["activity", "thread-title"]`                                                      |
+| agy         | `~/.gemini/antigravity-cli/settings.json`                                                                                 | Enables `title.enabled`; preserves an existing `title.command`, or adds SimpleBench's local formatter    |
+| Cursor CLI  | `$CURSOR_CONFIG_DIR/cli-config.json`, then `$XDG_CONFIG_HOME/cursor/cli-config.json`, default `~/.cursor/cli-config.json` | `display.showStatusIndicators = true`                                                                    |
+| Claude Code | `$CLAUDE_CONFIG_DIR/settings.json`, default `~/.claude/settings.json`                                                     | `env.CLAUDE_CODE_DISABLE_TERMINAL_TITLE = "0"`; enables `terminalTitleFromRename` if explicitly disabled |
+
+Paths use the running process's environment. Claude Code already enables titles
+by default, so an unconfigured installation needs no prompt. Its inherited title
+disable variable is also checked. These are user settings for all terminals;
+restart the CLI and resume the conversation after approval. CLI flags, project
+settings, or managed settings can take precedence.
+
+Existing settings are preserved (TOML comments remain; JSON is reformatted), and
+an exact `<filename>.simplebench-backup-*` copy is saved beside the file before
+replacement. Invalid, read-only, oversized, or concurrently edited files are not
+overwritten. After a conflict, **Check again** reads the current settings and
+requires another **Allow changes** click. SimpleBench never restarts a CLI or
+sends a command automatically. Automatic setup currently supports local Linux
+terminals; other platforms and remote sessions can use each CLI's own settings.
+
+agy requires a title command before `/title on` can work. SimpleBench's
+`--agy-terminal-title` formatter reads only the JSON state agy provides and emits
+activity plus the conversation title. When agy does not supply a conversation
+title, it uses the folder and a short conversation ID. It does not access
+transcripts or make network requests. Keep SimpleBench installed at the configured
+path when using this formatter. See [agy title customization](https://antigravity.google/docs/cli/title/),
+[Cursor CLI configuration](https://cursor.com/docs/cli/reference/configuration),
+and [Claude Code environment variables](https://code.claude.com/docs/en/env-vars).
+
+For Codex CLI, include the conversation name in its own title configuration.
+The default title contains the project name, so selecting another conversation
+with `/resume` in the same project does not change that name. In
+`~/.codex/config.toml`, add this setting to the `[tui]` table (create the table
+if it does not exist), then restart Codex and resume the conversation:
+
+```toml
+[tui]
+terminal_title = ["activity", "thread-title"]
+```
+
+To try it for one invocation, run
+`codex -c 'tui.terminal_title=["activity","thread-title"]'`.
+This was verified with Codex CLI 0.153.4. See the
+[Codex configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference).
+Other CLIs need their own title updates enabled; SimpleBench displays the title
+they publish.
 
 File drops use POSIX quoting, PowerShell literal strings, or cmd double quotes.
 Paths containing `%`, `!`, or quotes are rejected for cmd because they cannot be

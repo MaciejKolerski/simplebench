@@ -35,6 +35,15 @@ struct Session {
 }
 
 impl Session {
+    fn title_process(&self) -> Option<crate::cli_titles::TitleProcess> {
+        #[cfg(target_os = "linux")]
+        if self.profile.distro.is_none() {
+            let group = self.master.lock().ok()?.process_group_leader()? as u32;
+            return crate::cli_titles::process_in_group(group);
+        }
+        None
+    }
+
     #[cfg(target_os = "linux")]
     fn foreground_program(&self) -> Option<String> {
         let pid = self.master.lock().ok()?.process_group_leader()?;
@@ -110,6 +119,19 @@ fn size(cols: u16, rows: u16) -> Result<PtySize, String> {
 }
 
 impl Terminals {
+    pub fn check_title_process(
+        &self,
+        id: &str,
+        process: crate::cli_titles::TitleProcess,
+    ) -> Result<(), String> {
+        if self.get(id)?.title_process() != Some(process) {
+            return Err(
+                "The CLI is no longer running in this terminal. Check the settings again.".into(),
+            );
+        }
+        Ok(())
+    }
+
     fn get(&self, id: &str) -> Result<Arc<Session>, String> {
         self.sessions
             .lock()
@@ -397,6 +419,7 @@ pub async fn quote_paths(
 pub struct TerminalContext {
     cwd: Option<String>,
     foreground_program: Option<String>,
+    title_cli: Option<crate::cli_titles::TitleProcess>,
 }
 
 #[tauri::command]
@@ -419,6 +442,7 @@ pub fn terminal_contexts(
                 .ok()
                 .map(|path| path.to_string_lossy().into_owned());
             context.foreground_program = session.foreground_program();
+            context.title_cli = session.title_process();
         }
         #[cfg(not(target_os = "linux"))]
         let _ = &session.pid;
@@ -507,6 +531,45 @@ mod tests {
                 thread::sleep(Duration::from_millis(10));
             }
             assert_eq!(session.foreground_program(), None);
+            use crate::cli_titles::TitleCli;
+            for (name, cli) in [
+                ("codex", TitleCli::Codex),
+                ("agy", TitleCli::Agy),
+                ("claude", TitleCli::Claude),
+                ("cursor-agent", TitleCli::Cursor),
+            ] {
+                let executable_path = directory.path().join(name);
+                std::fs::copy("/usr/bin/sleep", &executable_path).unwrap();
+                let executable = shell::quote(&executable_path.to_string_lossy(), "bash").unwrap();
+                for command in [
+                    format!("{executable} 30\r"),
+                    format!("sh -c '\"$1\" 30 & wait' sh {executable}\r"),
+                ] {
+                    manager.write("test", &command).unwrap();
+                    let deadline = Instant::now() + Duration::from_secs(5);
+                    while session.title_process().is_none() && Instant::now() < deadline {
+                        thread::sleep(Duration::from_millis(10));
+                    }
+                    assert_eq!(session.title_process().unwrap().cli, cli);
+                    let process = session.title_process().unwrap();
+                    manager.check_title_process("test", process).unwrap();
+                    assert!(manager
+                        .check_title_process(
+                            "test",
+                            crate::cli_titles::TitleProcess {
+                                pid: process.pid + 1,
+                                ..process
+                            }
+                        )
+                        .is_err());
+                    manager.write("test", "\u{3}").unwrap();
+                    let deadline = Instant::now() + Duration::from_secs(5);
+                    while session.foreground_program().is_some() && Instant::now() < deadline {
+                        thread::sleep(Duration::from_millis(10));
+                    }
+                    assert!(session.title_process().is_none());
+                }
+            }
         }
         manager
             .write("test", "printf 'UTF8: zażółć\\n'; stty size; exit\r")

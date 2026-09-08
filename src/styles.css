@@ -2630,6 +2630,22 @@ svg {
 .dialog-form {
   padding: var(--modal-content-padding);
 }
+.cli-title-dialog .modal-surface,
+.cli-title-dialog .dialog-form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.cli-title-dialog .modal-surface {
+  max-height: inherit;
+}
+.cli-title-dialog header,
+.cli-title-dialog .dialog-actions {
+  flex-shrink: 0;
+}
+.cli-title-description {
+  overflow-y: auto;
+}
 .dialog-form label {
   display: flex;
   flex-direction: column;
