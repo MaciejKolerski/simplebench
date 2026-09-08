@@ -164,6 +164,37 @@ export function addWorkspace(
       : [...session.projects, project],
   };
 }
+export function removeWorkspace(session: Session, id: string): Session {
+  const project = session.projects.find((project) =>
+    project.workspaces.some((workspace) => workspace.id === id),
+  );
+  if (!project) return session;
+  const workspaces = project.workspaces.filter(
+    (workspace) => workspace.id !== id,
+  );
+  const projects = workspaces.length
+    ? session.projects.map((candidate) =>
+        candidate.id === project.id
+          ? {
+              ...project,
+              workspaces,
+              activeWorkspaceId:
+                project.activeWorkspaceId === id
+                  ? workspaces[0].id
+                  : project.activeWorkspaceId,
+            }
+          : candidate,
+      )
+    : session.projects.filter((candidate) => candidate.id !== project.id);
+  return {
+    ...session,
+    projects,
+    activeProjectId:
+      !workspaces.length && session.activeProjectId === project.id
+        ? (projects[0]?.id ?? null)
+        : session.activeProjectId,
+  };
+}
 export function newSession(): Session {
   return {
     version: 1,

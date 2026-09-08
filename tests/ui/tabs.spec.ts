@@ -302,8 +302,13 @@ test("Close All disposes each started pane, leaves other workspaces intact and o
       ),
     )
     .toEqual(other);
-  await page.getByRole("button", { name: "Switch workspace" }).click();
-  await page.getByRole("button", { name: "Review 1", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Toggle workspaces", exact: true })
+    .click();
+  await page
+    .getByRole("navigation", { name: "Workspace list" })
+    .getByRole("button", { name: /^Review / })
+    .click();
   await expect(page.getByRole("tab")).toHaveAttribute(
     "id",
     `tab-${other.tabs[0].id}`,
@@ -343,7 +348,9 @@ test("tab context menu supports keyboard navigation, disabled actions and dismis
   await page.keyboard.press("Tab");
   await expect(page.getByRole("menu")).toHaveCount(0);
   await tab.click({ button: "right" });
-  await page.getByRole("button", { name: "Switch workspace" }).click();
+  await page
+    .getByRole("button", { name: "Toggle workspaces", exact: true })
+    .click();
   await expect(page.getByRole("menu", { name: "Tab actions" })).toHaveCount(0);
   await expect(tab).toHaveCount(1);
 });

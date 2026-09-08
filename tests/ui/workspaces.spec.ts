@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { addWorkspace, newSession } from "../../src/model";
+import { active, addWorkspace, newSession, openFileTab } from "../../src/model";
 import { buffer, mockDesktop } from "./desktop";
 
 test("the global list switches folders and independent workspaces without restarting terminals", async ({
@@ -17,6 +17,9 @@ test("the global list switches folders and independent workspaces without restar
   await page.emulateMedia({ colorScheme: "dark" });
   await page.goto("/");
   await expect(page.locator(".xterm-screen")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Switch workspace", exact: true }),
+  ).toHaveCount(0);
   await page
     .getByRole("button", { name: "Toggle workspaces", exact: true })
     .click();
@@ -32,7 +35,7 @@ test("the global list switches folders and independent workspaces without restar
     await row.click();
     await expect(row).toHaveAttribute("aria-current", "true");
     await expect(page.locator(".xterm-screen")).toBeVisible();
-    await expect(page.locator(".workspace-switcher")).toHaveText(name);
+
     await expect(page.locator(".project-switcher")).toHaveText(
       name === "Bench" ? "simplebench" : "simplevoice",
     );
@@ -124,6 +127,215 @@ test("the global list switches folders and independent workspaces without restar
   ).toBe(1);
 });
 
+test("sidebar actions manage inactive workspaces and can remove the last workspace without recreating it", async ({
+  page,
+}, testInfo) => {
+  let session = addWorkspace(newSession(), "/voice", "local:bash", "Voice");
+  session = addWorkspace(session, "/bench", "local:bash", "Bench");
+  session.sidebar = "workspaces";
+  await mockDesktop(page, false, session);
+  await page.setViewportSize({ width: 800, height: 420 });
+  await page.goto("/");
+  await expect(page.locator(".xterm-screen")).toBeVisible();
+  const list = page.getByRole("navigation", { name: "Workspace list" });
+  await list.getByRole("button", { name: /^Voice / }).click();
+  await expect(list.getByRole("button", { name: /^Voice / })).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  await expect(page.locator(".xterm-screen")).toBeVisible();
+  await list.getByRole("button", { name: /^Bench / }).click();
+  await expect(list.getByRole("button", { name: /^Bench / })).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  const activeTabId = await page
+    .getByRole("tab", { selected: true })
+    .getAttribute("id");
+  const voice = list.getByRole("button", { name: /^Voice / });
+  await voice.focus();
+  await page.keyboard.press("Shift+F10");
+  const menu = page.getByRole("menu", { name: "Workspace actions" });
+  await expect(menu).toBeInViewport();
+  await expect(
+    menu.getByRole("menuitem", { name: "Rename workspace", exact: true }),
+  ).toBeFocused();
+  await page.screenshot({
+    path: testInfo.outputPath("workspace-actions-minimum.png"),
+  });
+  await page.keyboard.press("Escape");
+  await expect(voice).toBeFocused();
+  await voice.click({ button: "right" });
+  await menu
+    .getByRole("menuitem", { name: "Rename workspace", exact: true })
+    .click();
+  await page
+    .getByRole("textbox", { name: "Name", exact: true })
+    .fill("Voice agent");
+  await page.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(
+    list.getByRole("button", { name: /^Voice agent / }),
+  ).toBeVisible();
+  await expect(page.getByRole("tab", { selected: true })).toHaveAttribute(
+    "id",
+    activeTabId!,
+  );
+  await expect(list.getByRole("button", { name: /^Bench / })).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          JSON.parse(localStorage.getItem("test-session") ?? "null")
+            ?.projects[0]?.workspaces[0]?.name,
+      ),
+    )
+    .toBe("Voice agent");
+  for (const name of ["Voice agent", "Bench"]) {
+    await list
+      .getByRole("button", { name: new RegExp(`^${name} `) })
+      .click({ button: "right" });
+    await menu
+      .getByRole("menuitem", { name: "Delete workspace…", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await expect(
+      list.getByRole("button", { name: new RegExp(`^${name} `) }),
+    ).toHaveCount(0);
+    if (name === "Voice agent") {
+      await expect(page.getByRole("tab", { selected: true })).toHaveAttribute(
+        "id",
+        activeTabId!,
+      );
+      await expect(
+        list.getByRole("button", { name: /^Bench / }),
+      ).toHaveAttribute("aria-current", "true");
+    }
+  }
+  await expect(
+    page.getByRole("main", { name: "No project open" }),
+  ).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__nativeTest.calls.filter(
+            (call: any) => call.command === "close_terminal",
+          ).length,
+      ),
+    )
+    .toBe(2);
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.calls.some(
+        (call: any) => call.command === "file_operation",
+      ),
+    ),
+  ).toBe(false);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          JSON.parse(localStorage.getItem("test-session") ?? "null")?.projects,
+      ),
+    )
+    .toEqual([]);
+  await page.reload();
+  await expect(
+    page.getByRole("main", { name: "No project open" }),
+  ).toBeVisible();
+  await expect(list.getByRole("button")).toHaveCount(0);
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.calls.some(
+        (call: any) => call.command === "start_terminal",
+      ),
+    ),
+  ).toBe(false);
+  await page
+    .getByRole("button", { name: "New workspace", exact: true })
+    .click();
+  await page.getByRole("textbox", { name: "Name", exact: true }).press("Enter");
+  await expect(list.getByRole("button")).toHaveCount(1);
+  await expect(page.locator(".xterm-screen")).toBeVisible();
+});
+
+test("deleting the final workspace retains dirty files after cancellation or failed saves", async ({
+  page,
+}) => {
+  let session = addWorkspace(newSession(), "/project", "local:bash", "Agent");
+  session = openFileTab(
+    session,
+    active(session)!.workspace.id,
+    "/project",
+    "README.md",
+  );
+  session.sidebar = "workspaces";
+  await mockDesktop(page, false, session);
+  await page.goto("/");
+  await expect(page.locator(".cm-content")).toBeVisible();
+  await page.getByRole("tab", { name: "Terminal", exact: true }).click();
+  await expect(page.locator(".xterm-screen")).toBeVisible();
+  await page.getByRole("tab", { name: "README.md", exact: true }).click();
+  await page.locator(".cm-content").focus();
+  await page.keyboard.press("Control+a");
+  await page.keyboard.insertText("Retain this draft");
+  const row = page
+    .getByRole("navigation", { name: "Workspace list" })
+    .getByRole("button", { name: /^Agent / });
+  for (const attempt of ["cancel", "failed save", "discard"]) {
+    await row.click({ button: "right" });
+    await page
+      .getByRole("menuitem", { name: "Delete workspace…", exact: true })
+      .click();
+    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    const guard = page.getByRole("dialog", {
+      name: "Save changes before closing?",
+    });
+    await expect(guard).toBeVisible();
+    if (attempt === "failed save") {
+      await page.evaluate(() => {
+        (window as any).__nativeTest.failFileSave = true;
+      });
+      await guard
+        .getByRole("button", { name: "Save changes", exact: true })
+        .click();
+      await expect(guard.getByRole("alert")).toContainText("Disk is full");
+    }
+    if (attempt === "discard") {
+      await guard
+        .getByRole("button", { name: "Discard changes", exact: true })
+        .click();
+    } else {
+      await guard.getByRole("button", { name: "Cancel", exact: true }).click();
+      await expect(page.locator(".cm-content")).toHaveText("Retain this draft");
+      await expect(row).toBeVisible();
+      expect(
+        await page.evaluate(() =>
+          (window as any).__nativeTest.calls.some(
+            (call: any) => call.command === "close_terminal",
+          ),
+        ),
+      ).toBe(false);
+    }
+  }
+  await expect(
+    page.getByRole("main", { name: "No project open" }),
+  ).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__nativeTest.calls.filter(
+            (call: any) => call.command === "close_terminal",
+          ).length,
+      ),
+    )
+    .toBe(1);
+});
+
 test("adding a workspace chooses a folder every time, including the same folder, and cancellation preserves the session", async ({
   page,
 }) => {
@@ -151,7 +363,9 @@ test("adding a workspace chooses a folder every time, including the same folder,
     .getByRole("textbox", { name: "Name", exact: true })
     .fill("Agent 2");
   await page.getByRole("textbox", { name: "Name", exact: true }).press("Enter");
-  await expect(page.locator(".workspace-switcher")).toHaveText("Agent 2");
+  await expect(
+    panel.getByRole("button", { name: /^Agent 2 / }),
+  ).toHaveAttribute("aria-current", "true");
   await expect(panel.getByRole("navigation").getByRole("button")).toHaveCount(
     2,
   );
@@ -200,7 +414,9 @@ test("adding a workspace chooses a folder every time, including the same folder,
   });
   await panel.getByRole("button", { name: /^Agent 1 / }).click();
   await expect(page.getByRole("alert")).toContainText("Folder not found");
-  await expect(page.locator(".workspace-switcher")).toHaveText("simplebench");
+  await expect(
+    panel.getByRole("button", { name: /^simplebench / }),
+  ).toHaveAttribute("aria-current", "true");
 });
 
 test("a configured workspace shortcut works before folder selection and is captured before terminal input", async ({

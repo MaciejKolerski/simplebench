@@ -5,7 +5,7 @@ is developed incrementally with Tauri 2, Rust, React, TypeScript, and Vite.
 
 ## Current milestone
 
-- The title bar contains a compact project menu, workspace selector, tabs, a new
+- The title bar contains a compact project menu, tabs, a new
   tab button, and settings. On first launch, choose “Open Recent Project” and
   “Open Local Folder…” to select a folder with the native picker. Recent projects
   appear in order of last use and retain their workspaces. Hover a project name
@@ -17,8 +17,10 @@ is developed incrementally with Tauri 2, Rust, React, TypeScript, and Vite.
   their folder paths. Select a row to switch folders and workspaces in one click.
   Use **New workspace** in this panel to choose a folder and name the workspace;
   choosing the same folder again creates separate tabs and terminals for it.
-  Files remain shared. The workspace menu in the title bar renames and deletes
-  workspaces. A shortcut for the panel can be assigned in Settings → Keybinds.
+  Files remain shared. Right-click a workspace (or focus it and press Shift+F10)
+  to rename or delete it. Any workspace can be deleted, including the last one;
+  deletion closes its tabs and checks unsaved edits without deleting its folder.
+  A shortcut for the panel can be assigned in Settings → Keybinds.
 - Drag a tab along the title bar to reorder it. Drag an inactive terminal or file tab
   onto the active terminal view to combine them; the nearest edge selects the
   split direction. The source tab disappears and its panels keep their running
@@ -339,7 +341,7 @@ editor defaults; any colliding new defaults start unassigned.
 Double-click a terminal or commit tab to rename it. File tabs retain their
 filenames. Drag split dividers to resize panes; focused
 dividers also accept arrow keys, and double-click resets a split to 50/50.
-Workspace creation, renaming, and deletion are in the workspace selector.
+Workspace creation, renaming, and deletion are in the Workspaces sidebar.
 Closing the last panel closes its tab. Closing the last tab creates a fresh
 terminal so the workspace remains usable.
 

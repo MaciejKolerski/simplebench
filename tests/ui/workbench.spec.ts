@@ -75,9 +75,14 @@ test("nested splits, workspace names and active tabs survive a reload", async ({
   await separator.focus();
   await page.keyboard.press("ArrowRight");
   await expect(separator).toHaveAttribute("aria-valuenow", "55");
-  await page.getByRole("button", { name: "Switch workspace" }).click();
   await page
-    .getByRole("button", { name: "Rename workspace", exact: true })
+    .getByRole("button", { name: "Toggle workspaces", exact: true })
+    .click();
+  await page
+    .locator('.workspace-list-item[aria-current="true"]')
+    .click({ button: "right" });
+  await page
+    .getByRole("menuitem", { name: "Rename workspace", exact: true })
     .click();
   await page
     .getByRole("textbox", { name: "Name", exact: true })
@@ -88,7 +93,7 @@ test("nested splits, workspace names and active tabs survive a reload", async ({
     .toContain("Backend");
   await page.reload();
   await expect(
-    page.getByRole("button", { name: "Switch workspace" }),
+    page.locator('.workspace-list-item[aria-current="true"]'),
   ).toContainText("Backend");
   await expect(page.locator("[data-pane-id]")).toHaveCount(3);
   await expect(

@@ -80,9 +80,14 @@ test("recent projects keep their workspaces and streaming terminals in order of 
   ]);
   await page.screenshot({ path: testInfo.outputPath("recent-projects.png") });
   await page.getByRole("menuitem", { name: "api", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Toggle workspaces", exact: true })
+    .click();
   await expect(
-    page.getByRole("button", { name: "Switch workspace", exact: true }),
-  ).toHaveText("Review");
+    page
+      .getByRole("navigation", { name: "Workspace list" })
+      .getByRole("button", { name: /^Review / }),
+  ).toHaveAttribute("aria-current", "true");
   await expect(page.locator(".xterm-screen")).toBeVisible();
   const paneId = await page
     .locator("[data-pane-id]")
@@ -270,9 +275,7 @@ test("the compact menu supports keyboard navigation and long histories at minimu
   await trigger.click();
   await page.keyboard.press("Tab");
   await expect(page.getByRole("menu")).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Switch workspace", exact: true }),
-  ).toBeFocused();
+  await expect(page.getByRole("tab", { selected: true })).toBeFocused();
   await trigger.click();
   await page.locator(".titlebar-space").click();
   await expect(page.getByRole("menu")).toHaveCount(0);

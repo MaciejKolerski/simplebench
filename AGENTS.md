@@ -35,6 +35,9 @@ or acronym.
   `src/SidebarToggle.tsx` exposes placement through the status-bar context menus.
   `src/Workspaces.tsx` lists workspaces across all project folders. Adding a
   workspace from this panel may reuse a folder with separate tabs and terminals.
+  Workspace creation and context-menu rename/delete actions live only in this
+  sidebar. Removing the last workspace removes its project from the session,
+  preserving files on disk and checking unsaved editor buffers before closing.
   Preserve legacy left-sidebar settings when restoring older sessions.
 - `src/editor-service.ts` loads the editor on demand; `src/editor-runtime.ts`
   keeps shared CodeMirror buffers and history outside React. `src/FileEditor.tsx`

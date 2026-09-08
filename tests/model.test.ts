@@ -14,6 +14,7 @@ import {
   panes,
   removePane,
   removeTabs,
+  removeWorkspace,
   resizeSplit,
   restoreSession,
   splitPane,
@@ -406,5 +407,35 @@ test("new workspaces share a folder while retaining independent tabs and restore
   assert.deepEqual(
     restoreSession(JSON.parse(JSON.stringify(third)), info),
     third,
+  );
+});
+
+test("removing a workspace preserves other selections and permits an empty restored session", () => {
+  let state = addWorkspace(newSession(), "/a", "bash", "One");
+  const first = active(state)!.workspace;
+  state = addWorkspace(state, "/a", "bash", "Two");
+  const second = active(state)!.workspace;
+  state = addWorkspace(state, "/b", "bash", "Other");
+  const other = active(state)!;
+  assert.equal(removeWorkspace(state, "missing"), state);
+  const withoutInactive = removeWorkspace(state, first.id);
+  assert.equal(active(withoutInactive)!.workspace, other.workspace);
+  assert.equal(withoutInactive.projects[0].activeWorkspaceId, second.id);
+  assert.equal(state.projects[0].workspaces.length, 2);
+  const withoutOther = removeWorkspace(withoutInactive, other.workspace.id);
+  assert.equal(withoutOther.projects.length, 1);
+  assert.equal(active(withoutOther)!.workspace, second);
+  const withoutSelected = removeWorkspace(
+    { ...state, activeProjectId: state.projects[0].id },
+    second.id,
+  );
+  assert.equal(active(withoutSelected)!.workspace, first);
+  const empty = removeWorkspace(withoutOther, second.id);
+  assert.deepEqual(empty.projects, []);
+  assert.equal(empty.activeProjectId, null);
+  assert.equal(active(empty), undefined);
+  assert.deepEqual(
+    restoreSession(JSON.parse(JSON.stringify(empty)), info),
+    empty,
   );
 });

@@ -520,20 +520,23 @@ test("workspaces share a file buffer and protect it when its last tab closes", a
   await page.goto("/");
   await expect(page.locator(".cm-content")).toBeVisible();
   await replaceText(page, "shared buffer");
-  await page.getByRole("button", { name: "Switch workspace" }).click();
-  await page.getByRole("button", { name: "Review 2", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Toggle workspaces", exact: true })
+    .click();
+  const list = page.getByRole("navigation", { name: "Workspace list" });
+  await list.getByRole("button", { name: /^Review / }).click();
   await expect(page.locator(".cm-content")).toHaveText("shared buffer");
   await page.keyboard.press("Control+w");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.getByRole("tab")).toHaveCount(1);
-  await page.getByRole("button", { name: "Switch workspace" }).click();
-  await page
-    .getByRole("button", { name: `${first.name} 2`, exact: true })
-    .click();
+  const original = list.getByRole("button", {
+    name: new RegExp(`^${first.name} `),
+  });
+  await original.click();
   await expect(page.locator(".cm-content")).toHaveText("shared buffer");
-  await page.getByRole("button", { name: "Switch workspace" }).click();
+  await original.click({ button: "right" });
   await page
-    .getByRole("button", { name: "Delete workspace…", exact: true })
+    .getByRole("menuitem", { name: "Delete workspace…", exact: true })
     .click();
   await page
     .getByRole("dialog")

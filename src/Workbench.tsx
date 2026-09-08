@@ -8,19 +8,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import {
-  ChevronDown,
-  ChevronRight,
-  Folder,
-  GitBranch,
-  Layers,
-  Pencil,
-  Plus,
-  Settings,
-  Terminal,
-  Trash2,
-  X,
-} from "lucide-react";
+import { Folder, GitBranch, Layers, Settings, Terminal, X } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -58,6 +46,7 @@ import {
   panes,
   removePane,
   removeTabs,
+  removeWorkspace,
   resizeSplit,
   restoreSession,
   splitPane,
@@ -74,6 +63,7 @@ import type {
   Split,
   TabCloseAction,
   TerminalTab,
+  Workspace,
 } from "./model";
 import {
   closeTerminals,
@@ -83,7 +73,7 @@ import {
 } from "./terminal-runtime";
 import type { TerminalContext } from "./terminal-runtime";
 import { dropPaths, terminalAt } from "./file-drag";
-import { IconButton, Menu, Modal, WindowControls } from "./ui";
+import { IconButton, Modal, WindowControls } from "./ui";
 import Explorer from "./Explorer";
 import ProjectSwitcher from "./ProjectSwitcher";
 import SourceControl from "./SourceControl";
@@ -232,14 +222,14 @@ export default function Workbench() {
   const [error, setError] = useState("");
   const [restoreError, setRestoreError] = useState("");
   const [paneNotice, setPaneNotice] = useState("");
-  const [menu, setMenu] = useState<"project" | "workspace" | null>(null);
+  const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const terminalLayout = useRef<HTMLDivElement>(null);
   usePointerFocus(preferences.focusFollowsPointer, terminalLayout);
   const savingEnabled = useRef(false);
   const selected = session ? active(session) : undefined;
   const git = useGit(selected?.project.path ?? "");
-  const closeMenu = useCallback(() => setMenu(null), []);
+  const closeProjectMenu = useCallback(() => setProjectMenuOpen(false), []);
 
   useEffect(() => {
     if (preferences.error) setError(preferences.error);
@@ -445,7 +435,7 @@ export default function Workbench() {
     );
   };
   const openSettings = () => {
-    setMenu(null);
+    setProjectMenuOpen(false);
     void api("open_settings").catch((error) => setError(errorMessage(error)));
   };
   useEffect(() => {
@@ -461,7 +451,7 @@ export default function Workbench() {
         document.querySelector("dialog[open]") ||
         (event.target instanceof Element &&
           event.target.closest(
-            ".tab-context-menu, .editor-status-menu, .sidebar-context-menu, .markdown-preview-menu",
+            ".tab-context-menu, .editor-status-menu, .sidebar-context-menu, .markdown-preview-menu, .explorer-context-menu",
           )) ||
         (isTextInput(event.target) && !inEditor)
       )
@@ -511,7 +501,7 @@ export default function Workbench() {
       event.preventDefault();
       event.stopPropagation();
       if (event.repeat) return;
-      setMenu(null);
+      setProjectMenuOpen(false);
       if (action === "openSettings") {
         openSettings();
         return;
@@ -635,7 +625,7 @@ export default function Workbench() {
       </div>
     );
   const selectProject = async (path: string, workspaceId?: string) => {
-    setMenu(null);
+    setProjectMenuOpen(false);
     try {
       const normalized = await api<string>("validate_directory", { path });
       change((state) => {
@@ -672,20 +662,8 @@ export default function Workbench() {
       setError(errorMessage(error));
     }
   };
-  const promptWorkspace = (path: string, initial = "") => {
-    setMenu(null);
-    setDialog({
-      type: "name",
-      title: "New workspace",
-      initial,
-      submit: (name) =>
-        change((state) =>
-          addWorkspace(state, path, info.profiles[0]?.id ?? "", name),
-        ),
-    });
-  };
   const browse = async (createWorkspace = false) => {
-    setMenu(null);
+    setProjectMenuOpen(false);
     try {
       const path = await open({
         directory: true,
@@ -702,10 +680,15 @@ export default function Workbench() {
           currentSession.current?.projects.find(
             (project) => project.path === normalized,
           )?.workspaces.length ?? 0;
-        promptWorkspace(
-          normalized,
-          `${basename(normalized)}${count ? ` ${count + 1}` : ""}`,
-        );
+        setDialog({
+          type: "name",
+          title: "New workspace",
+          initial: `${basename(normalized)}${count ? ` ${count + 1}` : ""}`,
+          submit: (name) =>
+            change((state) =>
+              addWorkspace(state, normalized, info.profiles[0]?.id ?? "", name),
+            ),
+        });
       } else await selectProject(path);
     } catch (error) {
       setError(errorMessage(error));
@@ -715,9 +698,9 @@ export default function Workbench() {
     <ProjectSwitcher
       projects={session.projects}
       activeProjectId={session.activeProjectId}
-      expanded={menu === "project"}
-      onToggle={() => setMenu(menu === "project" ? null : "project")}
-      onClose={closeMenu}
+      expanded={projectMenuOpen}
+      onToggle={() => setProjectMenuOpen(!projectMenuOpen)}
+      onClose={closeProjectMenu}
       onSelect={(path) => void selectProject(path)}
       onBrowse={() => void browse()}
     />
@@ -751,6 +734,37 @@ export default function Workbench() {
   const workspaceSide = session.sidebarSides.workspaces;
   const workspaceWidthKey =
     workspaceSide === "left" ? "sidebarWidth" : "rightSidebarWidth";
+  const deleteWorkspace = (workspace: Workspace) => {
+    setDialog({
+      type: "confirm",
+      title: "Delete workspace",
+      text: `Delete “${workspace.name}” and close all of its tabs? Files in its folder will remain on disk.`,
+      submit: async () => {
+        const current = () =>
+          currentSession.current?.projects
+            .flatMap((project) => project.workspaces)
+            .find((candidate) => candidate.id === workspace.id);
+        const target = current();
+        if (
+          !target ||
+          !(await closeGuard.confirm(
+            new Set(target.tabs.flatMap(filesInTab).map((file) => file.id)),
+          ))
+        )
+          return;
+        const remaining = current();
+        if (!remaining) return;
+        closeTerminals(
+          remaining.tabs.flatMap((tab) =>
+            tab.type === "terminal"
+              ? panes(tab.layout).map((pane) => pane.id)
+              : [],
+          ),
+        );
+        change((state) => removeWorkspace(state, workspace.id));
+      },
+    });
+  };
   const workspacePanel = sidebarOpen("workspaces") && (
     <Sidebar
       key="workspaces"
@@ -766,6 +780,21 @@ export default function Workbench() {
         activeWorkspaceId={selected?.workspace.id}
         onSelect={(path, id) => void selectProject(path, id)}
         onNew={() => void browse(true)}
+        onRename={(workspace) =>
+          setDialog({
+            type: "name",
+            title: "Rename workspace",
+            initial: workspace.name,
+            submit: (name) =>
+              change((state) =>
+                updateWorkspace(state, workspace.id, (workspace) => ({
+                  ...workspace,
+                  name,
+                })),
+              ),
+          })
+        }
+        onDelete={deleteWorkspace}
       />
     </Sidebar>
   );
@@ -1097,137 +1126,6 @@ export default function Workbench() {
     <div className="app-shell">
       <header className="titlebar" data-tauri-drag-region>
         {projectPicker}
-        <ChevronRight
-          className="titlebar-context-separator"
-          size={12}
-          aria-hidden="true"
-        />
-        <div className="titlebar-workspace">
-          <button
-            type="button"
-            className="workspace-switcher"
-            data-menu-trigger
-            aria-expanded={menu === "workspace"}
-            aria-label="Switch workspace"
-            title={`Switch workspace: ${workspace.name}`}
-            onClick={() => setMenu(menu === "workspace" ? null : "workspace")}
-          >
-            <Layers size={14} aria-hidden="true" />
-            <span>{workspace.name}</span>
-            <ChevronDown
-              className="switcher-chevron"
-              size={11}
-              aria-hidden="true"
-            />
-          </button>
-          {menu === "workspace" && (
-            <Menu className="workspace-menu" onClose={closeMenu}>
-              <span className="menu-label">WORKSPACES</span>
-              {project.workspaces.map((candidate) => (
-                <button
-                  className={`menu-item${candidate.id === workspace.id ? " selected" : ""}`}
-                  key={candidate.id}
-                  title={candidate.name}
-                  aria-current={
-                    candidate.id === workspace.id ? "true" : undefined
-                  }
-                  onClick={() => {
-                    change((state) => ({
-                      ...state,
-                      projects: state.projects.map((project) =>
-                        project.id === selected.project.id
-                          ? { ...project, activeWorkspaceId: candidate.id }
-                          : project,
-                      ),
-                    }));
-                    setMenu(null);
-                  }}
-                >
-                  <Layers size={14} />
-                  <span>{candidate.name}</span>
-                  <span className="count-badge">{candidate.tabs.length}</span>
-                </button>
-              ))}
-              <div className="menu-divider" />
-              <button
-                className="menu-item"
-                onClick={() => promptWorkspace(project.path)}
-              >
-                <Plus size={14} />
-                New workspace
-              </button>
-              <button
-                className="menu-item"
-                onClick={() => {
-                  setMenu(null);
-                  setDialog({
-                    type: "name",
-                    title: "Rename workspace",
-                    initial: workspace.name,
-                    submit: (name) =>
-                      change((state) =>
-                        updateWorkspace(state, workspace.id, (workspace) => ({
-                          ...workspace,
-                          name,
-                        })),
-                      ),
-                  });
-                }}
-              >
-                <Pencil size={14} aria-hidden="true" />
-                Rename workspace
-              </button>
-              <button
-                className="menu-item"
-                disabled={project.workspaces.length === 1}
-                onClick={() => {
-                  setMenu(null);
-                  setDialog({
-                    type: "confirm",
-                    title: "Delete workspace",
-                    text: `Delete “${workspace.name}” and close all of its tabs?`,
-                    submit: async () => {
-                      if (
-                        !(await closeGuard.confirm(
-                          new Set(
-                            workspace.tabs
-                              .flatMap(filesInTab)
-                              .map((file) => file.id),
-                          ),
-                        ))
-                      )
-                        return;
-                      closeTerminals(
-                        workspace.tabs.flatMap((tab) =>
-                          tab.type === "terminal"
-                            ? panes(tab.layout).map((pane) => pane.id)
-                            : [],
-                        ),
-                      );
-                      change((state) => ({
-                        ...state,
-                        projects: state.projects.map((candidate) => {
-                          if (candidate.id !== project.id) return candidate;
-                          const workspaces = candidate.workspaces.filter(
-                            (item) => item.id !== workspace.id,
-                          );
-                          return {
-                            ...candidate,
-                            workspaces,
-                            activeWorkspaceId: workspaces[0].id,
-                          };
-                        }),
-                      }));
-                    },
-                  });
-                }}
-              >
-                <Trash2 size={14} aria-hidden="true" />
-                Delete workspace…
-              </button>
-            </Menu>
-          )}
-        </div>
         <TabBar
           key={workspace.id}
           tabs={workspace.tabs}
