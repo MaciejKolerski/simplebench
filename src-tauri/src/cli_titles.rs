@@ -277,7 +277,7 @@ fn agy_command() -> Result<String, String> {
     ))
 }
 
-/// Formats agy's supplied state without opening a window or reading conversation files.
+/// Resolves the active conversation's title without opening a window or reading transcripts.
 pub fn print_agy_title() -> Result<(), String> {
     let mut input = String::new();
     std::io::stdin()
@@ -291,35 +291,66 @@ pub fn print_agy_title() -> Result<(), String> {
     if !data.is_object() {
         return Err("agy title data must be a JSON object.".into());
     }
-    println!("{}", agy_title(&data));
+    let annotations = crate::shell::home().join(".gemini/antigravity-cli/annotations");
+    println!("{}", agy_title(&data, &annotations));
     Ok(())
 }
 
-fn agy_title(data: &Value) -> String {
-    let title = data["conversation_title"]
-        .as_str()
-        .filter(|title| !title.trim().is_empty());
-    let directory = data["workspace"]["current_dir"]
-        .as_str()
-        .or_else(|| data["cwd"].as_str())
-        .and_then(|cwd| Path::new(cwd).file_name())
-        .and_then(|name| name.to_str())
-        .unwrap_or("agy");
-    let fallback = match data["conversation_id"]
-        .as_str()
-        .or_else(|| data["session_id"].as_str())
-    {
-        Some(id) if !id.is_empty() => {
-            format!("{directory} · {}", id.chars().take(8).collect::<String>())
+fn agy_annotation_title(source: &str) -> Option<String> {
+    // agy writes title as the first protobuf text field; never match text inside tags.
+    let field = regex::Regex::new(r#"^\s*title\s*:\s*("(?:\\.|[^"\\])*")"#).ok()?;
+    let quoted = field.captures(source)?.get(1)?.as_str();
+    let escapes = regex::Regex::new(r#"\\\\|\\x([0-9a-fA-F]{2})|\\U([0-9a-fA-F]{8})"#).ok()?;
+    let quoted = escapes.replace_all(quoted, |captures: &regex::Captures<'_>| {
+        if let Some(hex) = captures.get(1) {
+            format!("\\u00{}", hex.as_str())
+        } else if let Some(hex) = captures.get(2) {
+            u32::from_str_radix(hex.as_str(), 16)
+                .ok()
+                .and_then(char::from_u32)
+                .and_then(|character| serde_json::to_string(&character.to_string()).ok())
+                .map(|quoted| quoted[1..quoted.len() - 1].to_owned())
+                .unwrap_or_else(|| captures[0].to_owned())
+        } else {
+            captures[0].to_owned()
         }
-        _ => directory.to_owned(),
-    };
-    let state = if data["tool_confirmation_pending"] == true {
-        "Waiting for approval"
-    } else {
-        data["agent_state"].as_str().unwrap_or("idle")
-    };
-    format!("{state} · {}", title.unwrap_or(&fallback))
+    });
+    serde_json::from_str::<String>(&quoted)
+        .ok()
+        .filter(|title| !title.trim().is_empty())
+}
+
+fn agy_title(data: &Value, annotations: &Path) -> String {
+    let id = data["conversation_id"]
+        .as_str()
+        .filter(|id| !id.is_empty())
+        .or_else(|| data["session_id"].as_str())
+        .filter(|id| !id.is_empty());
+    let title = id
+        .and_then(|id| {
+            if id.len() > 128
+                || !id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+            {
+                return None;
+            }
+            let path = annotations.join(format!("{id}.pbtxt"));
+            if !path.symlink_metadata().ok()?.is_file() {
+                return None;
+            }
+            // The summaries database may lag behind active conversations and /resume renames.
+            agy_annotation_title(&read(&path).ok()??)
+        })
+        .or_else(|| {
+            data["conversation_title"]
+                .as_str()
+                .filter(|title| !title.trim().is_empty())
+                .map(str::to_owned)
+        });
+    title
+        .as_deref()
+        .unwrap_or("agy")
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
@@ -697,20 +728,94 @@ mod tests {
 
     #[test]
     fn formats_agy_conversation_changes_and_bounds_untrusted_titles() {
+        let dir = tempfile::tempdir().unwrap();
+        let annotations = dir.path().join("annotations");
         let mut data =
             json!({"conversation_title":"Ulepsz system zakładek", "agent_state":"working"});
-        assert_eq!(agy_title(&data), "working · Ulepsz system zakładek");
+        assert_eq!(agy_title(&data, &annotations), "Ulepsz system zakładek");
         data["conversation_title"] = json!("Inna rozmowa");
         data["tool_confirmation_pending"] = json!(true);
-        assert_eq!(agy_title(&data), "Waiting for approval · Inna rozmowa");
+        assert_eq!(agy_title(&data, &annotations), "Inna rozmowa");
         assert_eq!(
-            agy_title(&json!({"cwd":"/tmp/project", "conversation_id":"12345678-abcd"})),
-            "idle · project · 12345678"
+            agy_title(
+                &json!({"cwd":"/tmp/project", "conversation_id":"unknown"}),
+                &annotations
+            ),
+            "agy"
         );
+        assert!(!annotations.exists());
         data["conversation_title"] = json!("\u{1b}\u{7}\n".to_owned() + &"ą".repeat(500));
-        let title = agy_title(&data);
+        let title = agy_title(&data, &annotations);
         assert_eq!(title.chars().count(), 256);
         assert!(!title.chars().any(char::is_control));
+    }
+
+    #[test]
+    fn resolves_live_agy_names_and_resume_renames_without_a_summaries_database() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = dir.path().join("first-conversation.pbtxt");
+        let second = dir.path().join("second-conversation.pbtxt");
+        fs::write(&first, r#"title:"Data Wydania Dipsick V4""#).unwrap();
+        fs::write(&second, r#"title: "Druga rozmowa""#).unwrap();
+        let mut data = json!({
+            "cwd": "/tmp/simplebench",
+            "conversation_id": "first-conversation",
+            "agent_state": "idle",
+            "transcript_path": "/unreadable/transcript.jsonl",
+        });
+        assert_eq!(agy_title(&data, dir.path()), "Data Wydania Dipsick V4");
+        assert_eq!(
+            fs::read_to_string(&first).unwrap(),
+            r#"title:"Data Wydania Dipsick V4""#
+        );
+        data["conversation_id"] = json!("second-conversation");
+        assert_eq!(agy_title(&data, dir.path()), "Druga rozmowa");
+
+        fs::write(
+            &second,
+            r#"title:"Zażółć \"gęślą\" \\x41 \u015b \U0001f980""#,
+        )
+        .unwrap();
+        data["conversation_title"] = json!("Stale CLI title");
+        assert_eq!(agy_title(&data, dir.path()), "Zażółć \"gęślą\" \\x41 ś 🦀");
+        data["conversation_id"] = json!("");
+        data["session_id"] = json!("second-conversation");
+        assert_eq!(agy_title(&data, dir.path()), "Zażółć \"gęślą\" \\x41 ś 🦀");
+        fs::write(&second, r#"title:"Safe\x1b\x07\nname""#).unwrap();
+        assert_eq!(agy_title(&data, dir.path()), "Safe name");
+        assert!(agy_annotation_title(r#"tags: "a title: " tags: "Not a title""#).is_none());
+        fs::write(&second, "invalid annotation").unwrap();
+        assert_eq!(agy_title(&data, dir.path()), "Stale CLI title");
+        assert_eq!(fs::read_to_string(&second).unwrap(), "invalid annotation");
+        data.as_object_mut().unwrap().remove("conversation_title");
+        fs::write(&second, "x".repeat(LIMIT as usize + 1)).unwrap();
+        assert_eq!(agy_title(&data, dir.path()), "agy");
+    }
+
+    #[test]
+    fn agy_title_ids_cannot_escape_the_annotations_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let annotations = dir.path().join("annotations");
+        fs::create_dir(&annotations).unwrap();
+        let outside = dir.path().join("outside.pbtxt");
+        fs::write(&outside, r#"title:"Must not read""#).unwrap();
+        for id in [
+            "../outside".to_owned(),
+            outside.with_extension("").to_string_lossy().into_owned(),
+        ] {
+            assert_eq!(
+                agy_title(&json!({"conversation_id":id}), &annotations),
+                "agy"
+            );
+        }
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&outside, annotations.join("link.pbtxt")).unwrap();
+            assert_eq!(
+                agy_title(&json!({"conversation_id":"link"}), &annotations),
+                "agy"
+            );
+        }
     }
 
     #[cfg(target_os = "linux")]

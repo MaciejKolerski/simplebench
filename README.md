@@ -148,9 +148,9 @@ Title handling is independent of CLI names and vendors. SimpleBench does not wra
 CLI commands, inject arguments, or read conversation histories.
 A terminal stream has no standard flag identifying an AI agent and
 cannot expose a conversation name or activity state that the program does not
-send. If a CLI disables title updates or only sends a project name, SimpleBench
-cannot supply a conversation title on its behalf. Leading dot-spinner frames in
-received titles use a font-independent loading icon.
+send. CLI title updates must be enabled; the optional agy formatter below can
+resolve a conversation name from local title metadata. Leading dot-spinner frames
+in received titles use a font-independent loading icon.
 
 On Linux, SimpleBench detects local Codex, agy, Cursor CLI (`agent` or
 `cursor-agent`), and Claude Code processes in the terminal's foreground process
@@ -172,9 +172,12 @@ The dialog shows the configuration path. **Allow changes** makes these updates:
 
 Paths use the running process's environment. Claude Code already enables titles
 by default, so an unconfigured installation needs no prompt. Its inherited title
-disable variable is also checked. These are user settings for all terminals;
-restart the CLI and resume the conversation after approval. CLI flags, project
-settings, or managed settings can take precedence.
+disable variable is also checked. These are user settings for all terminals.
+After approving agy setup, enter `/title on` in the running CLI to activate
+titles; `/resume` alone does not activate them. SimpleBench keeps this instruction
+open until dismissed. Alternatively, restart agy and resume the conversation.
+Restart the other CLIs and resume the conversation after approval. CLI flags,
+project settings, or managed settings can take precedence.
 
 Existing settings are preserved (TOML comments remain; JSON is reformatted), and
 an exact `<filename>.simplebench-backup-*` copy is saved beside the file before
@@ -185,11 +188,16 @@ sends a command automatically. Automatic setup currently supports local Linux
 terminals; other platforms and remote sessions can use each CLI's own settings.
 
 agy requires a title command before `/title on` can work. SimpleBench's
-`--agy-terminal-title` formatter reads only the JSON state agy provides and emits
-activity plus the conversation title. When agy does not supply a conversation
-title, it uses the folder and a short conversation ID. It does not access
-transcripts or make network requests. Keep SimpleBench installed at the configured
-path when using this formatter. See [agy title customization](https://antigravity.google/docs/cli/title/),
+`--agy-terminal-title` formatter emits the conversation name without a status,
+folder, ID, or `[CURRENT]` prefix. It reads the exact active conversation's
+`~/.gemini/antigravity-cli/annotations/<conversation_id>.pbtxt` title, which agy
+updates for new conversations and renames in `/resume`. The summaries database
+can lag behind these updates and is not used. The formatter falls back to the
+name supplied in agy's JSON state, or `agy` when no name is available yet.
+Reads are bounded and conversation IDs cannot escape the annotations directory.
+It does not access transcripts or make network requests.
+Keep SimpleBench installed at the configured path when using this formatter.
+See [agy title customization](https://antigravity.google/docs/cli/title/),
 [Cursor CLI configuration](https://cursor.com/docs/cli/reference/configuration),
 and [Claude Code environment variables](https://code.claude.com/docs/en/env-vars).
 

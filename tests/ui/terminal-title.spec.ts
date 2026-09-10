@@ -92,8 +92,18 @@ test("CLI titles parse across chunks, restore from the title stack and update wh
   ).toHaveText("Cursor · Independent conversation");
   expect(await buffer(page, first)).not.toContain("Background rename");
   await expect
-    .poll(() => page.evaluate(() => localStorage.getItem("test-session")))
-    .not.toBeNull();
+    .poll(() =>
+      page.evaluate(() => {
+        const workspace = JSON.parse(
+          localStorage.getItem("test-session") ?? "null",
+        )?.projects[0].workspaces[0];
+        return (
+          workspace?.tabs.length === 2 &&
+          workspace.activeTabId === workspace.tabs[0].id
+        );
+      }),
+    )
+    .toBe(true);
   expect(
     await page.evaluate(() => localStorage.getItem("test-session")),
   ).not.toContain("Background rename");
@@ -238,8 +248,13 @@ test("a foreground process supplies a fallback without replacing a published tit
   await pane.locator(".terminal-title-box").screenshot({
     path: testInfo.outputPath("foreground-program.png"),
   });
-  await emit(page, first, "\x1b]2;Rozmowa udostępniona przez CLI\x07");
-  await expect(title).toHaveText("Rozmowa udostępniona przez CLI");
+  await emit(page, first, "\x1b]2;Data Wydania Dipsick V4\x07");
+  await expect(title).toHaveText("Data Wydania Dipsick V4");
+  await pane.locator(".terminal-title-box").screenshot({
+    path: testInfo.outputPath("agy-conversation-title.png"),
+  });
+  await emit(page, first, "\x1b]2;Inna rozmowa po /resume\x07");
+  await expect(title).toHaveText("Inna rozmowa po /resume");
   await emit(page, first, "\x1b]2;\x07");
   await expect(title).toHaveText("agy");
   await emit(page, first, "\x1b]133;D;0\x07\x1b]133;A\x07");

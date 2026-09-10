@@ -192,9 +192,31 @@ for (const [cli, name, path] of [
         .boundingBox();
       expect(button!.y + button!.height).toBeLessThan(420);
       await page.screenshot({ path: testInfo.outputPath("agy-consent.png") });
+      await page.clock.install();
     }
     await dialog.getByRole("button", { name: "Allow changes" }).click();
     await expect(dialog).toHaveCount(0);
+    if (cli === "agy") {
+      const activation = page.getByRole("dialog", {
+        name: "Activate agy terminal titles",
+      });
+      await expect(activation).toContainText("Settings saved.");
+      await expect(activation).toContainText("/title on");
+      await expect(activation).toContainText(
+        "/resume alone does not activate titles",
+      );
+      await expect(
+        activation.getByRole("button", { name: "Got it" }),
+      ).toBeFocused();
+      await page.clock.fastForward(6000);
+      await expect(activation).toBeVisible();
+      await page.screenshot({
+        path: testInfo.outputPath("agy-activation.png"),
+      });
+      await activation.getByRole("button", { name: "Got it" }).click();
+      await expect(activation).toHaveCount(0);
+      expect(await calls(page, "write_terminal")).toHaveLength(0);
+    }
     const saved = await calls(page, "enable_cli_titles");
     expect(saved).toHaveLength(1);
     expect(saved[0].args).toEqual({
@@ -203,9 +225,10 @@ for (const [cli, name, path] of [
       path,
       revision: "new-cli",
     });
-    await expect(
-      page.getByText(`${name} title settings are ready.`, { exact: false }),
-    ).toBeVisible();
+    if (cli !== "agy")
+      await expect(
+        page.getByText(`${name} title settings are ready.`, { exact: false }),
+      ).toBeVisible();
     expect(await calls(page, "start_terminal")).toHaveLength(1);
     expect(await calls(page, "close_terminal")).toHaveLength(0);
   });

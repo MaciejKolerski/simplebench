@@ -71,7 +71,8 @@ or acronym.
   `src-tauri/src/cli_titles.rs` locates that process's user configuration and
   changes only title settings after approval in the main window, preserving
   other settings and a backup. The `--agy-terminal-title` entry point formats
-  agy's supplied JSON state without starting the GUI or reading transcripts. Never
+  agy's supplied JSON state, reading current conversation names from its local
+  annotation files without starting the GUI or reading transcripts. Never
   configure a CLI silently or restart it automatically.
 - `src-tauri/src/shell.rs` discovers shell environments and quotes dropped paths;
   `src-tauri/shell/` contains integration hooks. Do not edit user shell profiles.

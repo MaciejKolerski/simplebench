@@ -24,6 +24,7 @@ export function useCliTitleSetup(
     TitleSetup & { id: string; process: TitleProcess }
   >();
   const [busy, setBusy] = useState(false);
+  const [activationRequired, setActivationRequired] = useState(false);
   const [error, setError] = useState("");
   const descriptionId = useId();
   const cancelButton = useRef<HTMLButtonElement>(null);
@@ -93,6 +94,7 @@ export function useCliTitleSetup(
     if (busy) return;
     current.current = false;
     setRequest(undefined);
+    setActivationRequired(false);
   };
   const save = async () => {
     if (!request || busy) return;
@@ -113,8 +115,12 @@ export function useCliTitleSetup(
         const { cli: _cli, ...args } = request;
         await api("enable_cli_titles", args);
       }
-      current.current = false;
       setRequest(undefined);
+      if (request.cli === "agy") {
+        setActivationRequired(true);
+        return;
+      }
+      current.current = false;
       onConfigured(
         `${cliNames[request.cli]} title settings are ready. Restart ${cliNames[request.cli]} and resume your conversation to apply them.`,
       );
@@ -125,10 +131,50 @@ export function useCliTitleSetup(
     }
   };
 
+  if (activationRequired)
+    return {
+      observe,
+      dialog: (
+        <Modal
+          key="activation"
+          className="cli-title-dialog"
+          title="Activate agy terminal titles"
+          descriptionId={descriptionId}
+          initialFocus={cancelButton}
+          onClose={close}
+        >
+          <div className="dialog-form">
+            <div className="cli-title-description">
+              <p id={descriptionId}>
+                Settings saved. Enter <code>/title on</code> in your running agy
+                session to activate terminal titles.
+              </p>
+              <p>
+                <code>/resume</code> alone does not activate titles. Your
+                current conversation can stay open.
+              </p>
+              <p>You can also restart agy and resume your conversation.</p>
+            </div>
+            <div className="dialog-actions">
+              <button
+                ref={cancelButton}
+                type="button"
+                className="button button-primary"
+                onClick={close}
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </Modal>
+      ),
+    };
+
   return {
     observe,
     dialog: request && (
       <Modal
+        key="consent"
         className="cli-title-dialog"
         title={`Enable ${cliNames[request.cli]} terminal titles?`}
         descriptionId={descriptionId}
@@ -152,8 +198,17 @@ export function useCliTitleSetup(
             )}
             <p>A backup of the existing file will be saved beside it.</p>
             <p>
-              Restart {cliNames[request.cli]} after allowing this change. You
-              can then resume your conversation.
+              {request.cli === "agy" ? (
+                <>
+                  After allowing this change, enter <code>/title on</code> in
+                  agy to activate titles for the current conversation.
+                </>
+              ) : (
+                <>
+                  Restart {cliNames[request.cli]} after allowing this change.
+                  You can then resume your conversation.
+                </>
+              )}
             </p>
             {error && <p role="alert">{error}</p>}
           </div>
