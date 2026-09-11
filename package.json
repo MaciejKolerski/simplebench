@@ -16,6 +16,7 @@
     "format:check": "prettier --check src tests *.ts *.json *.md .github/*.md",
     "build": "pnpm check && vite build",
     "preview": "vite preview",
+    "icon:macos": "node scripts/build-macos-icon.mjs",
     "tauri": "tauri"
   },
   "dependencies": {

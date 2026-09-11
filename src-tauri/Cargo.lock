@@ -3553,6 +3553,8 @@ dependencies = [
  "gtk",
  "ignore",
  "notify",
+ "objc2",
+ "objc2-app-kit",
  "percent-encoding",
  "portable-pty",
  "regex",

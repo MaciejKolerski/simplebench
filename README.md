@@ -557,9 +557,21 @@ Colors come from DeepMono 1.1.0 by viewerofall, using the dark `mono` and light
 `/home/woro/.config/DankMaterialShell/themes/deepmono/theme.json`.
 The palette is stored in `src/styles.css`; the app does not need the original
 file at runtime. CSS paints the selected palette over a transparent native
-surface from startup. The icon source is
-`public/app-icon.svg`; regenerate desktop icons with
+surface from startup. The SVG icon source is
+`public/app-icon.svg`; its transparent variant is `public/app-icon-transparent.svg`.
+Regenerate desktop icons with
 `pnpm tauri icon public/app-icon.svg` after changing it.
+
+The native macOS icon comes from `public/Simplebench.icon`, edited in Apple's
+Icon Composer. On macOS, `pnpm tauri dev` and app bundling automatically run
+`pnpm icon:macos`, which requires Xcode 26 or later. It compiles `Assets.car`
+into `src-tauri/target/macos-icon/` for the packaged app's system appearances
+and refreshes `src-tauri/icons/icon.icns` for development and older macOS versions.
+On macOS, the Cargo runner launches development builds inside
+`src-tauri/target/debug/dev-bundle/SimpleBench.app`, preserving arguments,
+terminal output, and hot reload. AppKit selects the icon's system appearance
+from the catalog in both development and packaged builds. Direct `cargo run`
+without this runner uses the static ICNS fallback.
 
 On Linux with Wayland and a loaded NVIDIA module, startup defaults
 `__NV_DISABLE_EXPLICIT_SYNC` to `1` before initializing Tauri. This addresses the

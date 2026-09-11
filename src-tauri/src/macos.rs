@@ -3,6 +3,19 @@ use tauri::{
     App, AppHandle, Manager, RunEvent,
 };
 
+#[cfg(dev)]
+fn use_development_bundle_icon() {
+    if std::env::var_os("SIMPLEBENCH_DEV_BUNDLE").is_none() {
+        return;
+    }
+    let main_thread =
+        objc2::MainThreadMarker::new().expect("App lifecycle events run on the main thread");
+    let application = objc2_app_kit::NSApplication::sharedApplication(main_thread);
+    // AppKit accepts nil to restore the bundle icon. Tauri's development ICNS
+    // override would otherwise hide the catalog's system appearance variants.
+    unsafe { application.setApplicationIconImage(None) };
+}
+
 pub fn setup_menu(app: &App) -> tauri::Result<()> {
     let menu = Menu::with_items(
         app,
@@ -69,6 +82,8 @@ pub fn setup_menu(app: &App) -> tauri::Result<()> {
 
 pub fn handle_run_event(app: &AppHandle, event: &RunEvent) {
     match event {
+        #[cfg(dev)]
+        RunEvent::Ready => use_development_bundle_icon(),
         RunEvent::ExitRequested { api, .. } => {
             if let Some(window) = app.get_webview_window("main") {
                 // Quit from the menu or Dock must use the editor/session close guard.
