@@ -31,6 +31,9 @@ interface Props {
   pane: Pane;
   profile?: ShellProfile;
   active: boolean;
+  overview: boolean;
+  showTitle: boolean;
+  canMaximize: boolean;
   maximized: boolean;
   onToggleMaximize: () => void;
   onFocus: () => void;
@@ -58,6 +61,9 @@ function LiveTerminal({
   pane,
   profile,
   active,
+  overview,
+  showTitle,
+  canMaximize,
   maximized,
   onToggleMaximize,
   onFocus,
@@ -67,6 +73,7 @@ function LiveTerminal({
   const snapshot = useSyncExternalStore(runtime.subscribe, runtime.getSnapshot);
   const { bindings } = useKeybindings();
   const container = useRef<HTMLDivElement>(null);
+  const overviewCard = useRef<HTMLDivElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const composerInput = useRef<HTMLTextAreaElement>(null);
   const searchOpen = snapshot.searchOpen;
@@ -80,10 +87,15 @@ function LiveTerminal({
   const setBlocks = (open: boolean) => runtime.setView("blocksOpen", open);
 
   useLayoutEffect(() => {
+    // Overview covers the current layout without rebuilding its WebGL renderers.
     runtime.attach(container.current!);
     return () => runtime.detach();
   }, [runtime]);
   useEffect(() => {
+    if (active && overview) {
+      overviewCard.current?.focus();
+      return;
+    }
     if (
       active &&
       !container.current
@@ -91,7 +103,7 @@ function LiveTerminal({
         ?.contains(document.activeElement)
     )
       runtime.terminal.focus();
-  }, [active, runtime]);
+  }, [active, overview, runtime]);
   useEffect(() => {
     if (searchOpen) {
       searchInput.current?.focus();
@@ -118,14 +130,24 @@ function LiveTerminal({
   const titleBusy = snapshot.status === "running" && snapshot.titleBusy;
   return (
     <section
-      className={`terminal-pane${active ? " is-active" : ""}`}
+      className={`terminal-pane${active ? " is-active" : ""}${overview ? " is-overview" : ""}`}
       data-pane-id={pane.id}
       aria-label={`Terminal ${profile.name}`}
       onPointerDownCapture={onFocus}
       onFocusCapture={onFocus}
     >
+      {overview && (
+        <div
+          className="terminal-overview"
+          ref={overviewCard}
+          tabIndex={0}
+          onClick={() => overviewCard.current?.focus()}
+        >
+          <span dir="auto">{title || profile.name}</span>
+        </div>
+      )}
       {searchOpen && (
-        <div className="terminal-search">
+        <div className="terminal-search" inert={overview}>
           <Search size={14} />
           <input
             ref={searchInput}
@@ -179,12 +201,12 @@ function LiveTerminal({
           </IconButton>
         </div>
       )}
-      <div className="terminal-body">
+      <div className="terminal-body" inert={overview}>
         <div className="terminal-mount" ref={container} />
-        {(title || titleBusy || maximized) && (
+        {canMaximize && (title || titleBusy || maximized) && (
           <div className="terminal-heading">
             <div className="terminal-title-box">
-              {(title || titleBusy) && (
+              {showTitle && (title || titleBusy) && (
                 <>
                   {titleBusy ? (
                     <LoaderCircle
@@ -286,7 +308,7 @@ function LiveTerminal({
         )}
       </div>
       {composer && (
-        <div className="command-composer">
+        <div className="command-composer" inert={overview}>
           <div className="composer-heading">
             <Code size={14} />
             <span>Command input</span>

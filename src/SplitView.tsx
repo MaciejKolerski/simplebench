@@ -32,6 +32,7 @@ interface Props {
   profile?: ShellProfile;
   profiles: ShellProfile[];
   activePaneId: string;
+  overview: boolean;
   onFocus: (id: string) => void;
   onRestart: (id: string, useProjectDirectory?: boolean) => void;
   onResize: (id: string, ratio: number) => void;
@@ -72,7 +73,10 @@ export default function SplitView({
   const root = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState<LayoutSize>();
   const [maximizedPaneId, setMaximizedPaneId] = useState<string | null>(null);
-  const maximizedPane = layoutPanes(props.layout).find(
+  const allPanes = layoutPanes(props.layout);
+  const showTitles =
+    allPanes.filter((pane) => pane.type === "terminal").length > 1;
+  const maximizedPane = allPanes.find(
     (pane) =>
       pane.type === "terminal" &&
       pane.id === maximizedPaneId &&
@@ -97,15 +101,16 @@ export default function SplitView({
     observer.observe(container);
     return () => observer.disconnect();
   }, []);
+  const visibleLayout = props.overview
+    ? props.layout
+    : (maximizedPane ?? props.layout);
   const positions = useMemo(
     () =>
       size &&
-      (maximizedPane ||
-        props.layout.type !== "split" ||
-        layoutFits(props.layout, size))
-        ? layoutPositions(maximizedPane ?? props.layout, size)
+      (visibleLayout.type !== "split" || layoutFits(visibleLayout, size))
+        ? layoutPositions(visibleLayout, size)
         : null,
-    [props.layout, size, maximizedPane],
+    [visibleLayout, size],
   );
   return (
     <div
@@ -130,6 +135,9 @@ export default function SplitView({
                       : props.profile
                   }
                   active={props.activePaneId === layout.id}
+                  overview={props.overview}
+                  showTitle={showTitles}
+                  canMaximize={props.layout.type === "split"}
                   maximized={maximizedPane?.id === layout.id}
                   onToggleMaximize={() => {
                     props.onFocus(layout.id);

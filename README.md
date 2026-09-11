@@ -77,7 +77,8 @@ is developed incrementally with Tauri 2, Rust, React, TypeScript, and Vite.
 - Terminals use xterm.js with WebGL, a native `portable-pty` backend, true color,
   inline search, and Ctrl/Cmd-clickable HTTP(S) links. Running terminals continue
   receiving output while their tab or workspace is inactive.
-- Terminal panels have a centered title and a maximize/restore button. Shortcuts open
+- Tabs with multiple terminal panels show a separate centered title for each.
+  Split panels have a maximize/restore button. Shortcuts open
   splits, search, command blocks, and an optional multiline command input.
   Enter commands normally in the terminal, or use Ctrl/Cmd+Enter
   in the command input. Command blocks record command output positions, duration,
@@ -125,8 +126,11 @@ provides a terminal without command block integration.
 
 ### Terminal titles and maximized panels
 
-Each panel displays the window title sent by any program through standard OSC 0
-or OSC 2 sequences. Conversation renames and resumed sessions appear when the
+When a tab contains at least two terminal panels, each displays its own window
+title sent by any program through standard OSC 0 or OSC 2 sequences. A lone
+terminal hides its title, even alongside file editors or with other tabs open.
+Title updates continue while hidden and appear when another terminal is added.
+Conversation renames and resumed sessions appear when the
 program publishes them as its title. Programs can save and restore titles with
 the standard terminal title stack. Titles overlay the terminal without reducing
 its usable rows. Shell prompt reports hide the title until the next command is
@@ -143,6 +147,16 @@ conversation selected inside a CLI. Other platforms use published titles only.
 Use the button beside the title to fill the central work area, then press it
 again to restore the split layout. Other shells continue parsing output in the
 background. Splitting or closing the maximized panel returns to the layout.
+
+Press **Ctrl+Tab** or the **Toggle terminal overview** button in the status bar
+to replace terminal contents with their centered titles. This also works for a
+single terminal; shells without a published title show their environment name.
+Click a title to select that panel, then toggle again to return to its terminal.
+Output and title updates continue while hidden, preserving shells, scrollback,
+and command drafts. Renderers stay mounted so returning to the terminals does
+not rebuild their graphics resources. A maximized panel temporarily shows the
+full split layout.
+The overview is temporary and can be reassigned in Settings → Keybinds.
 
 Title handling is independent of CLI names and vendors. SimpleBench does not wrap
 CLI commands, inject arguments, or read conversation histories.
@@ -326,9 +340,13 @@ visible. Saved panels remain available until you explicitly close them.
 
 The Rust reader sends raw binary Tauri channels directly into xterm, outside
 React state. Acknowledgements follow xterm parsing and bound data in flight to
-roughly 128 KiB per PTY. Hidden terminals retain their parsers and scrollback but
-release WebGL renderers. Visible panes use WebGL when available, with a DOM
-fallback after initialization failure or graphics context loss. Scrollback is
+roughly 128 KiB per PTY. Terminals in hidden tabs or workspaces retain their
+parsers and scrollback but release WebGL renderers. Empty graphics contexts are
+reused across tabs; their count follows the largest simultaneous layout, while
+hidden renderers release their textures, shaders, and buffers. Unchanged font
+metrics are reused when returning to a terminal. Visible panes use WebGL when
+available, with a DOM fallback after initialization failure or graphics context
+loss. Scrollback is
 10,000 lines per terminal by default (configurable up to 100,000), with command
 block metadata bounded to 100 entries.
 Actual speed and resource use depend on the shell, output volume, and hardware.
@@ -390,7 +408,8 @@ in `keybindings.json` and applies across windows without restarting terminals.
 | Ctrl+F in an editor         | Find and replace                          |
 | Ctrl+G in an editor         | Go to line                                |
 | Alt+Z in an editor          | Toggle word wrap                          |
-| Ctrl+Tab / Ctrl+Shift+Tab   | Next / previous tab                       |
+| Ctrl+Tab                    | Toggle terminal overview                  |
+| Ctrl+PageDown / Ctrl+PageUp | Next / previous tab                       |
 | Ctrl+Shift+E                | Toggle file explorer                      |
 | Ctrl+Shift+G                | Toggle Source Control when available      |
 | Ctrl+,                      | Open settings                             |

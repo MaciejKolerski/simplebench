@@ -74,6 +74,7 @@ export class TerminalRuntime {
   private frame = 0;
   private firstRender?: IDisposable;
   private rendererReady = false;
+  private measuredFont?: string;
   private opened = false;
   private attached = false;
   private rendererGeneration = 0;
@@ -190,6 +191,7 @@ export class TerminalRuntime {
 
   private readonly applyTheme = () => {
     if (this.disposed) return;
+    this.measuredFont = undefined;
     const appearance = terminalAppearance();
     if (this.terminal.options.fontFamily === appearance.fontFamily) {
       // A reloaded font may keep its name; change the option to invalidate xterm's cached metrics.
@@ -248,17 +250,27 @@ export class TerminalRuntime {
   }
 
   private async initializeWebgl(generation: number) {
-    await loadTerminalFonts(this.terminal.options);
-    if (
-      this.attached &&
-      !this.disposed &&
-      generation === this.rendererGeneration
-    ) {
-      // Measure loaded fonts before WebGL allocates its glyph atlas; changing
-      // font options afterwards rebuilds the atlas for each option assignment.
-      const fontFamily = this.terminal.options.fontFamily;
-      this.terminal.options.fontFamily = `${fontFamily} `;
-      this.terminal.options.fontFamily = fontFamily;
+    const options = this.terminal.options;
+    const font = JSON.stringify([
+      options.fontFamily,
+      options.fontSize,
+      options.fontWeight,
+      options.fontWeightBold,
+    ]);
+    if (this.measuredFont !== font) {
+      await loadTerminalFonts(this.terminal.options);
+      if (
+        this.attached &&
+        !this.disposed &&
+        generation === this.rendererGeneration
+      ) {
+        // Measure changed fonts before WebGL allocates its glyph atlas. Tab
+        // switches reuse the metrics to avoid synchronous layout for every pane.
+        const fontFamily = this.terminal.options.fontFamily;
+        this.terminal.options.fontFamily = `${fontFamily} `;
+        this.terminal.options.fontFamily = fontFamily;
+        this.measuredFont = font;
+      }
     }
     let webgl: WebglAddon | undefined;
     try {
@@ -306,6 +318,8 @@ export class TerminalRuntime {
       if (generation === this.rendererGeneration)
         this.update({ renderer: "DOM" });
     }
+    // Fit returning panes together; new PTYs need fitted dimensions before startup.
+    if (this.snapshot.status !== "starting") await Promise.resolve();
     if (
       !this.attached ||
       this.disposed ||
@@ -333,7 +347,9 @@ export class TerminalRuntime {
     this.observer?.disconnect();
     this.host.remove();
     // Terminal.dispose owns addon teardown on close, avoiding an intermediate DOM renderer.
-    if (!this.disposed) this.webgl?.dispose();
+    // Remove departing hosts together before renderer teardown can measure layout.
+    const webgl = this.webgl;
+    if (!this.disposed && webgl) queueMicrotask(() => webgl.dispose());
     this.webgl = undefined;
   }
 

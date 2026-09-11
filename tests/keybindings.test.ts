@@ -63,6 +63,58 @@ test("terminal panel shortcuts require exact modifiers and distinguish tabs", ()
   );
 });
 
+test("overview takes the old tab default while custom assignments remain intact", () => {
+  for (const mac of [false, true]) {
+    const mod = mac ? "Meta" : "Ctrl";
+    const saved = {
+      version: 1,
+      bindings: { nextTab: `${mod}+Tab`, previousTab: `${mod}+Shift+Tab` },
+    };
+    const restored = restoreKeybindings(saved, mac);
+    assert.equal(restored.terminalOverview, `${mod}+Tab`);
+    assert.equal(restored.nextTab, `${mod}+PageDown`);
+    assert.equal(restored.previousTab, `${mod}+PageUp`);
+    assert.equal(saved.bindings.nextTab, `${mod}+Tab`);
+    assert.deepEqual(
+      restoreKeybindings({ version: 1, bindings: restored }, mac),
+      restored,
+    );
+  }
+  const restored = restoreKeybindings({
+    version: 1,
+    bindings: {
+      nextTab: "Ctrl+Tab",
+      newTerminal: "Ctrl+PageDown",
+      previousTab: null,
+    },
+  });
+  assert.equal(restored.terminalOverview, "Ctrl+Tab");
+  assert.equal(restored.newTerminal, "Ctrl+PageDown");
+  assert.equal(restored.nextTab, null);
+  assert.equal(restored.previousTab, null);
+  const custom = restoreKeybindings({
+    version: 1,
+    bindings: { newTerminal: "Ctrl+Tab" },
+  });
+  assert.equal(custom.newTerminal, "Ctrl+Tab");
+  assert.equal(custom.terminalOverview, null);
+  assert.equal(
+    restoreKeybindings({
+      version: 1,
+      bindings: { terminalOverview: null, nextTab: "Ctrl+Tab" },
+    }).nextTab,
+    "Ctrl+Tab",
+  );
+  assert.throws(
+    () =>
+      restoreKeybindings({
+        version: 1,
+        bindings: { terminalOverview: "Ctrl+KeyD" },
+      }),
+    /conflict/,
+  );
+});
+
 test("recording preserves composition, AltGr and unmodified terminal input", () => {
   assert.equal(shortcutFromEvent(key({ isComposing: true })), null);
   assert.equal(shortcutFromEvent(key({ key: "Dead" })), null);

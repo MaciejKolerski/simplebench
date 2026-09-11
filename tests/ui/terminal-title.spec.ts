@@ -44,6 +44,52 @@ async function setup(page: Page) {
   return { first, second: second.id, layout: tab.layout };
 }
 
+test("titles appear only for multiple terminals in the same tab and retain hidden updates", async ({
+  page,
+}, testInfo) => {
+  const { first, second } = await setup(page);
+  const pane = page.locator(`[data-pane-id="${first}"]`);
+  const other = page.locator(`[data-pane-id="${second}"]`);
+  await emit(page, first, "\x1b]133;C\x07\x1b]2;Pierwsza rozmowa\x07");
+  await emit(page, second, "\x1b]133;C\x07\x1b]2;Druga rozmowa\x07");
+  await expect(pane.locator(".terminal-title")).toHaveText("Pierwsza rozmowa");
+  await expect(other.locator(".terminal-title")).toHaveText("Druga rozmowa");
+  await other.locator(".xterm-helper-textarea").focus();
+  await page.keyboard.press("Control+w");
+  await expect(page.locator("[data-pane-id]")).toHaveCount(1);
+  await expect(page.locator(".terminal-heading")).toHaveCount(0);
+  await emit(page, first, "\x1b]2;⠋ Zmieniona rozmowa po /resume\x07");
+  await expect(page.locator(".terminal-heading")).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath("single-terminal.png") });
+
+  await page.keyboard.press("Control+Shift+t");
+  await expect(page.getByRole("tab")).toHaveCount(2);
+  const newId = (await page
+    .locator("[data-pane-id]")
+    .getAttribute("data-pane-id"))!;
+  await expect.poll(() => buffer(page, newId)).toContain("bash $ ");
+  await emit(page, newId, "\x1b]133;C\x07\x1b]2;Inna zakładka\x07");
+  await expect(page.locator(".terminal-heading")).toHaveCount(0);
+  await page.getByRole("tab", { name: "Terminal", exact: true }).click();
+  await expect(pane).toBeVisible();
+  await expect(pane.locator(".terminal-heading")).toHaveCount(0);
+  await pane.locator(".xterm-helper-textarea").focus();
+  await page.keyboard.press("Control+d");
+  await expect(page.locator("[data-pane-id]")).toHaveCount(2);
+  const added = page.locator("[data-pane-id]").last();
+  const addedId = (await added.getAttribute("data-pane-id"))!;
+  await expect.poll(() => buffer(page, addedId)).toContain("bash $ ");
+  await emit(page, addedId, "\x1b]133;C\x07\x1b]2;Nowa rozmowa\x07");
+  await expect(pane.locator(".terminal-title")).toHaveText(
+    "Zmieniona rozmowa po /resume",
+  );
+  await expect(pane.getByRole("img", { name: "Working" })).toBeVisible();
+  await expect(added.locator(".terminal-title")).toHaveText("Nowa rozmowa");
+  await page.screenshot({
+    path: testInfo.outputPath("split-terminal-titles.png"),
+  });
+});
+
 test("CLI titles parse across chunks, restore from the title stack and update while hidden", async ({
   page,
 }) => {
@@ -272,6 +318,101 @@ test("a foreground process supplies a fallback without replacing a published tit
 });
 
 for (const colorScheme of ["dark", "light"] as const) {
+  test(`overview toggles live titles without restarting terminals in ${colorScheme} mode`, async ({
+    page,
+  }, testInfo) => {
+    await page.emulateMedia({ colorScheme });
+    const { first, second } = await setup(page);
+    const pane = page.locator(`[data-pane-id="${first}"]`);
+    const other = page.locator(`[data-pane-id="${second}"]`);
+    const toggle = page.getByRole("button", {
+      name: "Toggle terminal overview (Ctrl+Tab)",
+      exact: true,
+    });
+    await emit(
+      page,
+      first,
+      "\x1b]133;C\x07\x1b]2;Data Wydania Dipsick V4\x07\r\nExisting context\r\n",
+    );
+    await emit(page, second, "\x1b]133;C\x07\x1b]2;Inna rozmowa 🦀\x07");
+    await pane.locator(".xterm-helper-textarea").focus();
+    await page.keyboard.press("Control+Shift+i");
+    const composer = pane.getByRole("textbox", {
+      name: "Command input",
+      exact: true,
+    });
+    await composer.fill("Unsent draft");
+    const before = await pane.boundingBox();
+    const sessions = await page.evaluate(() => [
+      ...(window as any).__nativeTest.sessions.keys(),
+    ]);
+    await composer.press("Control+Tab");
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await expect(pane.locator(".terminal-overview")).toHaveText(
+      "Data Wydania Dipsick V4",
+    );
+    await expect(other.locator(".terminal-overview")).toHaveText(
+      "Inna rozmowa 🦀",
+    );
+    await expect(pane.locator(".terminal-overview")).toBeFocused();
+    await expect(composer).toBeHidden();
+    await expect(page.locator(".xterm-screen")).toHaveCount(2);
+    await expect(pane.locator(".xterm-screen")).toBeHidden();
+    await expect(other.locator(".xterm-screen")).toBeHidden();
+    expect(await pane.boundingBox()).toEqual(before);
+    await page.keyboard.type("must not reach the shell");
+    await page.keyboard.press("Enter");
+    await emit(
+      page,
+      first,
+      "\x1b]2;Nowa nazwa po /resume\x07\r\nBackground context\r\n",
+    );
+    await expect(pane.locator(".terminal-overview")).toHaveText(
+      "Nowa nazwa po /resume",
+    );
+    await expect
+      .poll(() => buffer(page, first))
+      .toContain("Background context");
+    const card = (await pane.locator(".terminal-overview span").boundingBox())!;
+    expect(card.x + card.width / 2).toBeCloseTo(
+      before!.x + before!.width / 2,
+      0,
+    );
+    expect(card.y + card.height / 2).toBeCloseTo(
+      before!.y + before!.height / 2,
+      0,
+    );
+    await page.screenshot({
+      path: testInfo.outputPath(`overview-${colorScheme}.png`),
+    });
+    await page.keyboard.press("Control+Tab");
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    await expect(page.locator(".xterm-screen")).toHaveCount(2);
+    await expect(composer).toHaveValue("Unsent draft");
+    await expect(pane.locator(".xterm-helper-textarea")).toBeFocused();
+    await expect(pane.locator(".terminal-title")).toHaveText(
+      "Nowa nazwa po /resume",
+    );
+    expect(await buffer(page, first)).toContain("Existing context");
+    await toggle.click();
+    await expect(page.locator(".terminal-overview")).toHaveCount(2);
+    await other.locator(".terminal-overview").click();
+    await toggle.click();
+    await expect(other.locator(".xterm-helper-textarea")).toBeFocused();
+    expect(
+      await page.evaluate(() => [
+        ...(window as any).__nativeTest.sessions.keys(),
+      ]),
+    ).toEqual(sessions);
+    expect(
+      await page.evaluate(() =>
+        (window as any).__nativeTest.calls.filter((call: any) =>
+          ["write_terminal", "close_terminal"].includes(call.command),
+        ),
+      ),
+    ).toEqual([]);
+  });
+
   test(`CLI activity uses a stable SVG spinner in ${colorScheme} mode`, async ({
     page,
   }, testInfo) => {
@@ -488,6 +629,70 @@ for (const colorScheme of ["dark", "light"] as const) {
   });
 }
 
+test("overview reveals maximized splits and restores the previous view", async ({
+  page,
+}) => {
+  const { first } = await setup(page);
+  const pane = page.locator(`[data-pane-id="${first}"]`);
+  await emit(page, first, "\x1b]133;C\x07\x1b]2;Maximized conversation\x07");
+  await pane
+    .getByRole("button", { name: "Maximize terminal", exact: true })
+    .click();
+  await expect(page.locator("[data-pane-id]")).toHaveCount(1);
+  await page.keyboard.press("Control+Tab");
+  await expect(page.locator(".terminal-overview")).toHaveText([
+    "Maximized conversation",
+    "bash",
+  ]);
+  await page.keyboard.press("Control+Tab");
+  await expect(page.locator("[data-pane-id]")).toHaveCount(1);
+  await expect(
+    pane.getByRole("button", { name: "Restore terminal size" }),
+  ).toBeVisible();
+});
+
+test("overview respects custom bindings and pointer focus with a single terminal", async ({
+  page,
+}) => {
+  await mockDesktop(page);
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      "test-keybindings",
+      JSON.stringify({
+        version: 1,
+        focusFollowsPointer: true,
+        bindings: { terminalOverview: "Ctrl+KeyO", nextTab: "Ctrl+Tab" },
+      }),
+    ),
+  );
+  await page.goto("/");
+  await expect(page.locator(".xterm-screen")).toBeVisible();
+  const toggle = page.getByRole("button", {
+    name: "Toggle terminal overview (Ctrl+O)",
+    exact: true,
+  });
+  await page.keyboard.press("Control+Shift+t");
+  await expect(page.getByRole("tab", { selected: true })).toHaveText(
+    "Terminal 2",
+  );
+  await page.keyboard.press("Control+Tab");
+  await expect(page.getByRole("tab", { selected: true })).toHaveText(
+    "Terminal",
+  );
+  await page.keyboard.press("Control+o");
+  await expect(page.locator(".terminal-overview")).toHaveText("bash");
+  await page.locator(".sidebar-heading").hover();
+  await page.locator(".terminal-overview").hover();
+  await expect(page.locator(".terminal-overview")).toBeFocused();
+  await toggle.click();
+  await expect(page.locator(".xterm-helper-textarea")).toBeFocused();
+  await expect(page.locator(".terminal-heading")).toHaveCount(0);
+  await page.keyboard.press("Control+Shift+l");
+  await expect(page.getByRole("dialog")).toBeVisible();
+  await page.keyboard.press("Control+o");
+  await expect(toggle).toHaveAttribute("aria-pressed", "false");
+});
+
 test("maximizing a terminal retains a hidden editor's unsaved text and undo history", async ({
   page,
 }) => {
@@ -517,6 +722,7 @@ test("maximizing a terminal retains a hidden editor's unsaved text and undo hist
   await expect(page.locator(".xterm-screen")).toBeVisible();
   await expect.poll(() => buffer(page, tab.activePaneId)).toContain("bash $ ");
   await emit(page, tab.activePaneId, "codex\r\n\x1b]133;C\x07\x1b]2;Codex\x07");
+  await expect(page.locator(".terminal-title")).toHaveCount(0);
   const editor = page.locator(".cm-content");
   await expect(editor).toBeVisible();
   const original = await editor.innerText();

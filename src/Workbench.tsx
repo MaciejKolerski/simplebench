@@ -8,7 +8,15 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { Folder, GitBranch, Layers, Settings, Terminal, X } from "lucide-react";
+import {
+  Folder,
+  GitBranch,
+  LayoutGrid,
+  Layers,
+  Settings,
+  Terminal,
+  X,
+} from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -247,8 +255,12 @@ export default function Workbench() {
   const cliTitles = useCliTitleSetup(setError, setPaneNotice);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [terminalOverview, setTerminalOverview] = useState(false);
   const terminalLayout = useRef<HTMLDivElement>(null);
-  usePointerFocus(preferences.focusFollowsPointer, terminalLayout);
+  usePointerFocus(
+    preferences.focusFollowsPointer && !terminalOverview,
+    terminalLayout,
+  );
   const savingEnabled = useRef(false);
   const selected = session ? active(session) : undefined;
   const git = useGit(selected?.project.path ?? "");
@@ -470,6 +482,7 @@ export default function Workbench() {
       const inEditor =
         event.target instanceof Element &&
         !!event.target.closest(".file-editor");
+      const action = actionForEvent(event, bindings);
       if (
         event.defaultPrevented ||
         document.querySelector("dialog[open]") ||
@@ -477,11 +490,22 @@ export default function Workbench() {
           event.target.closest(
             ".tab-context-menu, .editor-status-menu, .sidebar-context-menu, .markdown-preview-menu, .explorer-context-menu",
           )) ||
-        (isTextInput(event.target) && !inEditor)
+        (isTextInput(event.target) &&
+          !inEditor &&
+          !(
+            action === "terminalOverview" &&
+            event.target instanceof Element &&
+            event.target.closest(".terminal-pane")
+          ))
       )
         return;
-      const action = actionForEvent(event, bindings);
       if (!action || action === "runCommand") return;
+      if (
+        action === "terminalOverview" &&
+        (selected?.tab.type !== "terminal" ||
+          !panes(selected.tab.layout).length)
+      )
+        return;
       const editorAction = [
         "saveFile",
         "findFile",
@@ -539,6 +563,9 @@ export default function Workbench() {
       const runtime =
         panel?.type === "terminal" ? runningTerminal(panel.id) : undefined;
       switch (action) {
+        case "terminalOverview":
+          setTerminalOverview((shown) => !shown);
+          break;
         case "saveFile":
           if (panel?.type === "file") {
             const document = loadedEditor(panel);
@@ -1332,6 +1359,7 @@ export default function Workbench() {
                 profile={profile}
                 profiles={info.profiles}
                 activePaneId={tab.activePaneId}
+                overview={terminalOverview}
                 onFocus={(id) => {
                   if (id !== tab.activePaneId)
                     modifyTab((tab) => ({ ...tab, activePaneId: id }));
@@ -1440,6 +1468,17 @@ export default function Workbench() {
             )}
           </div>
         ))}
+        <IconButton
+          title={shortcutTitle(
+            "Toggle terminal overview",
+            bindings.terminalOverview,
+          )}
+          aria-pressed={tab.type === "terminal" && terminalOverview}
+          disabled={tab.type !== "terminal" || !panes(tab.layout).length}
+          onClick={() => setTerminalOverview((shown) => !shown)}
+        >
+          <LayoutGrid size={15} />
+        </IconButton>
         {git.error && (
           <span className="status-warning" title={git.error}>
             Git unavailable

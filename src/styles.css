@@ -1674,6 +1674,22 @@ svg {
   overflow: hidden;
   container-type: inline-size;
 }
+.terminal-pane.is-overview > :not(.terminal-overview) {
+  visibility: hidden;
+}
+.terminal-overview {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-24);
+  overflow: auto;
+  color: var(--color-surface-text);
+  font-size: var(--font-size-22);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
 .terminal-heading {
   position: absolute;
   inset: 0 0 auto;

@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
+import { newId, newPane, newProject, newSession, panes } from "../../src/model";
+import type { Layout } from "../../src/model";
 import { mockDesktop } from "./desktop";
 
-test("large terminal history reuses its GPU context and releases hidden drawing resources", async ({
-  page,
-}) => {
+test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     const resources = new Map<
       WebGL2RenderingContext,
@@ -27,6 +27,11 @@ test("large terminal history reuses its GPU context and releases hidden drawing 
       };
     }
   });
+});
+
+test("large terminal history reuses its GPU context and releases hidden drawing resources", async ({
+  page,
+}) => {
   await mockDesktop(page, false);
   await page.goto("/");
   await expect(page.locator(".terminal-host")).toHaveCSS("opacity", "1");
@@ -50,6 +55,26 @@ test("large terminal history reuses its GPU context and releases hidden drawing 
       selection: terminal.getSelection(),
     };
   }, id);
+  const allocations = () =>
+    page.evaluate(() =>
+      [...(window as any).__gpuResources.values()].map(
+        (objects: unknown[]) => objects.length,
+      ),
+    );
+  const beforeOverview = await allocations();
+  const toggle = page.getByRole("button", {
+    name: "Toggle terminal overview (Ctrl+Tab)",
+    exact: true,
+  });
+  for (let i = 0; i < 4; i++) {
+    await page.keyboard.press("Control+Tab");
+    await expect(page.locator(".terminal-overview")).toBeFocused();
+    await expect(page.locator(".xterm-screen")).toBeHidden();
+    await toggle.click();
+    await expect(page.locator(".terminal-host")).toHaveCSS("opacity", "1");
+    await expect(page.locator(".xterm-helper-textarea")).toBeFocused();
+    expect(await allocations()).toEqual(beforeOverview);
+  }
   await page.getByRole("button", { name: "README.md", exact: true }).click();
   for (let i = 0; i < 4; i++) {
     await expect(page.locator(".cm-content")).toBeVisible();
@@ -97,7 +122,7 @@ test("large terminal history reuses its GPU context and releases hidden drawing 
   await expect
     .poll(() => page.evaluate(() => (window as any).__gpuResources.size))
     .toBe(2);
-  await page.keyboard.insertText("still connected");
+  await page.keyboard.type("still connected");
   await expect
     .poll(() =>
       page.evaluate(() =>
@@ -110,42 +135,103 @@ test("large terminal history reuses its GPU context and releases hidden drawing 
     .toBe("still connected");
 });
 
-test("hiding a split tab keeps at most one spare GPU context", async ({
+test("switching and closing split tabs reuse empty GPU contexts", async ({
   page,
 }) => {
-  await mockDesktop(page, false);
+  const grid = (depth: number): Layout =>
+    depth === 0
+      ? newPane("/project")
+      : {
+          type: "split",
+          id: newId(),
+          axis: depth === 3 ? "horizontal" : "vertical",
+          ratio: 0.5,
+          first: grid(depth - 1),
+          second: grid(depth - 1),
+        };
+  const project = newProject("/project", "local:bash");
+  const tab = project.workspaces[0].tabs[0];
+  if (tab.type !== "terminal") throw new Error("Expected terminal tab");
+  tab.layout = grid(3);
+  tab.activePaneId = panes(tab.layout)[0].id;
+  await mockDesktop(page, false, {
+    ...newSession(),
+    projects: [project],
+    activeProjectId: project.id,
+  });
   await page.goto("/");
-  await expect(page.locator(".terminal-host")).toHaveCSS("opacity", "1");
-  await page.keyboard.press("Control+d");
-  await expect(page.locator(".terminal-host")).toHaveCount(2);
-  await page.keyboard.press("Control+d");
-  await expect(page.locator(".terminal-host")).toHaveCount(3);
   const canvases = page.locator(
     ".xterm-screen > canvas:not(.xterm-link-layer)",
   );
-  await expect(canvases).toHaveCount(3);
+  const expectRenderers = async (count: number) => {
+    await expect(canvases).toHaveCount(count);
+    for (const host of await page.locator(".terminal-host").all())
+      await expect(host).toHaveCSS("opacity", "1");
+    expect(
+      await page.evaluate(() => {
+        const resources = (window as any).__gpuResources as Map<
+          WebGL2RenderingContext,
+          { type: string; value: any }[]
+        >;
+        return {
+          contexts: resources.size,
+          idle: [...resources].filter(
+            ([gl, objects]) =>
+              !gl.isContextLost() &&
+              gl.canvas.width === 0 &&
+              gl.canvas.height === 0 &&
+              objects.every(
+                ({ type, value }) => !(gl as any)[`is${type}`](value),
+              ),
+          ).length,
+        };
+      }),
+    ).toEqual({ contexts: 8, idle: 8 - count });
+  };
+  await expectRenderers(8);
+  await page.keyboard.press("Control+Shift+t");
+  await expectRenderers(1);
+  const sessions = await page.evaluate(() =>
+    [...(window as any).__nativeTest.sessions.keys()].sort(),
+  );
   await page.evaluate(() => {
-    (window as any).__splitContexts = Array.from(
-      document.querySelectorAll<HTMLCanvasElement>(
-        ".xterm-screen > canvas:not(.xterm-link-layer)",
-      ),
-      (canvas) => canvas.getContext("webgl2")!,
-    );
+    (window as any).__tabFontLoads = 0;
+    const load = document.fonts.load.bind(document.fonts);
+    document.fonts.load = (...args) => {
+      (window as any).__tabFontLoads++;
+      return load(...args);
+    };
   });
-  await page.getByRole("button", { name: "README.md", exact: true }).click();
-  await expect(page.locator(".cm-content")).toBeVisible();
+  for (let i = 0; i < 3; i++) {
+    await page.getByRole("tab", { name: "Terminal", exact: true }).click();
+    await expectRenderers(8);
+    await page.getByRole("tab", { name: "Terminal 2", exact: true }).click();
+    await expectRenderers(1);
+  }
+  expect(await page.evaluate(() => (window as any).__tabFontLoads)).toBe(0);
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.calls.filter(
+        (call: any) => call.command === "close_terminal",
+      ),
+    ),
+  ).toEqual([]);
+  await page
+    .getByRole("button", { name: "Close Terminal 2", exact: true })
+    .click();
+  await expectRenderers(8);
+  await page
+    .getByRole("button", { name: "Close Terminal", exact: true })
+    .click();
+  await expectRenderers(1);
   await expect
     .poll(() =>
-      page.evaluate(
-        () =>
-          (window as any).__splitContexts.filter(
-            (gl: WebGL2RenderingContext) => !gl.isContextLost(),
-          ).length,
+      page.evaluate(() =>
+        (window as any).__nativeTest.calls
+          .filter((call: any) => call.command === "close_terminal")
+          .map((call: any) => call.args.id)
+          .sort(),
       ),
     )
-    .toBe(1);
-  await page.getByRole("tab", { name: "Terminal", exact: true }).click();
-  await expect(canvases).toHaveCount(3);
-  for (const host of await page.locator(".terminal-host").all())
-    await expect(host).toHaveCSS("opacity", "1");
+    .toEqual(sessions);
 });

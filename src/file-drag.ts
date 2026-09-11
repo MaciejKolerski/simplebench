@@ -4,8 +4,9 @@ import { errorMessage } from "./api";
 
 export function terminalAt(x: number, y: number): HTMLElement | null {
   return (
-    document.elementFromPoint(x, y)?.closest<HTMLElement>("[data-pane-id]") ??
-    null
+    document
+      .elementFromPoint(x, y)
+      ?.closest<HTMLElement>("[data-pane-id]:not(.is-overview)") ?? null
   );
 }
 

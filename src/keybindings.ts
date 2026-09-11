@@ -28,6 +28,13 @@ export const actions = [
     shortcut: "Alt+KeyZ",
   },
   {
+    id: "terminalOverview",
+    label: "Toggle terminal overview",
+    description: "Show terminal titles in place of their contents.",
+    group: "Terminals",
+    shortcut: "Ctrl+Tab",
+  },
+  {
     id: "newTerminal",
     label: "New terminal",
     description: "Split the active panel side by side.",
@@ -116,14 +123,14 @@ export const actions = [
     label: "Next tab",
     description: "Switch to the next tab in this workspace.",
     group: "Tabs",
-    shortcut: "Ctrl+Tab",
+    shortcut: "Ctrl+PageDown",
   },
   {
     id: "previousTab",
     label: "Previous tab",
     description: "Switch to the previous tab in this workspace.",
     group: "Tabs",
-    shortcut: "Ctrl+Shift+Tab",
+    shortcut: "Ctrl+PageUp",
   },
   {
     id: "toggleExplorer",
@@ -317,11 +324,26 @@ export function restoreKeybindings(value: unknown, mac = false): Keybindings {
       );
     result[id] = shortcut;
   }
-  // New editor defaults must not invalidate existing custom terminal shortcuts.
+  const migrated = new Set<ActionId>();
+  if (!Object.hasOwn(value.bindings, "terminalOverview")) {
+    const defaults = defaultKeybindings(mac);
+    for (const [id, previous] of [
+      ["nextTab", mac ? "Meta+Tab" : "Ctrl+Tab"],
+      ["previousTab", mac ? "Meta+Shift+Tab" : "Ctrl+Shift+Tab"],
+    ] as const) {
+      if (result[id] === previous) {
+        result[id] = defaults[id];
+        migrated.add(id);
+      }
+    }
+  }
+  // New defaults must not invalidate existing custom shortcuts.
   for (const { id, group } of actions) {
     if (
-      group === "Editor" &&
-      !Object.hasOwn(value.bindings, id) &&
+      (((group === "Editor" ||
+        ["terminalOverview", "nextTab", "previousTab"].includes(id)) &&
+        !Object.hasOwn(value.bindings, id)) ||
+        migrated.has(id)) &&
       bindingConflict(result, id, result[id])
     )
       result[id] = null;
