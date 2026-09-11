@@ -2,6 +2,183 @@ import { expect, test } from "@playwright/test";
 import { active, addWorkspace, newSession, openFileTab } from "../../src/model";
 import { buffer, mockDesktop } from "./desktop";
 
+test("workspace disclosures list and select tabs without activating hidden terminals", async ({
+  page,
+}, testInfo) => {
+  let session = addWorkspace(
+    newSession(),
+    "/work/simplevoice",
+    "local:bash",
+    "Voice",
+  );
+  const voice = active(session)!.workspace;
+  const commit = {
+    id: "a".repeat(40),
+    shortId: "aaaaaaa",
+    subject: "feat(ui): add workspace navigation",
+    authorName: "Alex",
+    authoredAt: "2026-09-06T12:30:00+02:00",
+  };
+  voice.tabs.push(
+    {
+      type: "file",
+      id: "readme",
+      title: "README.md",
+      root: "/work/simplevoice",
+      relative: "README.md",
+    },
+    {
+      type: "commit",
+      id: "commit",
+      title: commit.subject,
+      root: "/work/simplevoice",
+      commit: commit.id,
+    },
+  );
+  session = addWorkspace(session, "/work/simplebench", "local:bash", "Bench");
+  session.sidebar = "workspaces";
+  await mockDesktop(page, true, session, {
+    commits: [commit],
+    details: {
+      [commit.id]: {
+        commit,
+        authorEmail: "alex@example.test",
+        committerName: "Alex",
+        committerEmail: "alex@example.test",
+        committedAt: commit.authoredAt,
+        parents: [],
+        message: commit.subject,
+        files: [],
+      },
+    },
+    diffs: {},
+  });
+  await page.addInitScript(() =>
+    localStorage.setItem(
+      "test-keybindings",
+      JSON.stringify({ version: 1, bindings: { newTab: "Ctrl+Shift+KeyT" } }),
+    ),
+  );
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.goto("/");
+  await expect(page.locator(".xterm-screen")).toBeVisible();
+  const list = page.getByRole("navigation", { name: "Workspace list" });
+  const voiceTabs = list.getByRole("list", {
+    name: "Tabs in Voice",
+    exact: true,
+  });
+  const benchTabs = list.getByRole("list", {
+    name: "Tabs in Bench",
+    exact: true,
+  });
+  const toggleVoice = list.getByRole("button", {
+    name: /^(Expand|Collapse) tabs in Voice$/,
+  });
+  await expect(toggleVoice).toHaveAttribute("aria-expanded", "false");
+  await expect(voiceTabs).toBeHidden();
+  await toggleVoice.focus();
+  await page.keyboard.press("Enter");
+  await list
+    .getByRole("button", { name: "Expand tabs in Bench", exact: true })
+    .click();
+  await expect(toggleVoice).toHaveAttribute("aria-expanded", "true");
+  await expect(voiceTabs.getByRole("button")).toHaveText([
+    "Terminal",
+    "README.md",
+    commit.subject,
+  ]);
+  await expect(benchTabs).toBeVisible();
+  await expect(list.getByRole("button", { name: /^Bench / })).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+
+  const starts = () =>
+    page.evaluate(
+      () =>
+        (window as any).__nativeTest.calls.filter(
+          (call: any) => call.command === "start_terminal",
+        ).length,
+    );
+  expect(await starts()).toBe(1);
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.calls.some((call: any) =>
+        ["read_editor_file", "git_commit_details"].includes(call.command),
+      ),
+    ),
+  ).toBe(false);
+  const readme = voiceTabs.getByRole("button", {
+    name: "README.md",
+    exact: true,
+  });
+  await readme.click();
+  await expect(page.locator(".cm-content")).toBeVisible();
+  await expect(page.getByRole("tab", { selected: true })).toHaveText(
+    "README.md",
+  );
+  await expect(readme).toHaveAttribute("aria-current", "true");
+  await expect(page.locator(".project-switcher")).toHaveText("simplevoice");
+  expect(await starts()).toBe(1);
+  await page.locator(".cm-content").focus();
+  await page.keyboard.press("Control+a");
+  await page.keyboard.insertText("Keep this workspace draft");
+  await benchTabs
+    .getByRole("button", { name: "Terminal", exact: true })
+    .click();
+  await expect(page.locator(".xterm-screen")).toBeVisible();
+  await readme.click();
+  await expect(page.locator(".cm-content")).toHaveText(
+    "Keep this workspace draft",
+  );
+  await voiceTabs
+    .getByRole("button", { name: commit.subject, exact: true })
+    .click();
+  await expect(page.getByRole("article")).toContainText(commit.subject);
+  expect(await starts()).toBe(1);
+  await voiceTabs
+    .getByRole("button", { name: "Terminal", exact: true })
+    .click();
+  await expect(page.locator(".xterm-screen")).toBeVisible();
+  await expect.poll(starts).toBe(2);
+  await page.keyboard.press("Control+Shift+t");
+  await expect(voiceTabs.getByRole("button")).toHaveCount(4);
+  await expect(
+    voiceTabs.getByRole("button", { name: "Terminal 4", exact: true }),
+  ).toHaveAttribute("aria-current", "true");
+  await page
+    .getByRole("button", { name: "Close Terminal 4", exact: true })
+    .click();
+  await expect(voiceTabs.getByRole("button")).toHaveCount(3);
+  await readme.click();
+  await toggleVoice.focus();
+  await page.keyboard.press("Space");
+  await expect(voiceTabs).toBeHidden();
+  await expect(benchTabs).toBeVisible();
+  await expect(page.locator(".cm-content")).toHaveText(
+    "Keep this workspace draft",
+  );
+  await page.keyboard.press("Space");
+  await expect(voiceTabs).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("workspace-tabs-dark.png"),
+  });
+  await page.setViewportSize({ width: 800, height: 420 });
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(toggleVoice).toBeInViewport();
+  await expect(
+    voiceTabs.getByRole("button", { name: commit.subject, exact: true }),
+  ).toBeInViewport();
+  expect(
+    await list.evaluate(
+      (element) => element.scrollWidth <= element.clientWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath("workspace-tabs-light-minimum.png"),
+  });
+});
+
 test("the global list switches folders and independent workspaces without restarting terminals", async ({
   page,
 }, testInfo) => {
@@ -28,7 +205,7 @@ test("the global list switches folders and independent workspaces without restar
     exact: true,
   });
   const list = panel.getByRole("navigation", { name: "Workspace list" });
-  await expect(list.getByRole("button")).toHaveCount(3);
+  await expect(list.locator(".workspace-list-item")).toHaveCount(3);
   const paneIds: string[] = [];
   for (const name of ["Voice 1", "Voice 2", "Bench"]) {
     const row = list.getByRole("button", { name: new RegExp(`^${name} `) });
@@ -258,7 +435,7 @@ test("sidebar actions manage inactive workspaces and can remove the last workspa
     .getByRole("button", { name: "New workspace", exact: true })
     .click();
   await page.getByRole("textbox", { name: "Name", exact: true }).press("Enter");
-  await expect(list.getByRole("button")).toHaveCount(1);
+  await expect(list.locator(".workspace-list-item")).toHaveCount(1);
   await expect(page.locator(".xterm-screen")).toBeVisible();
 });
 
@@ -366,9 +543,7 @@ test("adding a workspace chooses a folder every time, including the same folder,
   await expect(
     panel.getByRole("button", { name: /^Agent 2 / }),
   ).toHaveAttribute("aria-current", "true");
-  await expect(panel.getByRole("navigation").getByRole("button")).toHaveCount(
-    2,
-  );
+  await expect(panel.locator(".workspace-list-item")).toHaveCount(2);
   await expect
     .poll(() =>
       page.evaluate(
@@ -384,9 +559,7 @@ test("adding a workspace chooses a folder every time, including the same folder,
   await create.click();
   await page.getByRole("textbox", { name: "Name", exact: true }).press("Enter");
   await expect(page.locator(".project-switcher")).toHaveText("simplebench");
-  await expect(panel.getByRole("navigation").getByRole("button")).toHaveCount(
-    3,
-  );
+  await expect(panel.locator(".workspace-list-item")).toHaveCount(3);
   await expect
     .poll(() =>
       page.evaluate(

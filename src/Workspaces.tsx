@@ -1,6 +1,14 @@
 import { useRef, useState } from "react";
-import { Layers, Plus } from "lucide-react";
+import {
+  ChevronRight,
+  FileCode,
+  GitCommitHorizontal,
+  Layers,
+  Plus,
+  Terminal,
+} from "lucide-react";
 import type { Project, Workspace } from "./model";
+import { basename } from "./model";
 import ContextMenu from "./ContextMenu";
 import { IconButton } from "./ui";
 
@@ -14,12 +22,13 @@ export default function Workspaces({
 }: {
   projects: Project[];
   activeWorkspaceId?: string;
-  onSelect: (path: string, workspaceId: string) => void;
+  onSelect: (path: string, workspaceId: string, tabId?: string) => void;
   onNew: () => void;
   onRename: (workspace: Workspace) => void;
   onDelete: (workspace: Workspace) => void;
 }) {
   const [menu, setMenu] = useState<{ id: string; x: number; y: number }>();
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const trigger = useRef<HTMLButtonElement>(null);
   const workspace =
     menu &&
@@ -47,48 +56,108 @@ export default function Workspaces({
       <nav className="workspace-list" aria-label="Workspace list">
         {projects.flatMap((project) =>
           project.workspaces.map((workspace) => (
-            <button
+            <div
+              className={`workspace-list-entry${workspace.id === activeWorkspaceId ? " is-active" : ""}`}
               key={workspace.id}
-              type="button"
-              className="workspace-list-item"
-              aria-current={
-                workspace.id === activeWorkspaceId ? "true" : undefined
-              }
-              title={`${workspace.name}\n${project.path}`}
-              onClick={() => onSelect(project.path, workspace.id)}
-              aria-haspopup="menu"
-              aria-expanded={menu?.id === workspace.id}
-              onContextMenu={(event) => {
-                event.preventDefault();
-                showMenu(
-                  workspace.id,
-                  event.currentTarget,
-                  event.clientX,
-                  event.clientY,
-                );
-              }}
-              onKeyDown={(event) => {
-                if (
-                  event.key === "ContextMenu" ||
-                  (event.shiftKey && event.key === "F10")
-                ) {
-                  event.preventDefault();
-                  showMenu(workspace.id, event.currentTarget);
-                }
-              }}
             >
-              <Layers size={16} aria-hidden="true" />
-              <span className="workspace-list-details">
-                <span>{workspace.name}</span>
-                <small>{project.path}</small>
-              </span>
-              <span
-                className="count-badge"
-                aria-label={`${workspace.tabs.length} ${workspace.tabs.length === 1 ? "tab" : "tabs"}`}
+              <div className="workspace-list-heading">
+                <button
+                  type="button"
+                  className="workspace-list-item"
+                  aria-current={
+                    workspace.id === activeWorkspaceId ? "true" : undefined
+                  }
+                  title={`${workspace.name}\n${project.path}`}
+                  onClick={() => onSelect(project.path, workspace.id)}
+                  aria-haspopup="menu"
+                  aria-expanded={menu?.id === workspace.id}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    showMenu(
+                      workspace.id,
+                      event.currentTarget,
+                      event.clientX,
+                      event.clientY,
+                    );
+                  }}
+                  onKeyDown={(event) => {
+                    if (
+                      event.key === "ContextMenu" ||
+                      (event.shiftKey && event.key === "F10")
+                    ) {
+                      event.preventDefault();
+                      showMenu(workspace.id, event.currentTarget);
+                    }
+                  }}
+                >
+                  <span className="workspace-list-icon" aria-hidden="true">
+                    <Layers size={17} />
+                  </span>
+                  <span className="workspace-list-details">
+                    <span>{workspace.name}</span>
+                    <small>
+                      <span className="workspace-folder">
+                        {basename(project.path)}
+                      </span>
+                      <span className="workspace-tab-count">
+                        {workspace.tabs.length}{" "}
+                        {workspace.tabs.length === 1 ? "tab" : "tabs"}
+                      </span>
+                    </small>
+                  </span>
+                </button>
+                <IconButton
+                  className="icon-button workspace-tabs-toggle"
+                  title={`${expanded.has(workspace.id) ? "Collapse" : "Expand"} tabs in ${workspace.name}`}
+                  aria-expanded={expanded.has(workspace.id)}
+                  aria-controls={`workspace-tabs-${workspace.id}`}
+                  onClick={() =>
+                    setExpanded((current) => {
+                      const next = new Set(current);
+                      if (next.has(workspace.id)) next.delete(workspace.id);
+                      else next.add(workspace.id);
+                      return next;
+                    })
+                  }
+                >
+                  <ChevronRight size={15} aria-hidden="true" />
+                </IconButton>
+              </div>
+              <ul
+                id={`workspace-tabs-${workspace.id}`}
+                className="workspace-tab-list"
+                aria-label={`Tabs in ${workspace.name}`}
+                hidden={!expanded.has(workspace.id)}
               >
-                {workspace.tabs.length}
-              </span>
-            </button>
+                {workspace.tabs.map((tab) => (
+                  <li key={tab.id}>
+                    <button
+                      type="button"
+                      className="workspace-tab-item"
+                      aria-current={
+                        workspace.id === activeWorkspaceId &&
+                        tab.id === workspace.activeTabId
+                          ? "true"
+                          : undefined
+                      }
+                      title={tab.type === "file" ? tab.relative : tab.title}
+                      onClick={() =>
+                        onSelect(project.path, workspace.id, tab.id)
+                      }
+                    >
+                      {tab.type === "commit" ? (
+                        <GitCommitHorizontal size={14} aria-hidden="true" />
+                      ) : tab.type === "file" ? (
+                        <FileCode size={14} aria-hidden="true" />
+                      ) : (
+                        <Terminal size={14} aria-hidden="true" />
+                      )}
+                      <span>{tab.title}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )),
         )}
         {projects.length === 0 && (

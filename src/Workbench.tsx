@@ -627,7 +627,11 @@ export default function Workbench() {
         </main>
       </div>
     );
-  const selectProject = async (path: string, workspaceId?: string) => {
+  const selectProject = async (
+    path: string,
+    workspaceId?: string,
+    tabId?: string,
+  ) => {
     setProjectMenuOpen(false);
     try {
       const normalized = await api<string>("validate_directory", { path });
@@ -636,8 +640,13 @@ export default function Workbench() {
           (project) => project.path === normalized,
         );
         if (workspaceId) {
+          const workspace = found?.workspaces.find(
+            (workspace) => workspace.id === workspaceId,
+          );
           if (
-            !found?.workspaces.some((workspace) => workspace.id === workspaceId)
+            !found ||
+            !workspace ||
+            (tabId && !workspace.tabs.some((tab) => tab.id === tabId))
           )
             return state;
           return {
@@ -645,7 +654,15 @@ export default function Workbench() {
             activeProjectId: found.id,
             projects: state.projects.map((project) =>
               project.id === found.id
-                ? { ...project, activeWorkspaceId: workspaceId }
+                ? {
+                    ...project,
+                    activeWorkspaceId: workspaceId,
+                    workspaces: project.workspaces.map((workspace) =>
+                      workspace.id === workspaceId && tabId
+                        ? { ...workspace, activeTabId: tabId }
+                        : workspace,
+                    ),
+                  }
                 : project,
             ),
           };
@@ -781,7 +798,7 @@ export default function Workbench() {
       <Workspaces
         projects={session.projects}
         activeWorkspaceId={selected?.workspace.id}
-        onSelect={(path, id) => void selectProject(path, id)}
+        onSelect={(path, id, tabId) => void selectProject(path, id, tabId)}
         onNew={() => void browse(true)}
         onRename={(workspace) =>
           setDialog({
