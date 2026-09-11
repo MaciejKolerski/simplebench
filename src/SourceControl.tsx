@@ -18,12 +18,14 @@ import { IconButton } from "./ui";
 
 export default function SourceControl({
   status,
+  loading = false,
   onRefresh,
   onDiff,
   onOpenCommit,
   onError,
 }: {
   status: GitStatus | null;
+  loading?: boolean;
   onRefresh: () => void;
   onDiff: (path: string, staged: boolean) => void;
   onOpenCommit: (commit: GitCommitSummary) => void;
@@ -39,8 +41,10 @@ export default function SourceControl({
     return (
       <div className="sidebar-panel">
         <header className="sidebar-heading">SOURCE CONTROL</header>
-        <p className="sidebar-empty">
-          No Git repository was found in this project.
+        <p className="sidebar-empty" role={loading ? "status" : undefined}>
+          {loading
+            ? "Checking for a Git repository…"
+            : "No Git repository was found in this project."}
         </p>
       </div>
     );

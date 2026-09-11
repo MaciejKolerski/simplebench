@@ -892,7 +892,7 @@ svg {
   position: relative;
   min-width: 0;
   flex-shrink: 0;
-  max-width: 200px;
+  width: 200px;
 }
 .project-switcher {
   width: 100%;

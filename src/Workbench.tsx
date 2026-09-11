@@ -155,11 +155,9 @@ function initialize() {
 }
 
 function useGit(root: string) {
-  const [result, setResult] = useState<{
-    project: string;
-    status: GitStatus | null;
-  }>({ project: "", status: null });
-  const [error, setError] = useState("");
+  const [results, setResults] = useState<
+    Record<string, { status: GitStatus | null; error: string }>
+  >({});
   const [revision, setRevision] = useState(0);
   const refresh = useCallback(() => setRevision((value) => value + 1), []);
   useEffect(() => {
@@ -172,13 +170,17 @@ function useGit(root: string) {
       try {
         const next = await api<GitStatus | null>("git_status", { root });
         if (current) {
-          setResult({ project: root, status: next });
-          setError("");
+          setResults((previous) => ({
+            ...previous,
+            [root]: { status: next, error: "" },
+          }));
         }
       } catch (error) {
         if (current) {
-          setResult({ project: root, status: null });
-          setError(errorMessage(error));
+          setResults((previous) => ({
+            ...previous,
+            [root]: { status: null, error: errorMessage(error) },
+          }));
         }
       } finally {
         busy = false;
@@ -194,8 +196,9 @@ function useGit(root: string) {
     };
   }, [root, revision]);
   return {
-    status: result.project === root ? result.status : null,
-    error,
+    status: results[root]?.status ?? null,
+    loading: !!root && !results[root],
+    error: results[root]?.error ?? "",
     refresh,
   };
 }
@@ -911,9 +914,10 @@ export default function Workbench() {
       ? info.profiles.find((profile) => profile.id === tab.profileId)
       : undefined;
   const allPanes = tab.type === "terminal" ? layoutPanes(tab.layout) : [];
-  const sidebarPanels: SidebarPanel[] = git.status
-    ? ["files", "git"]
-    : ["files"];
+  const sidebarPanels: SidebarPanel[] =
+    git.status || (git.loading && sidebarOpen("git"))
+      ? ["files", "git"]
+      : ["files"];
   const selectTab = (id: string) =>
     change((state) =>
       updateWorkspace(state, workspace.id, (workspace) => ({
@@ -1294,6 +1298,7 @@ export default function Workbench() {
                 <SourceControl
                   key={project.path}
                   status={git.status}
+                  loading={git.loading}
                   onRefresh={git.refresh}
                   onDiff={(path, staged) => void diff(path, staged)}
                   onOpenCommit={(commit) => {
