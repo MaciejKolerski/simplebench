@@ -541,7 +541,7 @@ test("closing a file panel or its whole tab protects unsaved edits and failed sa
 test("two file panels retain independent focus, positions and buffers when the last terminal closes", async ({
   page,
 }) => {
-  await setup(page, 1);
+  const workspace = await setup(page, 1);
   await page.getByRole("button", { name: "README.md", exact: true }).click();
   await expect(page.locator(".cm-content")).toBeVisible();
   await page.getByRole("tab", { name: "Terminal 1", exact: true }).click();
@@ -585,10 +585,17 @@ test("two file panels retain independent focus, positions and buffers when the l
   await expect(page.locator(".editor-status")).toContainText("Ln 1, Col 3");
   await page.keyboard.press("Control+s");
   await expect
-    .poll(
-      async () => (await savedTabs(page))?.[0].layout?.second?.position?.head,
+    .poll(() =>
+      page.evaluate(() => {
+        const saved = JSON.parse(localStorage.getItem("test-session") ?? "null")
+          ?.projects[0].workspaces[0];
+        return {
+          activeTabId: saved?.activeTabId,
+          head: saved?.tabs[0].layout?.second?.position?.head,
+        };
+      }),
     )
-    .toBe(2);
+    .toEqual({ activeTabId: workspace.tabs[0].id, head: 2 });
   await page.reload();
   await expect(readme).toHaveText("first file");
   await expect(text).toHaveText("second file");
