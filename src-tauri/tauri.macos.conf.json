@@ -32,6 +32,7 @@
   },
   "bundle": {
     "macOS": {
+      "hardenedRuntime": true,
       "files": {
         "Resources/Assets.car": "target/macos-icon/Assets.car"
       }

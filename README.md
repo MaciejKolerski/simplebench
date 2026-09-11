@@ -3,6 +3,10 @@
 A desktop ADE built around project folders, workspaces, and terminals. The app
 is developed incrementally with Tauri 2, Rust, React, TypeScript, and Vite.
 
+See [GitHub Releases](https://github.com/MaciejKolerski/simplebench/releases) for published installers.
+The [release guide](docs/releases.md) describes Apple signing, platform builds,
+AUR publication, and the optional Flathub handoff.
+
 ## Current milestone
 
 - The title bar contains a compact project menu, tabs, a new

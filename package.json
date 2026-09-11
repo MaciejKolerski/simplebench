@@ -12,11 +12,12 @@
     "check": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "test:ui": "playwright test",
-    "format": "prettier --write src tests *.ts *.json *.md .github/*.md",
-    "format:check": "prettier --check src tests *.ts *.json *.md .github/*.md",
+    "format": "prettier --write src tests *.ts *.json *.md .github/*.md .github/workflows/*.yml scripts/*.mjs docs/*.md releases/*.md",
+    "format:check": "prettier --check src tests *.ts *.json *.md .github/*.md .github/workflows/*.yml scripts/*.mjs docs/*.md releases/*.md",
     "build": "pnpm check && vite build",
     "preview": "vite preview",
     "icon:macos": "node scripts/build-macos-icon.mjs",
+    "release:check": "node scripts/check-release.mjs",
     "tauri": "tauri"
   },
   "dependencies": {

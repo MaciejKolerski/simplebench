@@ -1,0 +1,147 @@
+name: Publish AUR
+
+on:
+  workflow_call:
+    inputs:
+      release_tag:
+        description: Existing published stable release tag
+        required: true
+        type: string
+    secrets:
+      AUR_SSH_PRIVATE_KEY:
+        required: true
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing published stable release tag, for example v0.1.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-aur
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: ${{ matrix.package }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [simplebench, simplebench-bin]
+    env:
+      AUR_MAINTAINER_NAME: Woro
+      AUR_MAINTAINER_EMAIL: woro@tanieddosy.pl
+    steps:
+      - name: Validate the release tag
+        id: release
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Expected a stable version tag such as v0.1.0" >&2
+            exit 1
+          fi
+          echo "version=${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: refs/tags/${{ inputs.release_tag }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+      - name: Verify the tagged source and published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          node scripts/check-release.mjs "$RELEASE_TAG"
+          gh release view "$RELEASE_TAG" --json isDraft,isPrerelease | jq -e '.isDraft == false and .isPrerelease == false'
+          latest=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+          if [[ "$latest" != "$RELEASE_TAG" ]]; then
+            echo "::error::Only the latest stable release may update AUR"
+            exit 1
+          fi
+
+      - name: Prepare package and verify its checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          VERSION: ${{ steps.release.outputs.version }}
+          PACKAGE: ${{ matrix.package }}
+        run: |
+          set -euo pipefail
+          if [[ "$PACKAGE" == simplebench-bin ]]; then
+            artifact="SimpleBench_${VERSION}_amd64.deb"
+            gh release download "$RELEASE_TAG" --pattern "$artifact" --pattern SHA256SUMS --dir "$RUNNER_TEMP"
+            (cd "$RUNNER_TEMP" && sha256sum --check --ignore-missing SHA256SUMS)
+            archive="$RUNNER_TEMP/$artifact"
+            checksum_key=sha256sums_x86_64
+          else
+            archive="$RUNNER_TEMP/simplebench-${VERSION}.tar.gz"
+            curl --fail --location --retry 4 --retry-all-errors --output "$archive" \
+              "https://github.com/$GITHUB_REPOSITORY/archive/refs/tags/$RELEASE_TAG.tar.gz"
+            checksum_key=sha256sums
+          fi
+          checksum=$(sha256sum "$archive" | cut -d' ' -f1)
+          [[ "$checksum" =~ ^[0-9a-f]{64}$ ]]
+          license=$(node -p 'JSON.parse(require("fs").readFileSync("package.json", "utf8")).license')
+          sed -i "s/^pkgver=.*/pkgver=${VERSION}/" "aur/$PACKAGE/PKGBUILD"
+          sed -i 's/^pkgrel=.*/pkgrel=1/' "aur/$PACKAGE/PKGBUILD"
+          sed -i "s/^license=.*/license=('${license}')/" "aur/$PACKAGE/PKGBUILD"
+          sed -i "s/^${checksum_key}=.*/${checksum_key}=('${checksum}')/" "aur/$PACKAGE/PKGBUILD"
+          grep -Fxq "${checksum_key}=('${checksum}')" "aur/$PACKAGE/PKGBUILD"
+          grep -Fxq "license=('${license}')" "aur/$PACKAGE/PKGBUILD"
+          bash -n "aur/$PACKAGE/PKGBUILD"
+
+      - name: Publish to AUR (attempt 1)
+        id: publish_1
+        continue-on-error: true
+        uses: KSXGitHub/github-actions-deploy-aur@084b0d9b15415bf9cdb65d44dad1efe37a354050 # v4.2.0
+        with:
+          pkgname: ${{ matrix.package }}
+          pkgbuild: aur/${{ matrix.package }}/PKGBUILD
+          test: ${{ matrix.package == 'simplebench-bin' }}
+          commit_username: ${{ env.AUR_MAINTAINER_NAME }}
+          commit_email: ${{ env.AUR_MAINTAINER_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: |
+            build(aur): publish ${{ inputs.release_tag }}
+
+            Update the package from the verified stable GitHub release.
+
+            Validation:
+            - Source versions and release status: verified
+            - SHA-256 source checksum: calculated before publication
+          ssh_keyscan_types: rsa,ecdsa,ed25519
+
+      - name: Wait before retry
+        if: steps.publish_1.outcome == 'failure'
+        run: sleep 30
+
+      - name: Publish to AUR (attempt 2)
+        if: steps.publish_1.outcome == 'failure'
+        uses: KSXGitHub/github-actions-deploy-aur@084b0d9b15415bf9cdb65d44dad1efe37a354050 # v4.2.0
+        with:
+          pkgname: ${{ matrix.package }}
+          pkgbuild: aur/${{ matrix.package }}/PKGBUILD
+          test: ${{ matrix.package == 'simplebench-bin' }}
+          commit_username: ${{ env.AUR_MAINTAINER_NAME }}
+          commit_email: ${{ env.AUR_MAINTAINER_EMAIL }}
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_message: |
+            build(aur): publish ${{ inputs.release_tag }}
+
+            Update the package from the verified stable GitHub release.
+
+            Validation:
+            - Source versions and release status: verified
+            - SHA-256 source checksum: calculated before publication
+          ssh_keyscan_types: rsa,ecdsa,ed25519

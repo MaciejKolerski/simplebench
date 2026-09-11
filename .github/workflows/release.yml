@@ -1,0 +1,272 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing stable tag to release or retry, for example v0.1.0
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      version: ${{ steps.tag.outputs.version }}
+      release_id: ${{ steps.release.outputs.id }}
+    steps:
+      - name: Validate release tag
+        id: tag
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Expected a stable version tag such as v0.1.0" >&2
+            exit 1
+          fi
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: refs/tags/${{ steps.tag.outputs.tag }}
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+
+      - name: Check release versions
+        env:
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: node scripts/check-release.mjs "$RELEASE_TAG"
+
+      - name: Require Apple and AUR credentials
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID AUR_SSH_PRIVATE_KEY; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing repository secret: $name"
+              exit 1
+            fi
+          done
+          if [[ "$APPLE_SIGNING_IDENTITY" != "Developer ID Application:"* ]]; then
+            echo "::error::APPLE_SIGNING_IDENTITY must be a Developer ID Application certificate"
+            exit 1
+          fi
+
+      - run: pnpm install --frozen-lockfile
+      - name: Check frontend and release files
+        run: |
+          pnpm format:check
+          pnpm build
+          pnpm test
+      - name: Test the interface
+        run: |
+          pnpm exec playwright install --with-deps chromium
+          pnpm test:ui --workers=2
+
+      - name: Create or reuse an unpublished release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          release=$(gh api "repos/$GITHUB_REPOSITORY/releases" --paginate --jq ".[] | select(.tag_name == \"$RELEASE_TAG\") | {id, draft}")
+          if [[ -n "$release" ]]; then
+            if [[ $(jq -s length <<< "$release") != 1 || $(jq -r .draft <<< "$release") != true ]]; then
+              echo "::error::This tag already has a published or duplicate release; use a new version"
+              exit 1
+            fi
+            echo "id=$(jq -r .id <<< "$release")" >> "$GITHUB_OUTPUT"
+          else
+            notes="releases/$RELEASE_TAG.md"
+            if [[ -f "$notes" ]]; then
+              gh release create "$RELEASE_TAG" --verify-tag --draft --title "SimpleBench $RELEASE_TAG" --notes-file "$notes"
+            else
+              gh release create "$RELEASE_TAG" --verify-tag --draft --title "SimpleBench $RELEASE_TAG" --generate-notes
+            fi
+            echo "id=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$RELEASE_TAG" --jq .id)" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    needs: prepare
+    name: Build ${{ matrix.name }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS Apple Silicon
+            os: macos-15
+            target: aarch64-apple-darwin
+            bundles: app,dmg
+          - name: macOS Intel
+            os: macos-15-intel
+            target: x86_64-apple-darwin
+            bundles: app,dmg
+          - name: Linux x86_64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            bundles: deb,rpm,appimage
+          - name: Windows x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: nsis,msi
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: refs/tags/${{ needs.prepare.outputs.tag }}
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "24"
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+          components: rustfmt,clippy
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: src-tauri -> target
+          key: ${{ matrix.target }}
+
+      - name: Select Xcode 26 for Icon Composer
+        if: runner.os == 'macOS'
+        run: |
+          sudo xcode-select --switch /Applications/Xcode_26.3.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      - run: pnpm install --frozen-lockfile
+      - name: Check and test native code
+        run: |
+          cargo fmt --manifest-path src-tauri/Cargo.toml --check
+          cargo clippy --manifest-path src-tauri/Cargo.toml --locked -- -D warnings
+          cargo test --manifest-path src-tauri/Cargo.toml --locked
+
+      - name: Build and upload installers to the draft
+        uses: tauri-apps/tauri-action@84b9d35b5fc46c1e45415bdb6144030364f7ebc5 # v0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          APPLE_CERTIFICATE: ${{ runner.os == 'macOS' && secrets.APPLE_CERTIFICATE || '' }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ runner.os == 'macOS' && secrets.APPLE_CERTIFICATE_PASSWORD || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ runner.os == 'macOS' && secrets.APPLE_SIGNING_IDENTITY || '' }}
+          APPLE_ID: ${{ runner.os == 'macOS' && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ runner.os == 'macOS' && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ runner.os == 'macOS' && secrets.APPLE_TEAM_ID || '' }}
+        with:
+          tauriScript: pnpm tauri
+          releaseId: ${{ needs.prepare.outputs.release_id }}
+          includeUpdaterJson: false
+          args: --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} -- --locked
+
+      - name: Verify macOS signature and notarization
+        if: runner.os == 'macOS'
+        env:
+          TARGET: ${{ matrix.target }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          app="src-tauri/target/$TARGET/release/bundle/macos/SimpleBench.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign --display --verbose=4 "$app" 2>&1 | grep -Fx "TeamIdentifier=$APPLE_TEAM_ID"
+          xcrun stapler validate "$app"
+          spctl --assess --type execute --verbose=2 "$app"
+
+  publish:
+    needs: [prepare, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      tag: ${{ needs.prepare.outputs.tag }}
+    steps:
+      - name: Verify all installers, add checksums, and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/installers"
+          cd "$RUNNER_TEMP/installers"
+          gh release download "$RELEASE_TAG"
+          expected=(
+            "SimpleBench_${VERSION}_aarch64.dmg"
+            "SimpleBench_${VERSION}_x64.dmg"
+            "SimpleBench_aarch64.app.tar.gz"
+            "SimpleBench_x64.app.tar.gz"
+            "SimpleBench_${VERSION}_amd64.deb"
+            "SimpleBench-${VERSION}-1.x86_64.rpm"
+            "SimpleBench_${VERSION}_amd64.AppImage"
+            "SimpleBench_${VERSION}_x64-setup.exe"
+            "SimpleBench_${VERSION}_x64_en-US.msi"
+          )
+          for artifact in "${expected[@]}"; do
+            if [[ ! -s "$artifact" ]]; then
+              echo "::error::Missing installer: $artifact"
+              exit 1
+            fi
+          done
+          sha256sum "${expected[@]}" > SHA256SUMS
+          gh release upload "$RELEASE_TAG" SHA256SUMS --clobber
+          gh release edit "$RELEASE_TAG" --draft=false --latest
+
+  publish-aur:
+    needs: publish
+    uses: ./.github/workflows/publish-aur.yml
+    with:
+      release_tag: ${{ needs.publish.outputs.tag }}
+    secrets:
+      AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+
+  notify-flathub:
+    needs: publish
+    if: vars.FLATHUB_ENABLED == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Request a Flathub update after initial acceptance
+        env:
+          GH_TOKEN: ${{ secrets.FLATHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.publish.outputs.tag }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_TOKEN" || { echo "::error::Missing FLATHUB_TOKEN"; exit 1; }
+          gh api --method POST repos/flathub/io.github.MaciejKolerski.simplebench/dispatches \
+            -f event_type=simplebench-release -f "client_payload[tag]=$RELEASE_TAG"
