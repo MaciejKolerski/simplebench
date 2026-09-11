@@ -103,6 +103,12 @@ The desktop command starts Vite and compiles Rust automatically. The first nativ
 build can take a few minutes. `pnpm dev` starts the browser frontend at
 `http://127.0.0.1:1420`; project access and terminals require the desktop app.
 
+Development and test builds retain line information for Rust backtraces and
+disable incremental artifacts to reduce disk usage. Full variable-level native
+debugging can be enabled with `CARGO_PROFILE_DEV_DEBUG=2 pnpm tauri dev`, which
+requires more disk space. These settings use Cargo's standard
+[development profile](https://doc.rust-lang.org/cargo/reference/profiles.html).
+
 ## Shells and environments
 
 Installed local shells are discovered from `PATH`, preferring `$SHELL` on Unix.

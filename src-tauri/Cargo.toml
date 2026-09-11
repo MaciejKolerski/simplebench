@@ -9,6 +9,11 @@ publish = false
 # A distinct library name avoids a Windows artifact name collision with the binary.
 name = "simplebench_lib"
 
+[profile.dev]
+# Retain backtrace locations without large debug and incremental artifacts.
+debug = "line-tables-only"
+incremental = false
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
