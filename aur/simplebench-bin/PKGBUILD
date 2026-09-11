@@ -5,8 +5,7 @@ pkgrel=1
 pkgdesc='A workspace for terminal-driven development'
 arch=('x86_64')
 url='https://github.com/MaciejKolerski/simplebench'
-# The publication workflow fills this from the project's selected license.
-license=()
+license=('Apache-2.0')
 depends=('gtk3' 'webkit2gtk-4.1' 'hicolor-icon-theme')
 optdepends=('git: source control and repository history')
 provides=('simplebench')

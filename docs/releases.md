@@ -68,10 +68,10 @@ the release workflow rejects that situation before publication.
 
 ## Publish a version
 
-Before the first release, the owner must choose the project license. Add the
-selected license text to `LICENSE` and its SPDX identifier to `package.json`
-and `src-tauri/Cargo.toml`. The workflow refuses publication until these agree;
-the AUR recipes receive that same license during package preparation.
+SimpleBench uses Apache-2.0, with the license text in [`LICENSE`](../LICENSE)
+and its SPDX identifier in `package.json` and `src-tauri/Cargo.toml`. The workflow
+requires matching license identifiers and the license file before publication.
+The AUR recipes receive that same license during package preparation.
 
 1. Update the four app version entries together and add user-facing notes in
    `releases/vX.Y.Z.md`. Without that notes file, GitHub generates release notes.

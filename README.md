@@ -590,3 +590,8 @@ write meaningful technical comments in English, and use
 Commit bodies explain the change and its reason, followed by validation results.
 Do not add AI co-author trailers or agent attribution. Pull requests use the
 [description template](.github/pull_request_template.md).
+
+## License
+
+Copyright 2026 Maciej Kolerski. SimpleBench is licensed under the
+[Apache License 2.0](LICENSE).
