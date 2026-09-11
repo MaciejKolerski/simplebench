@@ -8,11 +8,10 @@ import {
 } from "react";
 import type { ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { api, errorMessage, native } from "./api";
+import { api, errorMessage, macOS, native } from "./api";
 import { defaultKeybindings, restoreKeybindings } from "./keybindings";
 import type { Keybindings, KeybindingSettings } from "./keybindings";
 
-const mac = navigator.platform.startsWith("Mac");
 interface Preferences {
   bindings: Keybindings;
   defaults: Keybindings;
@@ -23,7 +22,7 @@ interface Preferences {
   save: (bindings: Keybindings, focusFollowsPointer?: boolean) => Promise<void>;
 }
 const Context = createContext<Preferences | null>(null);
-const defaults = defaultKeybindings(mac);
+const defaults = defaultKeybindings(macOS);
 
 export function KeybindingsProvider({ children }: { children: ReactNode }) {
   const [bindings, setBindings] = useState(defaults);
@@ -37,7 +36,7 @@ export function KeybindingsProvider({ children }: { children: ReactNode }) {
     const request = ++revision.current;
     try {
       const data = await api<KeybindingSettings | null>("load_keybindings");
-      const value = restoreKeybindings(data, mac);
+      const value = restoreKeybindings(data, macOS);
       if (mounted.current && request === revision.current) {
         setBindings(value);
         setFocusFollowsPointer(data?.focusFollowsPointer ?? false);
@@ -87,7 +86,7 @@ export function KeybindingsProvider({ children }: { children: ReactNode }) {
       bindings: next,
       focusFollowsPointer: pointerFocus,
     };
-    restoreKeybindings(data, mac);
+    restoreKeybindings(data, macOS);
     if (native) await api("save_keybindings", { data });
     if (mounted.current) {
       ++revision.current;

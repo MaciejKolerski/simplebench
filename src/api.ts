@@ -2,6 +2,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { AppInfo, Session } from "./model";
 
 export const native = isTauri();
+export const macOS = navigator.platform.startsWith("Mac");
 export const api = invoke;
 export const errorMessage = (error: unknown) =>
   error &&

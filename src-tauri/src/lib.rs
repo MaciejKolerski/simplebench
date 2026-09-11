@@ -4,12 +4,15 @@ mod editor_preferences;
 mod files;
 mod git;
 mod keybindings;
+#[cfg(target_os = "macos")]
+mod macos;
+mod settings_window;
 mod shell;
 mod terminal;
 mod terminal_preferences;
 mod themes;
 
-use tauri::{Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{Manager, State, WebviewWindow};
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -40,11 +43,12 @@ fn app_info(window: WebviewWindow, shells: State<'_, terminal::Shells>) -> Resul
 }
 
 #[tauri::command]
-fn show_ready_window(window: WebviewWindow, background: [u8; 3]) -> Result<(), String> {
+fn show_ready_window(window: WebviewWindow, background: [u8; 3]) -> Result<bool, String> {
     if !matches!(window.label(), "main" | "settings") {
         return Err("Unknown application window.".into());
     }
-    if !window.is_visible().map_err(|error| error.to_string())? {
+    let visible = window.is_visible().map_err(|error| error.to_string())?;
+    if !visible {
         #[cfg(target_os = "linux")]
         {
             use gtk::prelude::*;
@@ -63,10 +67,15 @@ fn show_ready_window(window: WebviewWindow, background: [u8; 3]) -> Result<(), S
                 255,
             )))
             .map_err(|error| error.to_string())?;
+    }
+    if window.label() == "settings" {
+        return settings_window::ready(&window);
+    }
+    if !visible {
         window.show().map_err(|error| error.to_string())?;
         window.set_focus().map_err(|error| error.to_string())?;
     }
-    Ok(())
+    Ok(true)
 }
 
 #[tauri::command]
@@ -87,56 +96,6 @@ fn finish_window_startup(window: WebviewWindow) -> Result<(), String> {
         .map_err(|error| error.to_string())
 }
 
-#[tauri::command]
-async fn open_settings(
-    window: WebviewWindow,
-    app: tauri::AppHandle,
-    page: Option<String>,
-) -> Result<(), String> {
-    files::main_window(&window)?;
-    if page
-        .as_deref()
-        .is_some_and(|page| !matches!(page, "keybinds" | "themes" | "editor" | "terminal"))
-    {
-        return Err("Unknown settings page.".into());
-    }
-    if let Some(window) = app.get_webview_window("settings") {
-        if let Some(page) = page {
-            window
-                .emit("settings-page-changed", page)
-                .map_err(|error| error.to_string())?;
-        }
-        if window.is_visible().map_err(|error| error.to_string())?
-            || window.is_minimized().map_err(|error| error.to_string())?
-        {
-            window.show().map_err(|error| error.to_string())?;
-            window.set_focus().map_err(|error| error.to_string())?;
-        }
-        return Ok(());
-    }
-    WebviewWindowBuilder::new(
-        &app,
-        "settings",
-        WebviewUrl::App(
-            format!(
-                "index.html?window=settings&page={}",
-                page.as_deref().unwrap_or("keybinds")
-            )
-            .into(),
-        ),
-    )
-    .title("Settings — SimpleBench")
-    .inner_size(920.0, 680.0)
-    .min_inner_size(560.0, 420.0)
-    .visible(false)
-    .decorations(false)
-    .transparent(true)
-    .background_color(tauri::window::Color(0, 0, 0, 0))
-    .build()
-    .map_err(|error| error.to_string())?;
-    Ok(())
-}
-
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -151,13 +110,25 @@ pub fn run() {
         .manage(editor_preferences::EditorPreferencesFile::default())
         .manage(terminal_preferences::TerminalPreferencesFile::default())
         .manage(themes::Themes::default())
+        .manage(settings_window::SettingsWindow::default())
+        .on_window_event(settings_window::on_window_event)
         .register_asynchronous_uri_scheme_protocol("theme", themes::protocol)
         .setup(|app| {
+            #[cfg(target_os = "macos")]
+            macos::setup_menu(app)?;
             let integration = app.path().app_data_dir()?.join("shell-integration");
             shell::prepare(&integration).map_err(std::io::Error::other)?;
             app.manage(terminal::Shells {
                 profiles: shell::discover(),
                 integration,
+            });
+            let handle = app.handle().clone();
+            // Load settings alongside the workspace so its first click can
+            // reuse the prepared view. Window creation stays off the GUI thread.
+            tauri::async_runtime::spawn(async move {
+                if let Err(error) = settings_window::prepare(&handle).await {
+                    eprintln!("Cannot prepare settings window: {error}");
+                }
             });
             Ok(())
         })
@@ -165,7 +136,7 @@ pub fn run() {
             app_info,
             show_ready_window,
             finish_window_startup,
-            open_settings,
+            settings_window::open_settings,
             files::list_directory,
             files::search::search_project,
             files::search::cancel_project_search,
@@ -221,6 +192,8 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("failed to build SimpleBench");
     app.run(|app, event| {
+        #[cfg(target_os = "macos")]
+        macos::handle_run_event(app, &event);
         if matches!(event, tauri::RunEvent::Exit) {
             app.state::<terminal::Terminals>().stop_all();
         }

@@ -111,6 +111,9 @@ requires more disk space. These settings use Cargo's standard
 
 ## Shells and environments
 
+For macOS window behavior, shell startup, and validation boundaries, see
+[macOS compatibility](MACOS.md).
+
 Installed local shells are discovered from `PATH`, preferring `$SHELL` on Unix.
 Supported profiles include bash, zsh, fish, PowerShell (`pwsh` or `powershell`),
 cmd, and a basic `sh` fallback. Ctrl/Cmd+Shift+L opens environment selection for
@@ -387,7 +390,8 @@ dark mode changes.
 
 ## Keyboard shortcuts
 
-These are the defaults; use Cmd instead of Ctrl on macOS. Configure them in
+These are the defaults; use Cmd instead of Ctrl on macOS, except for terminal
+overview, which uses Control+Tab to leave Cmd+Tab to the system. Configure them in
 Settings → Keybinds by clicking an assignment and pressing a key combination.
 Escape cancels recording. Conflicts must be resolved before saving. Clear an
 assignment to let the terminal receive those keys normally.

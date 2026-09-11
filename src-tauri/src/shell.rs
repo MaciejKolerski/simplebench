@@ -29,7 +29,15 @@ fn executable(program: &str) -> Option<PathBuf> {
     if program_path.is_absolute() && program_path.is_file() {
         return Some(program_path.to_owned());
     }
-    for directory in env::split_paths(&env::var_os("PATH").unwrap_or_default()) {
+    let directories = env::var_os("PATH").unwrap_or_default();
+    let directories = env::split_paths(&directories);
+    // Finder-launched applications do not inherit a terminal's Homebrew PATH.
+    #[cfg(target_os = "macos")]
+    let directories = directories.chain([
+        PathBuf::from("/opt/homebrew/bin"),
+        PathBuf::from("/usr/local/bin"),
+    ]);
+    for directory in directories {
         let path = directory.join(program);
         if path.is_file() {
             return Some(path);
@@ -51,8 +59,16 @@ fn kind(program: &str) -> String {
 }
 
 pub fn discover() -> Vec<Profile> {
-    let default =
-        env::var("SHELL").unwrap_or_else(|_| if cfg!(windows) { "pwsh" } else { "bash" }.into());
+    let default = env::var("SHELL").unwrap_or_else(|_| {
+        if cfg!(windows) {
+            "pwsh"
+        } else if cfg!(target_os = "macos") {
+            "/bin/zsh"
+        } else {
+            "bash"
+        }
+        .into()
+    });
     let mut profiles = Vec::new();
     for candidate in [
         &default,
@@ -184,6 +200,8 @@ pub fn prepare(path: &Path) -> Result<(), String> {
     }
     // Zsh reads .zshenv before .zshrc; forward the user's original file as well.
     fs::write(path.join("zsh/.zshenv"), "[[ -f \"${SIMPLEBENCH_ZDOTDIR:-$HOME}/.zshenv\" ]] && source \"${SIMPLEBENCH_ZDOTDIR:-$HOME}/.zshenv\"\n").map_err(|error| error.to_string())?;
+    // Login zsh reads this before .zshrc restores the user's ZDOTDIR.
+    fs::write(path.join("zsh/.zprofile"), "[[ -f \"${SIMPLEBENCH_ZDOTDIR:-$HOME}/.zprofile\" ]] && source \"${SIMPLEBENCH_ZDOTDIR:-$HOME}/.zprofile\"\n").map_err(|error| error.to_string())?;
     Ok(())
 }
 
@@ -249,6 +267,9 @@ pub fn build(
                 env::var("ZDOTDIR").unwrap_or_else(|_| profile.home.clone()),
             );
             command.env("ZDOTDIR", join("zsh"));
+            if cfg!(target_os = "macos") && profile.distro.is_none() {
+                command.arg("-l");
+            }
             command.arg("-i");
         }
         "fish" => {
@@ -302,6 +323,82 @@ pub fn quote(path: &str, shell: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_zsh_loads_login_files_and_keeps_terminal_integration() {
+        use std::io::{Read, Write};
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let directory = tempfile::tempdir().unwrap();
+        let config = directory.path().join("shell config");
+        let integration = directory.path().join("integration");
+        fs::create_dir(&config).unwrap();
+        fs::write(
+            config.join(".zshenv"),
+            "export SIMPLEBENCH_TEST_ORDER=env\n",
+        )
+        .unwrap();
+        fs::write(
+            config.join(".zprofile"),
+            "export SIMPLEBENCH_TEST_ORDER=$SIMPLEBENCH_TEST_ORDER,profile\n",
+        )
+        .unwrap();
+        fs::write(
+            config.join(".zshrc"),
+            "export SIMPLEBENCH_TEST_ORDER=$SIMPLEBENCH_TEST_ORDER,rc\nPROMPT='ready> '\n",
+        )
+        .unwrap();
+        fs::write(
+            config.join(".zlogin"),
+            "export SIMPLEBENCH_TEST_ORDER=$SIMPLEBENCH_TEST_ORDER,login\n",
+        )
+        .unwrap();
+        prepare(&integration).unwrap();
+        let profile = Profile {
+            id: "local:zsh".into(),
+            name: "zsh".into(),
+            kind: "zsh".into(),
+            program: "/bin/zsh".into(),
+            distro: None,
+            home: config.to_string_lossy().into_owned(),
+        };
+        let (mut command, _) = build(&profile, &config.to_string_lossy(), &integration).unwrap();
+        // Isolate the spawned shell without changing the test process's environment.
+        command.env("SIMPLEBENCH_ZDOTDIR", &config);
+        command.env_remove("HISTFILE");
+        let pair = portable_pty::native_pty_system()
+            .openpty(portable_pty::PtySize {
+                rows: 24,
+                cols: 80,
+                pixel_width: 0,
+                pixel_height: 0,
+            })
+            .unwrap();
+        let mut child = pair.slave.spawn_command(command).unwrap();
+        drop(pair.slave);
+        let mut reader = pair.master.try_clone_reader().unwrap();
+        let mut writer = pair.master.take_writer().unwrap();
+        let (send, receive) = mpsc::channel();
+        let reading = std::thread::spawn(move || {
+            let mut output = Vec::new();
+            let _ = reader.read_to_end(&mut output);
+            let _ = send.send(String::from_utf8_lossy(&output).into_owned());
+        });
+        writer
+            .write_all(b"printf '\\nORDER=%s\\n' \"$SIMPLEBENCH_TEST_ORDER\"; exit\r")
+            .unwrap();
+        let output = receive.recv_timeout(Duration::from_secs(10));
+        let _ = child.kill();
+        let _ = child.wait();
+        reading.join().unwrap();
+        let output = output.expect("login shell did not exit");
+        assert!(output.contains("ORDER=env,profile,rc,login"), "{output:?}");
+        assert!(output.contains("\u{1b}]133;A"), "{output:?}");
+        assert!(output.contains("\u{1b}]133;C"), "{output:?}");
+        assert!(output.contains("\u{1b}]7;file://localhost"), "{output:?}");
+    }
 
     #[cfg(unix)]
     #[test]

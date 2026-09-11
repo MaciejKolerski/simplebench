@@ -1139,6 +1139,19 @@ svg {
   background: var(--color-error);
   color: var(--color-background-text);
 }
+/* AppKit clips the window, including full-screen and tiled presentations. */
+:root[data-platform="macos"] .app-shell {
+  border-radius: 0;
+}
+:root[data-platform="macos"] .titlebar {
+  min-height: 44px;
+  padding-left: max(88px, var(--titlebar-padding-left));
+  padding-right: var(--space-12);
+}
+:root[data-platform="macos"] .statusbar {
+  padding-left: max(12px, var(--space-6));
+  padding-right: max(12px, var(--space-12));
+}
 .menu {
   position: absolute;
   left: 0;

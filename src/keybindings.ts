@@ -209,7 +209,9 @@ export function defaultKeybindings(mac = false): Keybindings {
   return Object.fromEntries(
     actions.map(({ id, shortcut }) => [
       id,
-      mac ? (shortcut?.replace("Ctrl", "Meta") ?? null) : shortcut,
+      mac && id !== "terminalOverview"
+        ? (shortcut?.replace("Ctrl", "Meta") ?? null)
+        : shortcut,
     ]),
   ) as Keybindings;
 }

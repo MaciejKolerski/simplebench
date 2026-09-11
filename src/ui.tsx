@@ -2,7 +2,7 @@ import { useEffect, useId, useRef } from "react";
 import type { ButtonHTMLAttributes, ReactNode, RefObject } from "react";
 import { Minus, Square, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { errorMessage, native } from "./api";
+import { errorMessage, macOS, native } from "./api";
 
 export function IconButton({
   title,
@@ -27,6 +27,7 @@ export function WindowControls({
 }: {
   onError: (message: string) => void;
 }) {
+  if (native && macOS) return null;
   const act = (action: "minimize" | "toggleMaximize" | "close") => {
     if (native)
       void getCurrentWindow()

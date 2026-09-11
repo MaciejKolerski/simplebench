@@ -21,6 +21,30 @@ const key = (overrides: Partial<KeyEvent> = {}): KeyEvent => ({
   ...overrides,
 });
 
+test("macOS overview leaves application switching to the system", () => {
+  const bindings = defaultKeybindings(true);
+  assert.equal(
+    actionForEvent(key({ code: "Tab", key: "Tab" }), bindings),
+    "terminalOverview",
+  );
+  assert.equal(
+    actionForEvent(
+      key({ code: "Tab", key: "Tab", ctrlKey: false, metaKey: true }),
+      bindings,
+    ),
+    undefined,
+  );
+  assert.equal(bindings.newTerminal, "Meta+KeyD");
+  assert.equal(bindings.closeTerminal, "Meta+KeyW");
+  assert.equal(
+    restoreKeybindings(
+      { version: 1, bindings: { terminalOverview: "Meta+KeyO" } },
+      true,
+    ).terminalOverview,
+    "Meta+KeyO",
+  );
+});
+
 test("new editor defaults preserve older custom terminal shortcuts", () => {
   const restored = restoreKeybindings({
     version: 1,
@@ -71,7 +95,7 @@ test("overview takes the old tab default while custom assignments remain intact"
       bindings: { nextTab: `${mod}+Tab`, previousTab: `${mod}+Shift+Tab` },
     };
     const restored = restoreKeybindings(saved, mac);
-    assert.equal(restored.terminalOverview, `${mod}+Tab`);
+    assert.equal(restored.terminalOverview, "Ctrl+Tab");
     assert.equal(restored.nextTab, `${mod}+PageDown`);
     assert.equal(restored.previousTab, `${mod}+PageUp`);
     assert.equal(saved.bindings.nextTab, `${mod}+Tab`);

@@ -28,9 +28,19 @@ export async function mockDesktop(
     string,
     { content: string; revision: string; encoding: string; readOnly: boolean }
   > = {},
+  platform: "linux" | "macos" | "windows" = "linux",
 ) {
   await page.addInitScript(
-    ({ repository, saved, gitHistory, editorFiles }) => {
+    ({ repository, saved, gitHistory, editorFiles, platform }) => {
+      Object.defineProperty(navigator, "platform", {
+        configurable: true,
+        value:
+          platform === "macos"
+            ? "MacIntel"
+            : platform === "windows"
+              ? "Win32"
+              : "Linux x86_64",
+      });
       const callbacks = new Map<number, (value: unknown) => void>();
       let callbackId = 0;
       let repositoryPresent = repository;
@@ -132,6 +142,7 @@ export async function mockDesktop(
         },
         async invoke(command: string, args: Record<string, any> = {}) {
           calls.push({ command, args: JSON.parse(JSON.stringify(args)) });
+          if (command === "show_ready_window") return true;
           if (command === "resolve_editor_file") return args.relative;
           if (command === "watch_editor_files") return;
           if (command === "save_new_editor_file") {
@@ -233,7 +244,7 @@ export async function mockDesktop(
             return {
               directory: "/project",
               home: "/home/test",
-              platform: "linux",
+              platform,
               profiles: [
                 {
                   id: "local:bash",
@@ -554,7 +565,6 @@ export async function mockDesktop(
               "close_terminal",
               "reset_terminals",
               "open_settings",
-              "show_ready_window",
               "finish_window_startup",
               "plugin:event|unlisten",
               "plugin:window|set_title",
@@ -570,7 +580,7 @@ export async function mockDesktop(
         },
       };
     },
-    { repository, saved, gitHistory, editorFiles },
+    { repository, saved, gitHistory, editorFiles, platform },
   );
 }
 

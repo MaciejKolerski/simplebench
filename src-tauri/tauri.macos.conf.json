@@ -1,0 +1,22 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "SimpleBench",
+        "width": 1440,
+        "height": 900,
+        "minWidth": 800,
+        "minHeight": 420,
+        "visible": false,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": { "x": 14, "y": 24 },
+        "transparent": true,
+        "backgroundColor": "#00000000"
+      }
+    ]
+  }
+}

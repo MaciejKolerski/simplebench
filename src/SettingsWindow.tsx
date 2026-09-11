@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { Code, Keyboard, Palette, Terminal, RotateCcw, X } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import ThemesPage from "./ThemesPage";
 import TerminalSettingsPage from "./TerminalSettingsPage";
 import EditorSettingsPage from "./EditorSettingsPage";
 import { IconButton, WindowControls } from "./ui";
-import { errorMessage, native } from "./api";
+import { errorMessage, macOS, native } from "./api";
 import {
   actions,
   bindingConflict,
@@ -14,6 +15,7 @@ import {
 } from "./keybindings";
 import type { ActionId, Keybindings } from "./keybindings";
 import { useKeybindings } from "./KeybindingsProvider";
+import ReadyWindow from "./ReadyWindow";
 
 export default function SettingsWindow() {
   const [page, setPage] = useState(() => {
@@ -25,6 +27,7 @@ export default function SettingsWindow() {
       : "keybinds";
   });
   const preferences = useKeybindings();
+  const [listening, setListening] = useState(!native);
   const [recording, setRecording] = useState<ActionId | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -43,16 +46,48 @@ export default function SettingsWindow() {
         setPage(payload);
       }
     });
-    void unlisten.catch((error) => {
-      if (current) setError(errorMessage(error));
-    });
+    void unlisten
+      .then(() => {
+        if (current) setListening(true);
+      })
+      .catch((error) => {
+        if (current) {
+          setError(errorMessage(error));
+          setListening(true);
+        }
+      });
+    const blurred = () => setRecording(null);
+    window.addEventListener("blur", blurred);
     return () => {
       current = false;
+      window.removeEventListener("blur", blurred);
       void unlisten.then((stop) => stop()).catch(() => {});
     };
   }, []);
   useEffect(() => {
     recordingButton.current?.focus();
+  }, [recording]);
+  useEffect(() => {
+    if (!native || !macOS || recording) return;
+    const close = (event: KeyboardEvent) => {
+      if (
+        event.code !== "KeyW" ||
+        !event.metaKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.shiftKey ||
+        event.isComposing ||
+        event.defaultPrevented ||
+        document.querySelector("dialog[open]")
+      )
+        return;
+      event.preventDefault();
+      void getCurrentWindow()
+        .close()
+        .catch((error) => setError(errorMessage(error)));
+    };
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
   }, [recording]);
 
   const persist = async (
@@ -88,6 +123,7 @@ export default function SettingsWindow() {
   };
   return (
     <div className="app-shell settings-window">
+      {listening && <ReadyWindow />}
       <header className="titlebar" data-tauri-drag-region>
         <span className="settings-title" data-tauri-drag-region>
           Settings
