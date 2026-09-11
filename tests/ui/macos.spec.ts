@@ -52,6 +52,46 @@ test("Cmd+W closes macOS settings while shortcut recording keeps the key", async
 });
 
 for (const settings of [false, true]) {
+  test(`macOS ${settings ? "settings" : "workspace"} reclaims native-control space in fullscreen and restores it on exit`, async ({
+    page,
+  }, testInfo) => {
+    await mockDesktop(page, true, undefined, undefined, {}, "macos");
+    await page.addInitScript(() => {
+      (window as any).__nativeTest.fullscreen = true;
+    });
+    await page.goto(settings ? "/?window=settings" : "/");
+    const titlebar = page.locator(".titlebar");
+    await expect(titlebar).toHaveCSS("padding-left", "8px");
+    const setFullscreen = (fullscreen: boolean) =>
+      page.evaluate(async (fullscreen) => {
+        const desktop = (window as any).__nativeTest;
+        desktop.fullscreen = fullscreen;
+        await desktop.emitEvent("tauri://resize", {
+          width: innerWidth,
+          height: innerHeight,
+        });
+      }, fullscreen);
+    await setFullscreen(false);
+    await expect(titlebar).toHaveCSS("padding-left", "88px");
+    await page.keyboard.press("Meta+Minus");
+    await page.keyboard.press("Meta+Minus");
+    await expect(titlebar).toHaveCSS("padding-left", "110px");
+    await expect(titlebar).toHaveCSS("min-height", "55px");
+    await setFullscreen(true);
+    await expect(titlebar).toHaveCSS("padding-left", "8px");
+    await expect(titlebar).toHaveCSS("height", "44px");
+    const content = await titlebar
+      .locator(":scope > :first-child")
+      .boundingBox();
+    expect(content!.x).toBeLessThan(20);
+    await page.screenshot({
+      path: testInfo.outputPath("macos-fullscreen.png"),
+    });
+    await setFullscreen(false);
+    await expect(titlebar).toHaveCSS("padding-left", "110px");
+    await expect(titlebar).toHaveCSS("min-height", "55px");
+  });
+
   test(`macOS ${settings ? "settings" : "workspace"} leaves room for native controls at minimum size`, async ({
     page,
   }, testInfo) => {

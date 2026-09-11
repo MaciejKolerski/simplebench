@@ -80,6 +80,7 @@ export async function mockDesktop(
         failZoom: false,
         zoomDelay: 0,
         zoom: 1,
+        fullscreen: false,
         newFilePath: null as string | null,
         fileReadDelays: {} as Record<string, number>,
         emitEvent,
@@ -550,6 +551,8 @@ export async function mockDesktop(
           if (command === "plugin:dialog|open")
             return desktop.__nativeTest.folder;
           if (command === "plugin:window|scale_factor") return 1;
+          if (command === "plugin:window|is_fullscreen")
+            return desktop.__nativeTest.fullscreen;
           if (command === "plugin:event|listen") {
             const id = ++callbackId;
             events.set(id, { event: args.event, handler: args.handler });

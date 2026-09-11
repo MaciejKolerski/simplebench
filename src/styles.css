@@ -1144,12 +1144,14 @@ svg {
   border-radius: 0;
 }
 :root[data-platform="macos"] .titlebar {
+  padding-right: var(--space-12);
+}
+:root[data-platform="macos"]:not([data-fullscreen="true"]) .titlebar {
   min-height: calc(44px / var(--app-zoom, 1));
   padding-left: max(
     calc(88px / var(--app-zoom, 1)),
     var(--titlebar-padding-left)
   );
-  padding-right: var(--space-12);
 }
 :root[data-platform="macos"] .statusbar {
   padding-left: max(12px, var(--space-6));
