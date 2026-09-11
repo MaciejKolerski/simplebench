@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
+import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 export interface ContextAction {
   label: string;
+  icon?: ReactNode;
   run: () => void;
   disabled?: boolean;
   shortcut?: string;
@@ -98,6 +100,7 @@ export default function ContextMenu({
               action.run();
             }}
           >
+            {action.icon}
             <span>{action.label}</span>
             {action.shortcut && <kbd>{action.shortcut}</kbd>}
           </button>

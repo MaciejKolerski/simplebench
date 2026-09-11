@@ -281,8 +281,16 @@ export default function TabBar({
           {...newMenu}
           label="New tab"
           actions={[
-            { label: "New terminal", run: onNew },
-            { label: "New file", run: onNewFile },
+            {
+              label: "New terminal",
+              icon: <Terminal size={14} aria-hidden="true" />,
+              run: onNew,
+            },
+            {
+              label: "New file",
+              icon: <FileCode size={14} aria-hidden="true" />,
+              run: onNewFile,
+            },
           ]}
           onClose={() => {
             setNewMenu(null);
