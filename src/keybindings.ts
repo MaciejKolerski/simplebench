@@ -160,6 +160,29 @@ export const actions = [
     group: "Workspace",
     shortcut: "Ctrl+Comma",
   },
+  {
+    id: "zoomIn",
+    label: "Zoom in",
+    description:
+      "Increase the size of the entire interface, including terminals and editors.",
+    group: "Workspace",
+    shortcut: "Ctrl+Equal",
+  },
+  {
+    id: "zoomOut",
+    label: "Zoom out",
+    description:
+      "Decrease the size of the entire interface, including terminals and editors.",
+    group: "Workspace",
+    shortcut: "Ctrl+Minus",
+  },
+  {
+    id: "resetZoom",
+    label: "Reset zoom",
+    description: "Restore the interface to its original size (100%).",
+    group: "Workspace",
+    shortcut: "Ctrl+Digit0",
+  },
 ] as const;
 
 export type ActionId = (typeof actions)[number]["id"];
@@ -182,6 +205,8 @@ const keyNames: Record<string, string> = {
   BracketRight: "]",
   Minus: "-",
   Equal: "=",
+  NumpadAdd: "Numpad +",
+  NumpadSubtract: "Numpad -",
   Backquote: "`",
   Space: "Space",
   Tab: "Tab",
@@ -264,9 +289,29 @@ export function actionForEvent(
   bindings: Keybindings,
 ): ActionId | undefined {
   const shortcut = shortcutFromEvent(event);
-  return shortcut
-    ? actions.find(({ id }) => bindings[id] === shortcut)?.id
-    : undefined;
+  if (!shortcut) return;
+  const exact = actions.find(({ id }) => bindings[id] === shortcut)?.id;
+  if (exact) return exact;
+  // Plus may require Shift or a different physical key on the user's layout.
+  // Explicit assignments take precedence over these standard zoom aliases.
+  if (
+    (event.key === "+" || event.code === "NumpadAdd") &&
+    bindings.zoomIn ===
+      shortcut.slice(0, shortcut.lastIndexOf("+") + 1).replace("Shift+", "") +
+        "Equal"
+  )
+    return "zoomIn";
+  if (
+    event.code === "NumpadSubtract" &&
+    bindings.zoomOut === shortcut.replace(/NumpadSubtract$/, "Minus")
+  )
+    return "zoomOut";
+}
+
+export function isZoomAction(
+  action: ActionId | undefined,
+): action is "zoomIn" | "zoomOut" | "resetZoom" {
+  return action === "zoomIn" || action === "zoomOut" || action === "resetZoom";
 }
 
 export function formatShortcut(shortcut: string | null): string {
@@ -343,7 +388,8 @@ export function restoreKeybindings(value: unknown, mac = false): Keybindings {
   for (const { id, group } of actions) {
     if (
       (((group === "Editor" ||
-        ["terminalOverview", "nextTab", "previousTab"].includes(id)) &&
+        ["terminalOverview", "nextTab", "previousTab"].includes(id) ||
+        isZoomAction(id)) &&
         !Object.hasOwn(value.bindings, id)) ||
         migrated.has(id)) &&
       bindingConflict(result, id, result[id])

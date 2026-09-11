@@ -21,6 +21,92 @@ const key = (overrides: Partial<KeyEvent> = {}): KeyEvent => ({
   ...overrides,
 });
 
+test("zoom accepts plus, equals and numeric keypad keys with exact assignments taking precedence", () => {
+  for (const mac of [false, true]) {
+    const bindings = defaultKeybindings(mac);
+    const mod = mac ? "Meta" : "Ctrl";
+    const event = (code: string, value: string, shiftKey = false) =>
+      key({
+        code,
+        key: value,
+        ctrlKey: !mac,
+        metaKey: mac,
+        shiftKey,
+      });
+    for (const input of [
+      event("Equal", "="),
+      event("Equal", "+", true),
+      event("BracketRight", "+"),
+      event("NumpadAdd", "+"),
+    ])
+      assert.equal(actionForEvent(input, bindings), "zoomIn");
+    assert.equal(actionForEvent(event("Minus", "-"), bindings), "zoomOut");
+    assert.equal(
+      actionForEvent(event("NumpadSubtract", "-"), bindings),
+      "zoomOut",
+    );
+    assert.equal(actionForEvent(event("Digit0", "0"), bindings), "resetZoom");
+    assert.equal(
+      actionForEvent(event("Minus", "_", true), bindings),
+      undefined,
+    );
+    assert.equal(
+      actionForEvent(
+        { ...event("Equal", "+", true), isComposing: true },
+        bindings,
+      ),
+      undefined,
+    );
+    assert.equal(
+      actionForEvent({ ...event("Equal", "+", true), altKey: true }, bindings),
+      undefined,
+    );
+    bindings.newTerminal = `${mod}+Shift+Equal`;
+    assert.equal(
+      actionForEvent(event("Equal", "+", true), bindings),
+      "newTerminal",
+    );
+    bindings.zoomIn = null;
+    assert.equal(actionForEvent(event("Equal", "="), bindings), undefined);
+    assert.equal(actionForEvent(event("NumpadAdd", "+"), bindings), undefined);
+  }
+});
+
+test("new zoom defaults preserve older custom shortcuts and reject explicit conflicts", () => {
+  for (const mac of [false, true]) {
+    const mod = mac ? "Meta" : "Ctrl";
+    const restored = restoreKeybindings(
+      {
+        version: 1,
+        bindings: {
+          newTerminal: `${mod}+Equal`,
+          nextTab: `${mod}+Minus`,
+          previousTab: `${mod}+Digit0`,
+        },
+      },
+      mac,
+    );
+    assert.equal(restored.zoomIn, null);
+    assert.equal(restored.zoomOut, null);
+    assert.equal(restored.resetZoom, null);
+    assert.equal(restored.newTerminal, `${mod}+Equal`);
+    assert.throws(
+      () =>
+        restoreKeybindings(
+          {
+            version: 1,
+            bindings: {
+              newTerminal: `${mod}+Equal`,
+              zoomIn: `${mod}+Equal`,
+            },
+          },
+          mac,
+        ),
+      /conflict/,
+    );
+  }
+});
+
 test("macOS overview leaves application switching to the system", () => {
   const bindings = defaultKeybindings(true);
   assert.equal(

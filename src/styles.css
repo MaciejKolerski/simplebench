@@ -1144,8 +1144,11 @@ svg {
   border-radius: 0;
 }
 :root[data-platform="macos"] .titlebar {
-  min-height: 44px;
-  padding-left: max(88px, var(--titlebar-padding-left));
+  min-height: calc(44px / var(--app-zoom, 1));
+  padding-left: max(
+    calc(88px / var(--app-zoom, 1)),
+    var(--titlebar-padding-left)
+  );
   padding-right: var(--space-12);
 }
 :root[data-platform="macos"] .statusbar {
@@ -1334,6 +1337,8 @@ svg {
   flex: 1;
   min-height: 0;
   min-width: 0;
+  /* Page zoom can make the CSS viewport narrower than the pane layout. */
+  overflow: auto;
 }
 .sidebar {
   border-radius: var(--radius-sidebar);

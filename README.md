@@ -425,6 +425,8 @@ in `keybindings.json` and applies across windows without restarting terminals.
 | Ctrl+Shift+E                | Toggle file explorer                      |
 | Ctrl+Shift+G                | Toggle Source Control when available      |
 | Ctrl+,                      | Open settings                             |
+| Ctrl+- / Ctrl+= or Ctrl++   | Zoom out / in across the entire interface |
+| Ctrl+0                      | Reset zoom to 100%                        |
 | Ctrl+Shift+F                | Search the active terminal                |
 | Ctrl+Shift+I                | Toggle multiline command input            |
 | Ctrl+Shift+H                | Toggle command blocks                     |
@@ -435,6 +437,14 @@ in `keybindings.json` and applies across windows without restarting terminals.
 Ctrl/Cmd+W also closes the active editor tab. Editor shortcuts do not consume
 terminal input. Existing custom shortcuts take precedence over newly introduced
 editor defaults; any colliding new defaults start unassigned.
+
+Zoom changes the whole window's content, including terminal text, editors,
+sidebars, and dialogs, in 10% steps between 50% and 200%. Use Cmd on macOS;
+the plus and minus keys on the numeric keypad also work with the default
+assignments. The main and Settings windows remember their own zoom levels.
+Zoom shortcuts work in text fields and dialogs, and pause while recording a
+shortcut in Keybinds. Existing custom assignments take precedence over the
+new zoom defaults.
 
 Double-click a terminal or commit tab to rename it. File tabs retain their
 filenames. Drag split dividers to resize panes; focused

@@ -77,6 +77,9 @@ export async function mockDesktop(
         fileReadError: "",
         failFileSave: false,
         fileSaveDelay: 0,
+        failZoom: false,
+        zoomDelay: 0,
+        zoom: 1,
         newFilePath: null as string | null,
         fileReadDelays: {} as Record<string, number>,
         emitEvent,
@@ -143,6 +146,16 @@ export async function mockDesktop(
         async invoke(command: string, args: Record<string, any> = {}) {
           calls.push({ command, args: JSON.parse(JSON.stringify(args)) });
           if (command === "show_ready_window") return true;
+          if (command === "plugin:webview|set_webview_zoom") {
+            if (desktop.__nativeTest.zoomDelay)
+              await new Promise((resolve) =>
+                setTimeout(resolve, desktop.__nativeTest.zoomDelay),
+              );
+            if (desktop.__nativeTest.failZoom)
+              throw new Error("Zoom unavailable");
+            desktop.__nativeTest.zoom = args.value;
+            return;
+          }
           if (command === "resolve_editor_file") return args.relative;
           if (command === "watch_editor_files") return;
           if (command === "save_new_editor_file") {

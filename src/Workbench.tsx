@@ -86,10 +86,16 @@ import Welcome from "./Welcome";
 import CommitDetails from "./CommitDetails";
 import SplitView from "./SplitView";
 import { usePointerFocus } from "./usePointerFocus";
+import { useWindowZoom } from "./useWindowZoom";
 import TabBar from "./TabBar";
 import FileEditorStatus from "./FileEditorStatus";
 import { useKeybindings } from "./KeybindingsProvider";
-import { actionForEvent, isTextInput, shortcutTitle } from "./keybindings";
+import {
+  actionForEvent,
+  isTextInput,
+  isZoomAction,
+  shortcutTitle,
+} from "./keybindings";
 import {
   captureEditorPositions,
   editorRevision,
@@ -228,6 +234,7 @@ export default function Workbench() {
     [],
   );
   const [error, setError] = useState("");
+  useWindowZoom(setError);
   const [restoreError, setRestoreError] = useState("");
   useEffect(
     () =>
@@ -497,7 +504,7 @@ export default function Workbench() {
           ))
       )
         return;
-      if (!action || action === "runCommand") return;
+      if (!action || action === "runCommand" || isZoomAction(action)) return;
       if (
         action === "terminalOverview" &&
         (selected?.tab.type !== "terminal" ||

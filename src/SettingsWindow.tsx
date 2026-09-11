@@ -16,6 +16,7 @@ import {
 import type { ActionId, Keybindings } from "./keybindings";
 import { useKeybindings } from "./KeybindingsProvider";
 import ReadyWindow from "./ReadyWindow";
+import { useWindowZoom } from "./useWindowZoom";
 
 export default function SettingsWindow() {
   const [page, setPage] = useState(() => {
@@ -31,6 +32,7 @@ export default function SettingsWindow() {
   const [recording, setRecording] = useState<ActionId | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  useWindowZoom(setError);
   const [status, setStatus] = useState("");
   const busyRef = useRef(false);
   const recordingButton = useRef<HTMLButtonElement>(null);

@@ -7,6 +7,7 @@
     "dialog:allow-open",
     "core:event:allow-listen",
     "core:event:allow-unlisten",
+    "core:webview:allow-set-webview-zoom",
     "core:window:allow-start-dragging",
     "core:window:allow-minimize",
     "core:window:allow-toggle-maximize",
