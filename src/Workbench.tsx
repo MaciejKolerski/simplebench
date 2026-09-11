@@ -8,15 +8,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import {
-  Folder,
-  GitBranch,
-  LayoutGrid,
-  Layers,
-  Settings,
-  Terminal,
-  X,
-} from "lucide-react";
+import { Folder, GitBranch, Layers, Settings, Terminal, X } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -1468,17 +1460,25 @@ export default function Workbench() {
             )}
           </div>
         ))}
-        <IconButton
-          title={shortcutTitle(
-            "Toggle terminal overview",
-            bindings.terminalOverview,
-          )}
-          aria-pressed={tab.type === "terminal" && terminalOverview}
-          disabled={tab.type !== "terminal" || !panes(tab.layout).length}
-          onClick={() => setTerminalOverview((shown) => !shown)}
+        <div
+          className="status-panel-control"
+          data-side={session.terminalOverviewSide}
         >
-          <LayoutGrid size={15} />
-        </IconButton>
+          <SidebarToggle
+            panel="terminalOverview"
+            side={session.terminalOverviewSide}
+            title={shortcutTitle(
+              "Toggle terminal overview",
+              bindings.terminalOverview,
+            )}
+            active={tab.type === "terminal" && terminalOverview}
+            disabled={tab.type !== "terminal" || !panes(tab.layout).length}
+            onToggle={() => setTerminalOverview((shown) => !shown)}
+            onMove={(side) =>
+              change((state) => ({ ...state, terminalOverviewSide: side }))
+            }
+          />
+        </div>
         {git.error && (
           <span className="status-warning" title={git.error}>
             Git unavailable

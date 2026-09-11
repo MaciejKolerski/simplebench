@@ -95,6 +95,17 @@ test("older sessions keep their selected left panel, hidden state and width", ()
   }
 });
 
+test("terminal overview placement restores independently with a legacy left default", () => {
+  for (const side of ["left", "right", undefined, "invalid", null]) {
+    const state = { ...newSession(), terminalOverviewSide: side };
+    const restored = restoreSession(JSON.parse(JSON.stringify(state)), info);
+    assert.deepEqual(restored, {
+      ...newSession(),
+      terminalOverviewSide: side === "right" ? "right" : "left",
+    });
+  }
+});
+
 test("invalid sidebar settings cannot show a panel on both sides", () => {
   const restored = restoreSession(
     {

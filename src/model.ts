@@ -96,6 +96,7 @@ export interface Session {
   rightSidebar: SidebarPanel | null;
   rightSidebarWidth: number;
   sidebarSides: Record<SidebarPanel, SidebarSide>;
+  terminalOverviewSide: SidebarSide;
 }
 
 export const newId = () => crypto.randomUUID();
@@ -206,6 +207,7 @@ export function newSession(): Session {
     rightSidebar: null,
     rightSidebarWidth: 250,
     sidebarSides: { files: "left", git: "left", workspaces: "left" },
+    terminalOverviewSide: "left",
   };
 }
 export function showSidebar(session: Session, panel: SidebarPanel): Session {
@@ -893,6 +895,8 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
     sidebar: left && sidebarSides[left] === "left" ? left : null,
     rightSidebar: right && sidebarSides[right] === "right" ? right : null,
     sidebarSides,
+    terminalOverviewSide:
+      data.terminalOverviewSide === "right" ? "right" : "left",
     sidebarWidth: sidebarWidth(data.sidebarWidth),
     rightSidebarWidth: sidebarWidth(data.rightSidebarWidth),
   };

@@ -157,6 +157,8 @@ and command drafts. Renderers stay mounted so returning to the terminals does
 not rebuild their graphics resources. A maximized panel temporarily shows the
 full split layout.
 The overview is temporary and can be reassigned in Settings → Keybinds.
+Right-click its status-bar button to place it on the left or right. The position
+is saved with the session.
 
 Title handling is independent of CLI names and vendors. SimpleBench does not wrap
 CLI commands, inject arguments, or read conversation histories.

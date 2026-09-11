@@ -1,6 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, GitBranch, Layers, PanelLeft, PanelRight } from "lucide-react";
+import {
+  Check,
+  GitBranch,
+  LayoutGrid,
+  Layers,
+  PanelLeft,
+  PanelRight,
+} from "lucide-react";
 import type { SidebarPanel, SidebarSide } from "./model";
 import { IconButton } from "./ui";
 
@@ -8,13 +15,15 @@ export default function SidebarToggle({
   panel,
   side,
   active,
+  disabled,
   title,
   onToggle,
   onMove,
 }: {
-  panel: SidebarPanel;
+  panel: SidebarPanel | "terminalOverview";
   side: SidebarSide;
   active: boolean;
+  disabled?: boolean;
   title: string;
   onToggle: () => void;
   onMove: (side: SidebarSide) => void;
@@ -27,7 +36,9 @@ export default function SidebarToggle({
       ? "Explorer"
       : panel === "git"
         ? "Source Control"
-        : "Workspaces";
+        : panel === "terminalOverview"
+          ? "Terminal overview"
+          : "Workspaces";
   const dismiss = () => {
     setAnchor(undefined);
     trigger.current?.focus({ preventScroll: true });
@@ -62,6 +73,7 @@ export default function SidebarToggle({
       <IconButton
         title={title}
         aria-pressed={active}
+        disabled={disabled}
         aria-haspopup="menu"
         aria-expanded={!!anchor}
         onClick={onToggle}
@@ -86,7 +98,9 @@ export default function SidebarToggle({
           }
         }}
       >
-        {panel === "workspaces" ? (
+        {panel === "terminalOverview" ? (
+          <LayoutGrid size={15} />
+        ) : panel === "workspaces" ? (
           <Layers size={15} />
         ) : panel === "git" ? (
           <GitBranch size={15} />

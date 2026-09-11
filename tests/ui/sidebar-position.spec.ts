@@ -216,3 +216,73 @@ test("the explorer can move to the right without a Git repository", async ({
   await toggle(page, "files").click();
   await expect(sidebar(page, "files")).toHaveAttribute("data-side", "right");
 });
+
+test("terminal overview moves without toggling or restarting and restores its position", async ({
+  page,
+}, testInfo) => {
+  await setup(page);
+  const button = page.getByRole("button", {
+    name: /^Toggle terminal overview/,
+  });
+  const menu = page.getByRole("menu", {
+    name: "Terminal overview panel position",
+  });
+  const left = menu.getByRole("menuitemradio", { name: "Panel on the left" });
+  const right = menu.getByRole("menuitemradio", { name: "Panel on the right" });
+  const screen = await page.locator(".xterm-screen").elementHandle();
+  await expect.poll(() => saved(page)).not.toBeNull();
+  const before = await saved(page);
+  expect((await button.boundingBox())!.x).toBeLessThan(400);
+  await button.click({ button: "right" });
+  await expect(menu).toBeInViewport();
+  await expect(left).toBeChecked();
+  await expect(button).toHaveAttribute("aria-pressed", "false");
+  await right.click();
+  await expect(menu).toHaveCount(0);
+  expect((await button.boundingBox())!.x).toBeGreaterThan(1300);
+  await expect(button).toHaveAttribute("aria-pressed", "false");
+  await button.click();
+  await expect(page.locator(".terminal-overview")).toBeVisible();
+  await button.press("Shift+F10");
+  await expect(right).toBeFocused();
+  await expect(right).toBeChecked();
+  await page.screenshot({ path: testInfo.outputPath("overview-position.png") });
+  await page.keyboard.press("Control+Tab");
+  await expect(button).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("Escape");
+  await expect(button).toBeFocused();
+  await button.click();
+  await expect(page.locator(".xterm-screen")).toBeVisible();
+  expect(
+    await screen!.evaluate(
+      (element) => element === document.querySelector(".xterm-screen"),
+    ),
+  ).toBe(true);
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.calls
+        .filter((call: any) =>
+          ["start_terminal", "close_terminal"].includes(call.command),
+        )
+        .map((call: any) => call.command),
+    ),
+  ).toEqual(["start_terminal"]);
+  await expect
+    .poll(async () => (await saved(page))?.terminalOverviewSide)
+    .toBe("right");
+  const after = await saved(page);
+  expect(after.sidebarSides).toEqual(before.sidebarSides);
+  expect(after.sidebar).toBe(before.sidebar);
+  expect(after.rightSidebar).toBe(before.rightSidebar);
+  await page.reload();
+  await expect(button).toBeVisible();
+  expect((await button.boundingBox())!.x).toBeGreaterThan(1300);
+  await button.press("Shift+F10");
+  await expect(right).toBeChecked();
+  await page.keyboard.press("Home");
+  await page.keyboard.press("Enter");
+  expect((await button.boundingBox())!.x).toBeLessThan(400);
+  await expect
+    .poll(async () => (await saved(page))?.terminalOverviewSide)
+    .toBe("left");
+});
