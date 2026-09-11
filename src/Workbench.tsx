@@ -82,6 +82,7 @@ import SourceControl from "./SourceControl";
 import Sidebar from "./Sidebar";
 import SidebarToggle from "./SidebarToggle";
 import Workspaces from "./Workspaces";
+import Welcome from "./Welcome";
 import CommitDetails from "./CommitDetails";
 import SplitView from "./SplitView";
 import { usePointerFocus } from "./usePointerFocus";
@@ -249,6 +250,8 @@ export default function Workbench() {
   const [paneNotice, setPaneNotice] = useState("");
   const cliTitles = useCliTitleSetup(setError, setPaneNotice);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
+  const folderPickerBusy = useRef(false);
+  const [browsing, setBrowsing] = useState(false);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [terminalOverview, setTerminalOverview] = useState(false);
   const terminalLayout = useRef<HTMLDivElement>(null);
@@ -672,8 +675,11 @@ export default function Workbench() {
     );
   const selectProject = async (
     path: string,
-    workspaceId?: string,
-    tabId?: string,
+    {
+      workspaceId,
+      tabId,
+      createFile = false,
+    }: { workspaceId?: string; tabId?: string; createFile?: boolean } = {},
   ) => {
     setProjectMenuOpen(false);
     try {
@@ -712,7 +718,7 @@ export default function Workbench() {
         }
         const added =
           found ?? newProject(normalized, info.profiles[0]?.id ?? "");
-        return {
+        const next = {
           ...state,
           projects: [
             added,
@@ -720,24 +726,39 @@ export default function Workbench() {
           ],
           activeProjectId: added.id,
         };
+        if (!createFile) return next;
+        const file = newFileTab(next);
+        return updateWorkspace(next, added.activeWorkspaceId, (workspace) => ({
+          ...workspace,
+          tabs: found ? [...workspace.tabs, file] : [file],
+          activeTabId: file.id,
+        }));
       });
     } catch (error) {
       setError(errorMessage(error));
     }
   };
-  const browse = async (createWorkspace = false) => {
+  const browse = async (
+    intent: "project" | "workspace" | "file" = "project",
+  ) => {
+    if (folderPickerBusy.current) return;
+    folderPickerBusy.current = true;
+    setBrowsing(true);
     setProjectMenuOpen(false);
     try {
       const path = await open({
         directory: true,
         multiple: false,
         defaultPath: selected?.project.path ?? info.home,
-        title: createWorkspace
-          ? "Choose workspace folder"
-          : "Open Local Folder",
+        title:
+          intent === "workspace"
+            ? "Choose workspace folder"
+            : intent === "file"
+              ? "Choose a folder for your new file"
+              : "Open Local Folder",
       });
       if (!path) return;
-      if (createWorkspace) {
+      if (intent === "workspace") {
         const normalized = await api<string>("validate_directory", { path });
         const count =
           currentSession.current?.projects.find(
@@ -752,9 +773,12 @@ export default function Workbench() {
               addWorkspace(state, normalized, info.profiles[0]?.id ?? "", name),
             ),
         });
-      } else await selectProject(path);
+      } else await selectProject(path, { createFile: intent === "file" });
     } catch (error) {
       setError(errorMessage(error));
+    } finally {
+      folderPickerBusy.current = false;
+      setBrowsing(false);
     }
   };
   const projectPicker = (
@@ -841,8 +865,10 @@ export default function Workbench() {
       <Workspaces
         projects={session.projects}
         activeWorkspaceId={selected?.workspace.id}
-        onSelect={(path, id, tabId) => void selectProject(path, id, tabId)}
-        onNew={() => void browse(true)}
+        onSelect={(path, id, tabId) =>
+          void selectProject(path, { workspaceId: id, tabId })
+        }
+        onNew={() => void browse("workspace")}
         onRename={(workspace) =>
           setDialog({
             type: "name",
@@ -892,7 +918,11 @@ export default function Workbench() {
         {notice}
         <div className="work-area">
           {workspacePanel}
-          <main className="terminal-stage" aria-label="No project open" />
+          <Welcome
+            busy={browsing}
+            onOpenFolder={() => void browse()}
+            onNewFile={() => void browse("file")}
+          />
         </div>
         <footer className="statusbar">
           {workspaceToggle}
