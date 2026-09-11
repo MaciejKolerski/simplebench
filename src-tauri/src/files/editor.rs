@@ -9,6 +9,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tauri::{Emitter, Manager, WebviewWindow};
+use tauri_plugin_dialog::DialogExt;
 
 const FILE_LIMIT: u64 = 16 * 1024 * 1024;
 
@@ -64,10 +65,16 @@ pub struct EditorFile {
     read_only: bool,
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FileLocation {
     root: String,
     relative: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SavedEditorFile {
+    location: FileLocation,
+    file: EditorFile,
 }
 
 #[derive(Deserialize)]
@@ -281,6 +288,109 @@ fn write(request: &SaveFile) -> Result<String, EditorError> {
     Ok(revision(&bytes))
 }
 
+fn write_new(
+    path: &Path,
+    content: &str,
+    open_files: &[FileLocation],
+) -> Result<SavedEditorFile, EditorError> {
+    let path = if path.try_exists().map_err(EditorError::io)? {
+        fs::canonicalize(path).map_err(EditorError::io)?
+    } else {
+        let parent = path
+            .parent()
+            .ok_or_else(|| EditorError::new("io", "The file has no parent directory."))?;
+        fs::canonicalize(parent).map_err(EditorError::io)?.join(
+            path.file_name()
+                .ok_or_else(|| EditorError::new("io", "Choose a filename."))?,
+        )
+    };
+    if open_files
+        .iter()
+        .any(|file| super::inside(&file.root, &file.relative).is_ok_and(|open| open == path))
+    {
+        return Err(EditorError::new(
+            "openFile",
+            "This file is already open. Close its editor tabs before replacing it.",
+        ));
+    }
+    let parent = path
+        .parent()
+        .ok_or_else(|| EditorError::new("io", "The file has no parent directory."))?;
+    let unicode = || EditorError::new("unsupported", "This filename is not valid Unicode.");
+    let location = FileLocation {
+        root: parent.to_str().ok_or_else(unicode)?.to_owned(),
+        relative: path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(unicode)?
+            .to_owned(),
+    };
+    let (hash, encoding) = if path.try_exists().map_err(EditorError::io)? {
+        let original = read(&location.root, &location.relative, None)?;
+        let hash = write(&SaveFile {
+            root: location.root.clone(),
+            relative: location.relative.clone(),
+            content: content.to_owned(),
+            revision: original.revision,
+        })?;
+        (hash, original.encoding)
+    } else {
+        let bytes = encode(content, Encoding::Utf8)?;
+        let mut temporary = tempfile::Builder::new()
+            .prefix(".simplebench-")
+            .tempfile_in(parent)
+            .map_err(EditorError::io)?;
+        temporary.write_all(&bytes).map_err(EditorError::io)?;
+        temporary.as_file().sync_all().map_err(EditorError::io)?;
+        // Keep creation exclusive if another process creates the target while saving.
+        temporary
+            .persist_noclobber(&path)
+            .map_err(EditorError::io)?;
+        (revision(&bytes), Encoding::Utf8)
+    };
+    Ok(SavedEditorFile {
+        file: EditorFile {
+            path: path.to_str().ok_or_else(unicode)?.to_owned(),
+            relative: location.relative.clone(),
+            content: None,
+            revision: hash,
+            encoding,
+            read_only: false,
+        },
+        location,
+    })
+}
+
+#[tauri::command]
+pub async fn save_new_editor_file(
+    window: WebviewWindow,
+    app: tauri::AppHandle,
+    content: String,
+    suggested_name: String,
+    open_files: Vec<FileLocation>,
+) -> Result<Option<SavedEditorFile>, EditorError> {
+    super::main_window(&window).map_err(EditorError::io)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        encode(&content, Encoding::Utf8)?;
+        let Some(path) = app
+            .dialog()
+            .file()
+            .set_parent(&window)
+            .set_title("Save file")
+            .set_file_name(suggested_name)
+            .blocking_save_file()
+        else {
+            return Ok(None);
+        };
+        let path = path.into_path().map_err(EditorError::io)?;
+        let state = app.state::<EditorFiles>();
+        let _guard = state.writes.lock().map_err(EditorError::io)?;
+        write_new(&path, &content, &open_files).map(Some)
+    })
+    .await
+    .map_err(EditorError::io)?
+}
+
 #[tauri::command]
 pub async fn resolve_editor_file(
     window: WebviewWindow,
@@ -411,6 +521,52 @@ pub async fn watch_editor_files(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn saves_new_documents_and_protects_open_files_and_failed_writes() {
+        let folder = tempfile::tempdir().unwrap();
+        let path = folder.path().join("new.txt");
+        let saved = write_new(&path, "zażółć 🦀\r\n", &[]).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap(), "zażółć 🦀\r\n");
+        assert_eq!(saved.file.encoding, Encoding::Utf8);
+        assert_eq!(saved.file.revision, revision(&fs::read(&path).unwrap()));
+        assert_eq!(
+            read(&saved.location.root, &saved.location.relative, None)
+                .unwrap()
+                .path,
+            saved.file.path
+        );
+        assert_eq!(
+            write_new(&path, "replacement", &[saved.location.clone()])
+                .unwrap_err()
+                .kind,
+            "openFile"
+        );
+        assert_eq!(fs::read_to_string(&path).unwrap(), "zażółć 🦀\r\n");
+
+        let empty = folder.path().join("empty.txt");
+        write_new(&empty, "", &[]).unwrap();
+        assert_eq!(fs::metadata(empty).unwrap().len(), 0);
+        assert!(write_new(&folder.path().join("missing/new.txt"), "text", &[]).is_err());
+        assert!(write_new(folder.path(), "text", &[]).is_err());
+        let large = folder.path().join("large.txt");
+        assert_eq!(
+            write_new(&large, &"x".repeat(FILE_LIMIT as usize + 1), &[])
+                .unwrap_err()
+                .kind,
+            "tooLarge"
+        );
+        assert!(!large.exists());
+        assert_eq!(fs::read_dir(folder.path()).unwrap().count(), 2);
+
+        fs::write(&path, encode("before", Encoding::Utf16Le).unwrap()).unwrap();
+        let replaced = write_new(&path, "after\r\n", &[]).unwrap();
+        assert_eq!(replaced.file.encoding, Encoding::Utf16Le);
+        assert_eq!(
+            fs::read(&path).unwrap(),
+            encode("after\r\n", Encoding::Utf16Le).unwrap()
+        );
+    }
 
     #[test]
     fn round_trips_encodings_and_preserves_exact_text() {

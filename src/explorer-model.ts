@@ -40,6 +40,7 @@ export function applyFileChange(
     )
     .map((project) => ({ ...project, path: relocate(project.path) }));
   const file = (file: FileTab): FileTab | null => {
+    if (file.untitled) return file;
     const path = absoluteFilePath(file);
     if (!containsPath(oldPath, path)) return file;
     if (newPath === null) return null;

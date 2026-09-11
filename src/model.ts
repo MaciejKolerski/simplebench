@@ -64,6 +64,7 @@ export interface FileTab {
   title: string;
   root: string;
   relative: string;
+  untitled?: true;
   position?: EditorPosition;
   markdownView?: "split" | "preview";
 }
@@ -658,6 +659,20 @@ export function fileTabs(session: Session): FileTab[] {
   );
 }
 
+export function newFileTab(session: Session): FileTab {
+  const titles = new Set(fileTabs(session).map((file) => file.title));
+  let number = 1;
+  while (titles.has(`Untitled-${number}`)) ++number;
+  return {
+    type: "file",
+    id: newId(),
+    title: `Untitled-${number}`,
+    root: "",
+    relative: "",
+    untitled: true,
+  };
+}
+
 export function updateFilePosition(
   session: Session,
   id: string,
@@ -677,7 +692,7 @@ export function updateMarkdownView(
   });
 }
 
-function updateFile(
+export function updateFile(
   session: Session,
   id: string,
   change: (file: FileTab) => FileTab,
@@ -737,8 +752,9 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
       type: "file",
       id: id(node.id),
       title: string(node.title, basename(string(node.relative, "File"))),
-      root: string(node.root, cwd),
-      relative: string(node.relative, ""),
+      root: node.untitled === true ? "" : string(node.root, cwd),
+      relative: node.untitled === true ? "" : string(node.relative, ""),
+      ...(node.untitled === true ? { untitled: true as const } : {}),
       ...(node.markdownView === "split" || node.markdownView === "preview"
         ? { markdownView: node.markdownView }
         : {}),

@@ -41,6 +41,7 @@ import {
   newPane,
   newProject,
   newTab,
+  newFileTab,
   openCommitTab,
   openFileTab,
   panes,
@@ -53,6 +54,7 @@ import {
   tabsToClose,
   updateDirectories,
   updateTab,
+  updateFile,
   updateWorkspace,
 } from "./model";
 import type {
@@ -96,6 +98,7 @@ import {
   relocateEditorFiles,
   retainEditorTabs,
   subscribeEditors,
+  subscribeEditorSaves,
 } from "./editor-service";
 import { useEditorCloseGuard } from "./EditorCloseGuard";
 import { useCliTitleSetup } from "./CliTitleSetup";
@@ -222,6 +225,24 @@ export default function Workbench() {
   );
   const [error, setError] = useState("");
   const [restoreError, setRestoreError] = useState("");
+  useEffect(
+    () =>
+      subscribeEditorSaves((id, location) => {
+        setSession((state) =>
+          state
+            ? updateFile(state, id, (file) => {
+                const { untitled: _untitled, ...saved } = file;
+                return {
+                  ...saved,
+                  ...location,
+                  title: basename(location.relative),
+                };
+              })
+            : state,
+        );
+      }),
+    [setSession],
+  );
   const [paneNotice, setPaneNotice] = useState("");
   const cliTitles = useCliTitleSetup(setError, setPaneNotice);
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
@@ -1162,6 +1183,16 @@ export default function Workbench() {
           activeTabId={tab.id}
           newTabTitle={shortcutTitle("New tab", bindings.newTab)}
           onNew={() => addTab()}
+          onNewFile={() =>
+            change((state) => {
+              const file = newFileTab(state);
+              return updateWorkspace(state, workspace.id, (current) => ({
+                ...current,
+                tabs: [...current.tabs, file],
+                activeTabId: file.id,
+              }));
+            })
+          }
           onSelect={selectTab}
           onClose={closeTab}
           mergeContainer={terminalLayout}

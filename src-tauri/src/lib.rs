@@ -179,6 +179,7 @@ pub fn run() {
             files::editor::resolve_editor_file,
             files::editor::read_editor_file,
             files::editor::save_editor_file,
+            files::editor::save_new_editor_file,
             files::editor::watch_editor_files,
             files::load_session,
             files::save_session,

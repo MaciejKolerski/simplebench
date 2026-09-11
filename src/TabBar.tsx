@@ -14,12 +14,14 @@ import { useTabDrag } from "./tab-drag";
 import { IconButton } from "./ui";
 import TabContextMenu from "./TabContextMenu";
 import type { TabMenuAnchor } from "./TabContextMenu";
+import ContextMenu from "./ContextMenu";
 
 interface Props {
   tabs: Tab[];
   activeTabId: string;
   newTabTitle: string;
   onNew: () => void;
+  onNewFile: () => void;
   onSelect: (id: string) => void;
   onClose: (id: string, action?: TabCloseAction) => void;
   onRename: (tab: Tab) => void;
@@ -34,6 +36,7 @@ export default function TabBar({
   activeTabId,
   newTabTitle,
   onNew,
+  onNewFile,
   onSelect,
   onClose,
   onRename,
@@ -43,6 +46,8 @@ export default function TabBar({
   modified = new Set<string>(),
 }: Props) {
   const strip = useRef<HTMLDivElement>(null);
+  const newButton = useRef<HTMLButtonElement>(null);
+  const [newMenu, setNewMenu] = useState<{ x: number; y: number } | null>(null);
   const { beginDrag, suppressClick } = useTabDrag({
     tabs,
     activeTabId,
@@ -160,7 +165,7 @@ export default function TabBar({
                 }}
                 title={
                   tab.type === "file"
-                    ? `${tab.relative}${modified?.has(tab.id) ? " • Modified" : ""}`
+                    ? `${tab.untitled ? tab.title : tab.relative}${modified?.has(tab.id) ? " • Modified" : ""}`
                     : tab.title
                 }
                 onClick={() => onSelect(tab.id)}
@@ -231,9 +236,13 @@ export default function TabBar({
           ))}
           <IconButton
             title={newTabTitle}
-            onClick={() => {
+            aria-haspopup="menu"
+            aria-expanded={!!newMenu}
+            onClick={(event) => {
+              newButton.current = event.currentTarget;
               dismissMenu();
-              onNew();
+              const bounds = event.currentTarget.getBoundingClientRect();
+              setNewMenu({ x: bounds.left, y: bounds.bottom });
             }}
           >
             <Plus size={16} aria-hidden="true" />
@@ -265,6 +274,20 @@ export default function TabBar({
           modified={modified}
           onClose={onClose}
           onDismiss={dismissMenu}
+        />
+      )}
+      {newMenu && (
+        <ContextMenu
+          {...newMenu}
+          label="New tab"
+          actions={[
+            { label: "New terminal", run: onNew },
+            { label: "New file", run: onNewFile },
+          ]}
+          onClose={() => {
+            setNewMenu(null);
+            newButton.current?.focus({ preventScroll: true });
+          }}
         />
       )}
     </div>

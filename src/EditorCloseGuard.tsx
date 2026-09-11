@@ -41,7 +41,7 @@ export function useEditorCloseGuard() {
     setError("");
     try {
       for (const document of request.documents)
-        if (document.dirty) await document.save();
+        if (document.dirty && !(await document.save())) return;
       if (request.documents.some((document) => document.dirty))
         throw new Error("Some files still have unsaved changes.");
       request.finish(true);

@@ -13,7 +13,11 @@ import { codeEditorExtensions } from "./editor-extensions";
 import { listen } from "@tauri-apps/api/event";
 import { api, errorMessage } from "./api";
 import type { EditorPosition, FileTab } from "./model";
-import { editorFileKey, editorPreferences } from "./editor-service";
+import {
+  editorFileKey,
+  editorFileSaved,
+  editorPreferences,
+} from "./editor-service";
 import {
   editorLanguage,
   editorLanguages,
@@ -112,7 +116,9 @@ function updateWatches() {
     .catch(() => {})
     .then(async () => {
       await listening;
-      const files = [...buffers.values()].map((document) => document.location);
+      const files = [...buffers.values()]
+        .filter((document) => !document.untitled)
+        .map((document) => document.location);
       try {
         await api("watch_editor_files", { files });
       } catch (error) {
@@ -184,10 +190,21 @@ export function openDocument(tab: FileTab): Promise<EditorDocument> {
   }
   let pending = opening.get(key);
   if (!pending) {
-    pending = api<DiskFile>("read_editor_file", {
-      root: tab.root,
-      relative: tab.relative,
-    })
+    pending = (
+      tab.untitled
+        ? Promise.resolve<DiskFile>({
+            path: tab.title,
+            relative: "",
+            content: "",
+            revision: "",
+            encoding: "utf8",
+            readOnly: false,
+          })
+        : api<DiskFile>("read_editor_file", {
+            root: tab.root,
+            relative: tab.relative,
+          })
+    )
       .then((data) => {
         if (!retained.has(key))
           throw new Error("This file tab has been closed.");
@@ -210,6 +227,7 @@ export function openDocument(tab: FileTab): Promise<EditorDocument> {
 }
 
 export class EditorDocument {
+  untitled?: string;
   location: { root: string; relative: string };
   path: string;
   private fileOperationsPaused = false;
@@ -231,7 +249,7 @@ export class EditorDocument {
   private languageVersion = 0;
   private syntaxError = "";
   private external?: DiskFile;
-  private savePromise?: Promise<void>;
+  private savePromise?: Promise<boolean>;
   private checking = false;
   private recheck = false;
   private disposed = false;
@@ -245,6 +263,7 @@ export class EditorDocument {
   private snapshot: EditorSnapshot;
 
   constructor(tab: FileTab, data: DiskFile) {
+    this.untitled = tab.untitled ? tab.id : undefined;
     this.location = { root: tab.root, relative: tab.relative };
     this.path = data.path;
     this.revision = data.revision;
@@ -593,14 +612,14 @@ export class EditorDocument {
     }
   }
 
-  save(overwrite = false): Promise<void> {
+  save(overwrite = false): Promise<boolean> {
     if (this.fileOperationsPaused)
       return Promise.reject(
         new Error("A file operation is in progress. Please try saving again."),
       );
     if (this.savePromise)
-      return this.savePromise.then(() =>
-        this.dirty ? this.save(overwrite) : undefined,
+      return this.savePromise.then((saved) =>
+        saved && this.dirty ? this.save(overwrite) : saved,
       );
     if (this.snapshot.readOnly)
       return Promise.reject(new Error("This file is read-only."));
@@ -616,15 +635,20 @@ export class EditorDocument {
       overwrite && this.external
         ? this.external.encoding.toUpperCase()
         : this.snapshot.encoding;
-    this.savePromise = api<string>("save_editor_file", {
-      request: {
-        ...this.location,
-        content: writeEditorText(savedState),
-        revision: expected,
-      },
-    })
-      .then((revision) => {
-        this.revision = revision;
+    this.savePromise = (
+      this.untitled
+        ? this.saveNewFile(writeEditorText(savedState))
+        : api<string>("save_editor_file", {
+            request: {
+              ...this.location,
+              content: writeEditorText(savedState),
+              revision: expected,
+            },
+          }).then((revision) => ({ revision, encoding }))
+    )
+      .then((saved) => {
+        if (saved === null) return false;
+        this.revision = saved.revision;
         this.savedDoc = savedState.doc;
         this.savedEndings = savedState.field(lineEndings);
         this.external = undefined;
@@ -632,8 +656,9 @@ export class EditorDocument {
           dirty: !this.matchesSaved(),
           conflict: false,
           error: "",
-          encoding,
+          encoding: saved.encoding.toUpperCase(),
         });
+        return true;
       })
       .catch((error: unknown) => {
         const conflict =
@@ -656,8 +681,38 @@ export class EditorDocument {
     return this.savePromise;
   }
 
+  private async saveNewFile(content: string): Promise<DiskFile | null> {
+    const result = await api<{
+      location: { root: string; relative: string };
+      file: DiskFile;
+    } | null>("save_new_editor_file", {
+      content,
+      suggestedName: this.path,
+      openFiles: [...buffers.values()]
+        .filter((document) => !document.untitled)
+        .map((document) => document.location),
+    });
+    if (!result) return null;
+    if (this.disposed) return result.file;
+    const id = this.untitled!;
+    aliases.delete(`untitled\0${id}`);
+    buffers.delete(this.path);
+    this.untitled = undefined;
+    this.relocate({ type: "file", id, title: "", ...result.location });
+    this.path = result.file.path;
+    buffers.set(this.path, this);
+    aliases.set(
+      editorFileKey({ type: "file", id, title: "", ...result.location }),
+      this,
+    );
+    editorFileSaved(id, result.location);
+    updateWatches();
+    this.recheck = true;
+    return result.file;
+  }
+
   scheduleRefresh() {
-    if (this.disposed || this.fileOperationsPaused) return;
+    if (this.disposed || this.fileOperationsPaused || this.untitled) return;
     clearTimeout(this.refreshTimer);
     this.refreshTimer = setTimeout(() => void this.refresh(), 150);
   }
@@ -700,7 +755,7 @@ export class EditorDocument {
     this.view.focus();
   }
   private async refresh() {
-    if (this.disposed || this.fileOperationsPaused) return;
+    if (this.disposed || this.fileOperationsPaused || this.untitled) return;
     if (this.checking || this.savePromise) {
       this.recheck = true;
       return;
@@ -786,7 +841,7 @@ export class EditorDocument {
     this.updateCursor();
   }
   async reload() {
-    if (this.fileOperationsPaused) return;
+    if (this.fileOperationsPaused || this.untitled) return;
     if (this.savePromise) await this.savePromise;
     const version = ++this.reloadVersion;
     const data = await api<DiskFile>("read_editor_file", this.location);

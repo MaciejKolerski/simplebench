@@ -21,8 +21,25 @@ let loading: Promise<typeof import("./editor-runtime")> | undefined;
 let tabs: FileTab[] = [];
 let revision = 0;
 const listeners = new Set<() => void>();
-export const editorFileKey = (file: Pick<FileTab, "root" | "relative">) =>
-  `${file.root}\0${file.relative}`;
+export const editorFileKey = (file: FileTab) =>
+  file.untitled ? `untitled\0${file.id}` : `${file.root}\0${file.relative}`;
+const saveListeners = new Set<
+  (id: string, location: { root: string; relative: string }) => void
+>();
+export function subscribeEditorSaves(
+  listener: (id: string, location: { root: string; relative: string }) => void,
+) {
+  saveListeners.add(listener);
+  return () => {
+    saveListeners.delete(listener);
+  };
+}
+export function editorFileSaved(
+  id: string,
+  location: { root: string; relative: string },
+) {
+  for (const listener of saveListeners) listener(id, location);
+}
 export const editorRevision = () => revision;
 export const subscribeEditors = (listener: () => void) => {
   listeners.add(listener);

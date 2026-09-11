@@ -143,7 +143,7 @@ function DocumentEditor({
       <header className="editor-heading">
         <FileCode size={15} />
         <span className="editor-path" title={document.path}>
-          {tab.relative}
+          {tab.untitled ? tab.title : tab.relative}
           {status.dirty ? " •" : ""}
         </span>
         <div className="editor-actions">
@@ -170,7 +170,7 @@ function DocumentEditor({
           </IconButton>
           <IconButton
             title="Reload from disk"
-            disabled={status.saving}
+            disabled={status.saving || !!tab.untitled}
             onClick={() => setConfirmation("reload")}
           >
             <RotateCcw size={15} />
@@ -181,7 +181,7 @@ function DocumentEditor({
             disabled={
               status.readOnly ||
               status.saving ||
-              !status.dirty ||
+              (!status.dirty && !tab.untitled) ||
               status.conflict
             }
             onClick={save}

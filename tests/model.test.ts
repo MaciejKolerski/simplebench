@@ -7,6 +7,7 @@ import {
   newProject,
   newSession,
   newTab,
+  newFileTab,
   newWorkspace,
   openCommitTab,
   openFileTab,
@@ -22,6 +23,7 @@ import {
   updateDirectories,
   updateWorkspace,
   updateTab,
+  updateFile,
 } from "../src/model.ts";
 import type { AppInfo, Split, Tab, TabCloseAction } from "../src/model.ts";
 import { inputChunks } from "../src/terminal-utils.ts";
@@ -46,6 +48,38 @@ function projectSession() {
   const project = newProject(info.directory, info.profiles[0].id);
   return { ...newSession(), projects: [project], activeProjectId: project.id };
 }
+
+test("untitled files keep distinct identities and become ordinary persisted file views", () => {
+  const session = projectSession();
+  const workspace = session.projects[0].workspaces[0];
+  const first = newFileTab(session);
+  workspace.tabs.push(first);
+  const second = newFileTab(session);
+  workspace.tabs.push(second);
+  assert.notEqual(first.id, second.id);
+  assert.deepEqual([first.title, second.title], ["Untitled-1", "Untitled-2"]);
+  const restored = restoreSession(JSON.parse(JSON.stringify(session)), info);
+  assert.deepEqual(fileTabs(restored), [first, second]);
+  const saved = updateFile(restored, first.id, (file) => {
+    const { untitled: _untitled, ...rest } = file;
+    return {
+      ...rest,
+      root: "/elsewhere",
+      relative: "note.txt",
+      title: "note.txt",
+    };
+  });
+  assert.deepEqual(fileTabs(restoreSession(saved, info)), [
+    {
+      type: "file",
+      id: first.id,
+      root: "/elsewhere",
+      relative: "note.txt",
+      title: "note.txt",
+    },
+    second,
+  ]);
+});
 
 test("tab close actions use the clicked tab and preserve modified files", () => {
   const tabs: Tab[] = [

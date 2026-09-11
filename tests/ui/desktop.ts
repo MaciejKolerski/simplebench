@@ -67,6 +67,7 @@ export async function mockDesktop(
         fileReadError: "",
         failFileSave: false,
         fileSaveDelay: 0,
+        newFilePath: null as string | null,
         fileReadDelays: {} as Record<string, number>,
         emitEvent,
         calls,
@@ -133,6 +134,44 @@ export async function mockDesktop(
           calls.push({ command, args: JSON.parse(JSON.stringify(args)) });
           if (command === "resolve_editor_file") return args.relative;
           if (command === "watch_editor_files") return;
+          if (command === "save_new_editor_file") {
+            if (desktop.__nativeTest.fileSaveDelay)
+              await new Promise((resolve) =>
+                setTimeout(resolve, desktop.__nativeTest.fileSaveDelay),
+              );
+            if (desktop.__nativeTest.failFileSave)
+              throw { kind: "io", message: "Disk is full" };
+            const path = desktop.__nativeTest.newFilePath;
+            if (!path) return null;
+            const separator = path.lastIndexOf("/");
+            const root = path.slice(0, separator);
+            const relative = path.slice(separator + 1);
+            if (
+              args.openFiles.some(
+                (file: any) => `${file.root}/${file.relative}` === path,
+              )
+            )
+              throw {
+                kind: "openFile",
+                message:
+                  "This file is already open. Close its editor tabs before replacing it.",
+              };
+            const file = {
+              content: args.content,
+              revision: crypto.randomUUID(),
+              encoding: "utf8",
+              readOnly: false,
+            };
+            desktop.__nativeTest.editorFiles[path] = file;
+            localStorage.setItem(
+              "test-editor-files",
+              JSON.stringify(desktop.__nativeTest.editorFiles),
+            );
+            return {
+              location: { root, relative },
+              file: { ...file, path, relative },
+            };
+          }
           if (
             command === "read_editor_file" ||
             command === "save_editor_file"
