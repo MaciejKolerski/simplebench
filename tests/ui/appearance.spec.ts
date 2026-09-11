@@ -74,6 +74,7 @@ test("system changes update both windows, hidden terminals, and an edited docume
   await mockDesktop(page);
   await page.goto("/");
   await expect(page.locator(".xterm-screen")).toBeVisible();
+  await expect.poll(() => calls(page, "start_terminal")).toHaveLength(1);
   const first = (await page
     .locator("[data-pane-id]")
     .getAttribute("data-pane-id"))!;
