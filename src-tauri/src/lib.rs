@@ -201,6 +201,7 @@ pub fn run() {
             themes::sync_theme_window,
             git::git_status,
             git::git_stage,
+            files::operations::git_discard,
             git::git_diff,
             git::git_commit,
             git::history::git_history,

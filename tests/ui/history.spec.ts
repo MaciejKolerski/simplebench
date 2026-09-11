@@ -85,6 +85,85 @@ async function openHistory(page: Page, fixture = history) {
   await page.getByRole("tab", { name: "History", exact: true }).click();
 }
 
+test("committed file menus copy paths, select diffs and open scoped history without mutations", async ({
+  page,
+}) => {
+  await openHistory(page);
+  await page
+    .getByRole("list", { name: "Commit history", exact: true })
+    .getByRole("button")
+    .first()
+    .click();
+  const file = page
+    .getByRole("navigation", { name: "Changed files" })
+    .getByRole("button", { name: /src\/ProjectList.tsx/ });
+  await file.click({ button: "right" });
+  const menu = page.getByRole("menu");
+  await expect(menu.getByRole("menuitem")).toHaveText([
+    "Copy Path",
+    "Copy Relative Path",
+    "Open Diff",
+    "View Working File",
+    "View File History",
+  ]);
+  await menu
+    .getByRole("menuitem", { name: "Copy Relative Path", exact: true })
+    .click();
+  expect(
+    await page.evaluate(
+      () =>
+        (window as any).__nativeTest.calls.find(
+          (call: any) => call.command === "plugin:clipboard-manager|write_text",
+        ).args.text,
+    ),
+  ).toBe("src/ProjectList.tsx");
+  await file.press("Shift+F10");
+  await menu.getByRole("menuitem", { name: "Open Diff", exact: true }).click();
+  await expect(
+    page.getByRole("region", {
+      name: "Diff for src/ProjectList.tsx",
+      exact: true,
+    }),
+  ).toContainText("rename from src/Projects.tsx");
+  await file.click({ button: "right" });
+  await menu
+    .getByRole("menuitem", { name: "View File History", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "Git History · src/ProjectList.tsx",
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__nativeTest.calls
+            .filter((call: any) => call.command === "git_history")
+            .at(-1).args.path,
+      ),
+    )
+    .toBe("src/ProjectList.tsx");
+  await page
+    .getByRole("dialog")
+    .getByRole("list", { name: "Commit history" })
+    .getByRole("button")
+    .nth(1)
+    .click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("article")).toContainText(commits[1].id);
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.calls.filter((call: any) =>
+        [
+          "git_stage",
+          "git_discard",
+          "git_commit",
+          "ignore_project_item",
+        ].includes(call.command),
+      ),
+    ),
+  ).toEqual([]);
+});
+
 test("history pages through commits and opens reusable tabs while terminals keep streaming", async ({
   page,
 }, testInfo) => {

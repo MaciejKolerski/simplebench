@@ -15,17 +15,32 @@ async function openSourceControl(page: Page, changes: GitChange[]) {
       calls: [] as { command: string; args: Record<string, any> }[],
       failStage: false,
       failCommit: false,
+      failDiscard: false,
     };
     desktop.__sourceControlTest = state;
     desktop.__TAURI_INTERNALS__.invoke = async (
       command: string,
       args: Record<string, any> = {},
     ) => {
-      if (!command.startsWith("git_")) return invoke(command, args);
+      if (!command.startsWith("git_") && command !== "ignore_project_item")
+        return invoke(command, args);
       state.calls.push({ command, args });
       if (command === "git_status")
         return { root: args.root, branch: "main", changes: state.changes };
       if (command === "git_diff") return `diff for ${args.path}\n-old\n+new`;
+      if (command === "git_history") return invoke(command, args);
+      if (command === "ignore_project_item") return;
+      if (command === "git_discard") {
+        if (state.failDiscard) throw new Error("Cannot restore the file");
+        state.changes = state.changes.flatMap((change) =>
+          change.path !== args.change.path
+            ? [change]
+            : [" ", "?"].includes(change.index)
+              ? []
+              : [{ ...change, worktree: " " }],
+        );
+        return;
+      }
       if (command === "git_stage") {
         if (state.failStage) throw new Error("Cannot update the index");
         state.changes = state.changes.map((change) => {
@@ -78,6 +93,225 @@ const changed = (
   index,
   worktree,
   originalPath,
+});
+
+test("file menus stage, unstage renames, open both diffs and copy exact paths", async ({
+  page,
+}, testInfo) => {
+  await page.emulateMedia({ colorScheme: "dark" });
+  await openSourceControl(page, [
+    changed("README.md", "M", "M"),
+    changed("renamed [1].md", "R", " ", "original.md"),
+  ]);
+  const file = page.getByRole("button", {
+    name: "View diff for README.md",
+    exact: true,
+  });
+  const menu = page.getByRole("menu", {
+    name: "Source control actions for README.md",
+    exact: true,
+  });
+  await file.click({ button: "right" });
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(
+    menu.getByRole("menuitem", { name: "Stage File", exact: true }),
+  ).toBeFocused();
+  await expect(
+    menu.getByRole("menuitem", { name: "Add to .gitignore", exact: true }),
+  ).toBeDisabled();
+  await page.screenshot({
+    path: testInfo.outputPath("source-control-menu-dark.png"),
+  });
+  await menu.press("Escape");
+  await expect(file).toBeFocused();
+  await file.press("Shift+F10");
+  await menu
+    .getByRole("menuitem", { name: "Staged Changes", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText("Staged · README.md");
+  await page.getByRole("button", { name: "Close dialog", exact: true }).click();
+  await file.click({ button: "right" });
+  await menu
+    .getByRole("menuitem", { name: "Unstaged Changes", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "Working tree · README.md",
+  );
+  await page.getByRole("button", { name: "Close dialog", exact: true }).click();
+  for (const label of ["Copy Path", "Copy Relative Path"]) {
+    await file.click({ button: "right" });
+    await menu.getByRole("menuitem", { name: label, exact: true }).click();
+  }
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.calls
+        .filter(
+          (call: any) => call.command === "plugin:clipboard-manager|write_text",
+        )
+        .map((call: any) => call.args.text),
+    ),
+  ).toEqual(["/project/README.md", "README.md"]);
+  await file.click({ button: "right" });
+  await menu.getByRole("menuitem", { name: "Stage File", exact: true }).click();
+  await expect(file).toHaveCount(0);
+  const renamed = page.getByRole("button", {
+    name: "View staged diff for renamed [1].md",
+    exact: true,
+  });
+  await renamed.click({ button: "right" });
+  await page
+    .getByRole("menuitem", { name: "Unstage File", exact: true })
+    .click();
+  expect(
+    await page.evaluate(() =>
+      (window as any).__sourceControlTest.calls
+        .filter((call: any) => call.command === "git_stage")
+        .map((call: any) => call.args),
+    ),
+  ).toEqual([
+    { root: "/project", paths: ["README.md"], stage: true },
+    {
+      root: "/project",
+      paths: ["renamed [1].md", "original.md"],
+      stage: false,
+    },
+  ]);
+});
+
+test("file menus open files and history, ignore only new files, and fit the minimum window", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 800, height: 420 });
+  await page.emulateMedia({ colorScheme: "light" });
+  await openSourceControl(page, [
+    changed("README.md"),
+    changed("new [1].txt", "?", "?"),
+    changed("deleted.md", " ", "D"),
+  ]);
+  const file = page.getByRole("button", {
+    name: "View diff for README.md",
+    exact: true,
+  });
+  await file.click({ button: "right" });
+  const menu = page.getByRole("menu");
+  const box = (await menu.boundingBox())!;
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.y).toBeGreaterThanOrEqual(0);
+  expect(box.x + box.width).toBeLessThanOrEqual(800);
+  expect(box.y + box.height).toBeLessThanOrEqual(420);
+  await page.screenshot({
+    path: testInfo.outputPath("source-control-menu-light-minimum.png"),
+  });
+  await menu.getByRole("menuitem", { name: "View File", exact: true }).click();
+  await expect(page.locator(".cm-content")).toBeVisible();
+  await file.click({ button: "right" });
+  await menu
+    .getByRole("menuitem", { name: "View File History", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText("No commits yet.");
+  expect(
+    await page.evaluate(
+      () =>
+        (window as any).__sourceControlTest.calls.find(
+          (call: any) => call.command === "git_history",
+        ).args,
+    ),
+  ).toMatchObject({ root: "/project", path: "README.md" });
+  await page.getByRole("button", { name: "Close dialog", exact: true }).click();
+  for (const label of ["Add to .gitignore", "Add to .git/info/exclude"]) {
+    await page
+      .getByRole("button", { name: "View diff for new [1].txt", exact: true })
+      .click({ button: "right" });
+    await menu.getByRole("menuitem", { name: label, exact: true }).click();
+  }
+  expect(
+    await page.evaluate(() =>
+      (window as any).__sourceControlTest.calls
+        .filter((call: any) => call.command === "ignore_project_item")
+        .map((call: any) => call.args),
+    ),
+  ).toEqual([
+    { root: "/project", relative: "new [1].txt", local: false },
+    { root: "/project", relative: "new [1].txt", local: true },
+  ]);
+  await page
+    .getByRole("button", { name: "View diff for deleted.md", exact: true })
+    .click({ button: "right" });
+  await expect(
+    menu.getByRole("menuitem", { name: "View File", exact: true }),
+  ).toBeDisabled();
+  await page.getByRole("tab", { name: "README.md", exact: true }).click();
+  await expect(menu).toHaveCount(0);
+});
+
+test("discard requires confirmation, retains failed changes and protects dirty buffers", async ({
+  page,
+}) => {
+  await openSourceControl(page, [changed("README.md"), changed("other.md")]);
+  const file = page.getByRole("button", {
+    name: "View diff for README.md",
+    exact: true,
+  });
+  const ask = async () => {
+    await file.click({ button: "right" });
+    await page
+      .getByRole("menuitem", { name: "Discard Changes…", exact: true })
+      .click();
+  };
+  await ask();
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  expect(
+    await page.evaluate(() =>
+      (window as any).__sourceControlTest.calls.filter(
+        (call: any) => call.command === "git_discard",
+      ),
+    ),
+  ).toEqual([]);
+  await page.evaluate(() => {
+    (window as any).__sourceControlTest.failDiscard = true;
+  });
+  await ask();
+  await page
+    .getByRole("button", { name: "Discard Changes", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "Cannot restore the file",
+  );
+  await expect(file).toBeVisible();
+  await page.evaluate(() => {
+    (window as any).__sourceControlTest.failDiscard = false;
+  });
+  await page
+    .getByRole("button", { name: "Discard Changes", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(file).toHaveCount(0);
+  const other = page.getByRole("button", {
+    name: "View diff for other.md",
+    exact: true,
+  });
+  await other.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "View File", exact: true }).click();
+  const editor = page.locator(".cm-content");
+  await editor.fill("Keep these unsaved edits");
+  await other.click({ button: "right" });
+  await page
+    .getByRole("menuitem", { name: "Discard Changes…", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Discard Changes", exact: true })
+    .click();
+  await expect(page.getByRole("dialog")).toContainText(
+    "Save or discard unsaved editor changes",
+  );
+  await expect(editor).toContainText("Keep these unsaved edits");
+  expect(
+    await page.evaluate(() =>
+      (window as any).__sourceControlTest.calls
+        .filter((call: any) => call.command === "git_discard")
+        .map((call: any) => call.args.change.path),
+    ),
+  ).toEqual(["README.md", "README.md"]);
 });
 
 test("source control groups changes and keeps staged and working diffs separate", async ({
@@ -293,8 +527,16 @@ test("source control keeps its commit form visible while a long list scrolls at 
     name: "Resize sidebar",
     exact: true,
   });
+  const resize = async (key: "ArrowLeft" | "ArrowRight") => {
+    const width = Number(await divider.getAttribute("aria-valuenow"));
+    await divider.press(key);
+    await expect(divider).toHaveAttribute(
+      "aria-valuenow",
+      String(Math.max(180, width + (key === "ArrowLeft" ? -20 : 20))),
+    );
+  };
   await divider.focus();
-  for (let count = 0; count < 4; count++) await divider.press("ArrowRight");
+  for (let count = 0; count < 4; count++) await resize("ArrowRight");
   await page
     .locator(".source-panel")
     .screenshot({ path: testInfo.outputPath("source-control-wide.png") });
@@ -316,7 +558,7 @@ test("source control keeps its commit form visible while a long list scrolls at 
   );
   await page.setViewportSize({ width: 800, height: 420 });
   await divider.focus();
-  for (let count = 0; count < 8; count++) await divider.press("ArrowLeft");
+  for (let count = 0; count < 8; count++) await resize("ArrowLeft");
   await expect(divider).toHaveAttribute("aria-valuenow", "180");
   const form = page.locator(".commit-form");
   const before = (await form.boundingBox())!;

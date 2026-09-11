@@ -1,15 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { FileDiff, GitCommitHorizontal } from "lucide-react";
 import { api, errorMessage } from "./api";
-import type { GitCommitDetails, GitCommitDiff } from "./api";
+import type { GitCommitDetails, GitCommitDiff, GitCommitSummary } from "./api";
 import { diffLines } from "./git-diff";
+import { useGitFileActions } from "./GitFileActions";
 
 export default function CommitDetails({
   root,
   commitId,
+  onOpenFile,
+  onOpenCommit,
+  onError,
 }: {
   root: string;
   commitId: string;
+  onOpenFile: (path: string) => void;
+  onOpenCommit: (commit: GitCommitSummary) => void;
+  onError: (message: string) => void;
 }) {
   const [details, setDetails] = useState<GitCommitDetails>();
   const [error, setError] = useState("");
@@ -21,6 +28,13 @@ export default function CommitDetails({
     error?: string;
   }>();
   const [diffRevision, setDiffRevision] = useState(0);
+  const actions = useGitFileActions({
+    root,
+    onDiff: setSelectedPath,
+    onOpenFile,
+    onOpenCommit,
+    onError,
+  });
   useEffect(() => {
     let current = true;
     setDetails(undefined);
@@ -162,6 +176,10 @@ export default function CommitDetails({
                 className="commit-file-entry"
                 aria-current={file.path === selectedPath ? "true" : undefined}
                 onClick={() => setSelectedPath(file.path)}
+                onContextMenu={(event) =>
+                  actions.onContext(event, { path: file.path })
+                }
+                onKeyDown={(event) => actions.onKey(event, { path: file.path })}
                 title={
                   file.originalPath
                     ? `${file.originalPath} → ${file.path}`
@@ -236,6 +254,8 @@ export default function CommitDetails({
           </section>
         </div>
       )}
+      {actions.menu}
+      {actions.dialogs}
     </article>
   );
 }

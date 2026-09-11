@@ -1157,9 +1157,11 @@ export default function Workbench() {
       fileOperationBusy.current = false;
     }
   };
-  const openHistoryCommit = (commit: import("./api").GitCommitSummary) => {
-    if (!git.status) return;
-    const root = git.status.root;
+  const openHistoryCommit = (
+    commit: import("./api").GitCommitSummary,
+    root = git.status?.root,
+  ) => {
+    if (!root) return;
     change((state) =>
       openCommitTab(
         state,
@@ -1173,7 +1175,7 @@ export default function Workbench() {
   const diff = async (path: string, staged: boolean) => {
     try {
       const content = await api<string>("git_diff", {
-        root: project.path,
+        root: git.status?.root ?? project.path,
         path,
         staged,
       });
@@ -1301,18 +1303,35 @@ export default function Workbench() {
                   loading={git.loading}
                   onRefresh={git.refresh}
                   onDiff={(path, staged) => void diff(path, staged)}
-                  onOpenCommit={(commit) => {
-                    if (!git.status) return;
-                    const root = git.status.root;
-                    change((state) =>
-                      openCommitTab(
-                        state,
-                        workspace.id,
-                        root,
-                        commit.id,
-                        `${commit.shortId} · ${commit.subject}`,
-                      ),
-                    );
+                  onOpenCommit={openHistoryCommit}
+                  onOpenFile={(path) => void openFile(path, git.status!.root)}
+                  onDiscard={async (change) => {
+                    const root = git.status!.root;
+                    if (fileOperationBusy.current)
+                      throw new Error(
+                        "Wait for the current file operation to finish.",
+                      );
+                    fileOperationBusy.current = true;
+                    let resume: (() => void) | undefined;
+                    try {
+                      resume = await pauseEditorFileOperations();
+                      const path = `${root.replace(/[\\/]$/, "")}/${change.path}`;
+                      if (
+                        fileTabs(currentSession.current!).some((file) => {
+                          const document = loadedEditor(file);
+                          return (
+                            document?.dirty && containsPath(path, document.path)
+                          );
+                        })
+                      )
+                        throw new Error(
+                          "Save or discard unsaved editor changes before discarding Git changes.",
+                        );
+                      await api("git_discard", { root, change });
+                    } finally {
+                      resume?.();
+                      fileOperationBusy.current = false;
+                    }
                   }}
                   onError={setError}
                 />
@@ -1327,7 +1346,14 @@ export default function Workbench() {
           aria-labelledby={`tab-${tab.id}`}
         >
           {tab.type === "commit" ? (
-            <CommitDetails key={tab.id} root={tab.root} commitId={tab.commit} />
+            <CommitDetails
+              key={tab.id}
+              root={tab.root}
+              commitId={tab.commit}
+              onOpenFile={(path) => void openFile(path, tab.root)}
+              onOpenCommit={(commit) => openHistoryCommit(commit, tab.root)}
+              onError={setError}
+            />
           ) : tab.type === "file" ? (
             <Suspense
               fallback={

@@ -1,5 +1,5 @@
 use crate::files::{directory, main_window};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     path::{Component, Path},
     process::{Command, Output},
@@ -39,7 +39,7 @@ pub(crate) fn checked(root: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
     Ok(output.stdout)
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Change {
     path: String,
@@ -165,6 +165,58 @@ pub fn change_index(root: &str, paths: &[String], stage: bool) -> Result<(), Str
     Ok(())
 }
 
+pub(crate) fn discard(root: &str, expected: &Change) -> Result<(), String> {
+    relative(&expected.path)?;
+    let status = status(root)?.ok_or("This directory is not a Git repository.")?;
+    let change = status
+        .changes
+        .iter()
+        .find(|change| change.path == expected.path);
+    if change != Some(expected) {
+        return Err("The file status changed. Refresh Source Control and try again.".into());
+    }
+    let root = Path::new(&status.root);
+    let path = root.join(&expected.path);
+    for parent in path
+        .ancestors()
+        .skip(1)
+        .take_while(|parent| *parent != root)
+    {
+        match std::fs::symlink_metadata(parent) {
+            Ok(metadata) if metadata.is_symlink() => {
+                return Err("Cannot discard changes through a symbolic link.".into())
+            }
+            Err(error) if error.kind() != std::io::ErrorKind::NotFound => {
+                return Err(error.to_string())
+            }
+            _ => {}
+        }
+    }
+    if expected.index == '?' && expected.worktree == '?' {
+        return trash::delete(&path).map_err(|error| error.to_string());
+    }
+    if !matches!(expected.worktree, 'M' | 'D' | 'T')
+        || expected.index == 'U'
+        || std::fs::symlink_metadata(&path).is_ok_and(|metadata| metadata.is_dir())
+    {
+        return Err(
+            "Only unconflicted working tree files can be discarded. Unstage staged changes first."
+                .into(),
+        );
+    }
+    checked(
+        root,
+        &[
+            "--literal-pathspecs",
+            "restore",
+            "--worktree",
+            "--",
+            &expected.path,
+        ],
+    )?;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn git_stage(
     window: WebviewWindow,
@@ -237,6 +289,99 @@ pub async fn git_commit(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn discard_restores_only_the_selected_worktree_file_and_rejects_stale_status() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().to_str().unwrap();
+        checked(root.path(), &["init", "-b", "main"]).unwrap();
+        let name = "literal[1].txt";
+        std::fs::write(root.path().join(name), "staged text").unwrap();
+        std::fs::write(root.path().join("literal1.txt"), "other staged text").unwrap();
+        change_index(path, &[name.into(), "literal1.txt".into()], true).unwrap();
+        std::fs::write(root.path().join(name), "unstaged text").unwrap();
+        std::fs::write(root.path().join("literal1.txt"), "keep other changes").unwrap();
+        let change = status(path)
+            .unwrap()
+            .unwrap()
+            .changes
+            .into_iter()
+            .find(|change| change.path == name)
+            .unwrap();
+        discard(path, &change).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(root.path().join(name)).unwrap(),
+            "staged text"
+        );
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("literal1.txt")).unwrap(),
+            "keep other changes"
+        );
+        assert_eq!(
+            checked(root.path(), &["show", &format!(":{name}")]).unwrap(),
+            b"staged text"
+        );
+        assert!(discard(path, &change).is_err());
+        std::fs::remove_file(root.path().join(name)).unwrap();
+        let change = status(path)
+            .unwrap()
+            .unwrap()
+            .changes
+            .into_iter()
+            .find(|change| change.path == name)
+            .unwrap();
+        discard(path, &change).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(root.path().join(name)).unwrap(),
+            "staged text"
+        );
+        let mut change = change;
+        change.path = "../outside".into();
+        assert!(discard(path, &change).is_err());
+        change.path = ".".into();
+        assert!(discard(path, &change).is_err());
+        std::fs::write(root.path().join("new.txt"), "untracked").unwrap();
+        let new = status(path)
+            .unwrap()
+            .unwrap()
+            .changes
+            .into_iter()
+            .find(|change| change.path == "new.txt")
+            .unwrap();
+        change_index(path, &["new.txt".into()], true).unwrap();
+        assert!(discard(path, &new).is_err());
+        assert_eq!(
+            std::fs::read_to_string(root.path().join("new.txt")).unwrap(),
+            "untracked"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn discard_does_not_follow_a_replaced_parent_symlink() {
+        let root = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let path = root.path().to_str().unwrap();
+        checked(root.path(), &["init", "-b", "main"]).unwrap();
+        std::fs::create_dir(root.path().join("nested")).unwrap();
+        std::fs::write(root.path().join("nested/file"), "staged").unwrap();
+        change_index(path, &["nested/file".into()], true).unwrap();
+        std::fs::remove_dir_all(root.path().join("nested")).unwrap();
+        std::fs::write(outside.path().join("file"), "outside data").unwrap();
+        std::os::unix::fs::symlink(outside.path(), root.path().join("nested")).unwrap();
+        let change = status(path)
+            .unwrap()
+            .unwrap()
+            .changes
+            .into_iter()
+            .find(|change| change.path == "nested/file")
+            .unwrap();
+        assert!(discard(path, &change).is_err());
+        assert_eq!(
+            std::fs::read_to_string(outside.path().join("file")).unwrap(),
+            "outside data"
+        );
+    }
+
     #[test]
     fn parses_renames_and_unusual_names() {
         let changes = parse_status(b"R  new name\0old name\0?? a\nfile\0 M space name\0");

@@ -14,6 +14,7 @@ import {
 import { api, errorMessage } from "./api";
 import type { GitChange, GitCommitSummary, GitStatus } from "./api";
 import GitHistory from "./GitHistory";
+import { useGitFileActions } from "./GitFileActions";
 import { IconButton } from "./ui";
 
 export default function SourceControl({
@@ -22,6 +23,8 @@ export default function SourceControl({
   onRefresh,
   onDiff,
   onOpenCommit,
+  onOpenFile,
+  onDiscard,
   onError,
 }: {
   status: GitStatus | null;
@@ -29,6 +32,8 @@ export default function SourceControl({
   onRefresh: () => void;
   onDiff: (path: string, staged: boolean) => void;
   onOpenCommit: (commit: GitCommitSummary) => void;
+  onOpenFile: (path: string) => void;
+  onDiscard: (change: GitChange) => Promise<void>;
   onError: (message: string) => void;
 }) {
   const [message, setMessage] = useState("");
@@ -37,6 +42,47 @@ export default function SourceControl({
   const [historyRevision, setHistoryRevision] = useState(0);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const groupId = useId();
+  const run = async (action: () => Promise<void>) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await action();
+      onRefresh();
+    } catch (error) {
+      onError(errorMessage(error));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const stage = (changes: GitChange[], stage: boolean) =>
+    run(() =>
+      api("git_stage", {
+        root: status!.root,
+        paths: [
+          ...new Set(
+            changes.flatMap((change) =>
+              !stage && change.originalPath
+                ? [change.path, change.originalPath]
+                : [change.path],
+            ),
+          ),
+        ],
+        stage,
+      }),
+    );
+  const actions = useGitFileActions({
+    root: status?.root ?? "",
+    onDiff,
+    onOpenFile,
+    onOpenCommit,
+    onError,
+    working: {
+      busy,
+      onStage: (change, staged) => void stage([change], staged),
+      onDiscard,
+      onRefresh,
+    },
+  });
   if (!status)
     return (
       <div className="sidebar-panel">
@@ -56,34 +102,6 @@ export default function SourceControl({
   );
   const tracked = unstaged.filter((change) => change.worktree !== "?");
   const untracked = unstaged.filter((change) => change.worktree === "?");
-  const run = async (action: () => Promise<void>) => {
-    if (busy) return;
-    setBusy(true);
-    try {
-      await action();
-      onRefresh();
-    } catch (error) {
-      onError(errorMessage(error));
-    } finally {
-      setBusy(false);
-    }
-  };
-  const stage = (changes: GitChange[], stage: boolean) =>
-    run(() =>
-      api("git_stage", {
-        root: status.root,
-        paths: [
-          ...new Set(
-            changes.flatMap((change) =>
-              !stage && change.originalPath
-                ? [change.path, change.originalPath]
-                : [change.path],
-            ),
-          ),
-        ],
-        stage,
-      }),
-    );
   const group = (name: string, changes: GitChange[], isStaged: boolean) => (
     <section className="git-group" aria-label={`${name} changes`}>
       <header>
@@ -142,8 +160,21 @@ export default function SourceControl({
                 ? SquareArrowRight
                 : SquareDot;
           const action = `${isStaged ? "Unstage" : "Stage"} ${change.path}`;
+          const file = {
+            path: change.path,
+            change,
+            staged: isStaged,
+            deleted:
+              change.worktree === "D" ||
+              (change.index === "D" && change.worktree === " "),
+          };
           return (
-            <li className="git-file" key={change.path}>
+            <li
+              className="git-file"
+              key={change.path}
+              onContextMenu={(event) => actions.onContext(event, file)}
+              onKeyDown={(event) => actions.onKey(event, file)}
+            >
               <button
                 type="button"
                 className="git-file-open"
@@ -337,6 +368,8 @@ export default function SourceControl({
           </form>
         </div>
       )}
+      {actions.menu}
+      {actions.dialogs}
     </div>
   );
 }

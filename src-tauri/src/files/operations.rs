@@ -323,6 +323,25 @@ pub async fn open_project_item(
 }
 
 #[tauri::command]
+pub async fn git_discard(
+    window: WebviewWindow,
+    root: String,
+    change: crate::git::Change,
+) -> Result<(), String> {
+    main_window(&window)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = window.state::<super::editor::EditorFiles>();
+        let _lock = state
+            .writes
+            .lock()
+            .map_err(|_| "File writes are unavailable.")?;
+        crate::git::discard(&root, &change)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 pub async fn ignore_project_item(
     window: WebviewWindow,
     root: String,

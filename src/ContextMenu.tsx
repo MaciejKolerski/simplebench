@@ -40,10 +40,14 @@ export default function ContextMenu({
     };
     const dismiss = () => close.current();
     document.addEventListener("pointerdown", outside);
-    document.addEventListener("scroll", outside, true);
+    // Let scrolling caused by focusing the trigger finish before dismissing on scroll.
+    const frame = requestAnimationFrame(() =>
+      document.addEventListener("scroll", outside, true),
+    );
     window.addEventListener("resize", dismiss);
     window.addEventListener("blur", dismiss);
     return () => {
+      cancelAnimationFrame(frame);
       document.removeEventListener("pointerdown", outside);
       document.removeEventListener("scroll", outside, true);
       window.removeEventListener("resize", dismiss);
