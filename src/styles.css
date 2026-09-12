@@ -1736,25 +1736,49 @@ svg {
 .terminal-pane.is-active .terminal-title-box {
   color: var(--color-surface-text);
 }
-.terminal-title-box > svg,
+.terminal-title-icon,
 .terminal-title-box .icon-button {
   flex-shrink: 0;
 }
-.terminal-title-box > svg {
+.terminal-title-icon {
+  display: grid;
+  place-items: center;
+  width: 13px;
+  height: 13px;
   margin-left: var(--space-8);
 }
-.terminal-spinner > path {
-  transform-origin: center;
+.terminal-title-icon > * {
+  grid-area: 1 / 1;
+  transition: opacity 120ms linear;
+}
+.terminal-spinner {
+  opacity: 0;
+}
+/* Move the stroke around a fixed circle to avoid rotation drift at native WebKit zoom levels. */
+.terminal-spinner > circle {
   animation: terminal-spin 0.8s linear infinite;
+  animation-play-state: paused;
+}
+.terminal-title-icon[data-busy="true"] > svg {
+  opacity: 0;
+}
+.terminal-title-icon[data-busy="true"] > .terminal-spinner {
+  opacity: 1;
+}
+.terminal-title-icon[data-busy="true"] > .terminal-spinner > circle {
+  animation-play-state: running;
 }
 @keyframes terminal-spin {
   to {
-    transform: rotate(360deg);
+    stroke-dashoffset: -100;
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .terminal-spinner > path {
+  .terminal-spinner > circle {
     animation: none;
+  }
+  .terminal-title-icon > * {
+    transition: none;
   }
 }
 .terminal-title {

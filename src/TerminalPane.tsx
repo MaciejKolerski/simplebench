@@ -12,7 +12,6 @@ import {
   Code,
   Command,
   Copy,
-  LoaderCircle,
   Maximize2,
   Minimize2,
   Play,
@@ -208,16 +207,29 @@ function LiveTerminal({
             <div className="terminal-title-box">
               {showTitle && (title || titleBusy) && (
                 <>
-                  {titleBusy ? (
-                    <LoaderCircle
-                      size={13}
+                  <span className="terminal-title-icon" data-busy={titleBusy}>
+                    <Terminal size={13} aria-hidden="true" />
+                    <svg
                       className="terminal-spinner"
+                      width={13}
+                      height={13}
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeLinecap="round"
                       role="img"
                       aria-label="Working"
-                    />
-                  ) : (
-                    <Terminal size={13} aria-hidden="true" />
-                  )}
+                      aria-hidden={!titleBusy}
+                    >
+                      <circle
+                        cx={12}
+                        cy={12}
+                        r={9}
+                        pathLength={100}
+                        strokeDasharray="75 25"
+                      />
+                    </svg>
+                  </span>
                   {title && (
                     <span className="terminal-title" title={title} dir="auto">
                       {title}

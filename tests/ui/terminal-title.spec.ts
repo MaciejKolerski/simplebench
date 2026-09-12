@@ -413,7 +413,7 @@ for (const colorScheme of ["dark", "light"] as const) {
     ).toEqual([]);
   });
 
-  test(`CLI activity uses a stable SVG spinner in ${colorScheme} mode`, async ({
+  test(`CLI activity keeps a stable spinner and animation across state changes in ${colorScheme} mode`, async ({
     page,
   }, testInfo) => {
     await page.emulateMedia({ colorScheme, reducedMotion: "no-preference" });
@@ -427,35 +427,46 @@ for (const colorScheme of ["dark", "light"] as const) {
     await expect(title).toHaveText(name);
     await expect(spinner).toHaveCount(0);
     const bounds = await heading.boundingBox();
+    await pane.locator(".terminal-spinner").evaluate((element) => {
+      (window as any).__titleIndicator = element;
+      (window as any).__titleAnimation = element
+        .querySelector("circle")!
+        .getAnimations()
+        .find(
+          (animation) =>
+            (animation as CSSAnimation).animationName === "terminal-spin",
+        );
+    });
     await emit(page, first, `\x1b]2;⠋ ${name}\x07`);
     await expect(spinner).toBeVisible();
     await expect(title).toHaveText(name);
     await expect(title).toHaveAttribute("title", name);
     expect(await heading.boundingBox()).toEqual(bounds);
-    await expect(spinner.locator("path")).toHaveCSS(
+    await expect(spinner.locator("circle")).toHaveCSS(
       "animation-name",
       "terminal-spin",
     );
-    const frames = await spinner.evaluate((svg) => {
-      const path = svg.querySelector("path")!;
-      const animation = path.getAnimations()[0];
-      animation.pause();
-      const frames = Array.from({ length: 8 }, (_, index) => {
-        animation.currentTime = index * 100;
-        const bounds = svg.getBoundingClientRect();
-        const center = new DOMPoint(12, 12).matrixTransform(
-          path.getScreenCTM()!,
-        );
-        return { bounds: bounds.toJSON(), x: center.x, y: center.y };
-      });
-      animation.play();
+    const frames = await spinner.evaluate(async (element) => {
+      const slot = element.parentElement!;
+      const frames = [];
+      for (let index = 0; index < 10; index++) {
+        await new Promise((resolve) => setTimeout(resolve, 90));
+        const bounds = element.getBoundingClientRect();
+        frames.push({
+          slot: slot.getBoundingClientRect().toJSON(),
+          x: bounds.x + bounds.width / 2,
+          y: bounds.y + bounds.height / 2,
+          time: Number((window as any).__titleAnimation.currentTime),
+        });
+      }
       return frames;
     });
-    for (const frame of frames) {
-      expect(frame.bounds).toEqual(frames[0].bounds);
-      expect(frame.x).toBeCloseTo(frame.bounds.x + frame.bounds.width / 2, 3);
-      expect(frame.y).toBeCloseTo(frame.bounds.y + frame.bounds.height / 2, 3);
+    for (const [index, frame] of frames.entries()) {
+      expect(frame.slot).toEqual(frames[0].slot);
+      expect(frame.x).toBeCloseTo(frame.slot.x + frame.slot.width / 2, 3);
+      expect(frame.y).toBeCloseTo(frame.slot.y + frame.slot.height / 2, 3);
       expect(frame.y).toBeCloseTo(bounds!.y + bounds!.height / 2, 3);
+      if (index) expect(frame.time).toBeGreaterThan(frames[index - 1].time);
     }
     await page.evaluate(async (id) => {
       const { runningTerminal } = await import("/src/terminal-runtime.ts");
@@ -472,11 +483,31 @@ for (const colorScheme of ["dark", "light"] as const) {
         );
       }, first),
     ).toBe(true);
+    await emit(page, first, `\x1b]2;${name}\x07`);
+    await expect(spinner).toHaveCount(0);
+    await expect(pane.locator(".terminal-spinner circle")).toHaveCSS(
+      "animation-play-state",
+      "paused",
+    );
+    expect(await heading.boundingBox()).toEqual(bounds);
+    await emit(page, first, `\x1b]2;⠙ ${name}\x07`);
+    await expect(spinner).toBeVisible();
+    expect(
+      await spinner.evaluate(
+        (element) =>
+          element === (window as any).__titleIndicator &&
+          element
+            .querySelector("circle")!
+            .getAnimations()
+            .includes((window as any).__titleAnimation),
+      ),
+    ).toBe(true);
+    await expect(spinner).toHaveCSS("opacity", "1");
     await heading.screenshot({
       path: testInfo.outputPath(`spinner-${colorScheme}.png`),
     });
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await expect(spinner.locator("path")).toHaveCSS("animation-name", "none");
+    await expect(spinner.locator("circle")).toHaveCSS("animation-name", "none");
     await page.keyboard.press("Control+Shift+t");
     await page.getByRole("tab", { name: "Terminal", exact: true }).click();
     await expect(spinner).toBeVisible();
