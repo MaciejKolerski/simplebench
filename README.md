@@ -151,6 +151,15 @@ submitted. Titles are also accepted without shell hooks; in that case, the progr
 must clear or restore its title when it finishes. Titles stay with running terminals
 across tab and workspace switches; they are not saved as session data.
 
+With at least two terminal panels visible, hold **Ctrl** and drag a terminal's
+title to the left, right, top, or bottom of another panel. A preview smoothly
+tracks its new position and size. Untitled terminals show their shell name while Ctrl is held.
+Release the mouse to move; **Escape**, releasing Ctrl, or dropping outside the
+layout cancels. The saved layout changes without restarting shells or losing
+output, editor buffers, or undo history.
+Panels briefly animate into place without repeatedly resizing the running shells.
+The system's reduced-motion preference disables panel and preview animations.
+
 On Linux, a program that does not publish a title gets a fallback showing the
 foreground process name (for example, `agy`). SimpleBench reads it from the PTY
 and operating system, without inspecting command arguments or CLI data files.

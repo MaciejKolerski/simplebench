@@ -34,6 +34,10 @@ export interface LayoutSize {
   width: number;
   height: number;
 }
+export interface LayoutBounds extends LayoutSize {
+  left: number;
+  top: number;
+}
 export const MIN_PANE_WIDTH = 240;
 export const MIN_PANE_HEIGHT = 120;
 export const SPLIT_DIVIDER_SIZE = 3;
@@ -295,6 +299,24 @@ export function splitGeometry(layout: Split, size: LayoutSize) {
     second: { ...size, [dimension]: available * (1 - ratio) },
   };
 }
+export function layoutPositions(layout: Layout, size: LayoutSize) {
+  const positions: { layout: Layout; bounds: LayoutBounds }[] = [];
+  const visit = (layout: Layout, bounds: LayoutBounds) => {
+    positions.push({ layout, bounds });
+    if (layout.type !== "split") return;
+    const geometry = splitGeometry(layout, bounds);
+    visit(layout.first, { ...bounds, ...geometry.first });
+    visit(layout.second, {
+      ...bounds,
+      ...geometry.second,
+      ...(layout.axis === "horizontal"
+        ? { left: bounds.left + geometry.first.width + SPLIT_DIVIDER_SIZE }
+        : { top: bounds.top + geometry.first.height + SPLIT_DIVIDER_SIZE }),
+    });
+  };
+  visit(layout, { width: size.width, height: size.height, left: 0, top: 0 });
+  return positions;
+}
 function paneSize(
   layout: Layout,
   paneId: string,
@@ -339,6 +361,7 @@ export function splitPane(
   paneId: string,
   axis: Split["axis"],
   added: LayoutPane,
+  before = false,
 ): Layout {
   if (layout.type !== "split")
     return layout.id === paneId
@@ -347,14 +370,14 @@ export function splitPane(
           id: newId(),
           axis,
           ratio: 0.5,
-          first: layout,
-          second: added,
+          first: before ? added : layout,
+          second: before ? layout : added,
         }
       : layout;
   return {
     ...layout,
-    first: splitPane(layout.first, paneId, axis, added),
-    second: splitPane(layout.second, paneId, axis, added),
+    first: splitPane(layout.first, paneId, axis, added, before),
+    second: splitPane(layout.second, paneId, axis, added, before),
   };
 }
 export function removePane(layout: Layout, paneId: string): Layout | null {
@@ -362,6 +385,32 @@ export function removePane(layout: Layout, paneId: string): Layout | null {
   const first = removePane(layout.first, paneId);
   const second = removePane(layout.second, paneId);
   return first && second ? { ...layout, first, second } : (first ?? second);
+}
+export function movePane(
+  layout: Layout,
+  id: string,
+  targetId: string,
+  side: TabDropSide,
+  size: LayoutSize,
+): Layout {
+  const panels = layoutPanes(layout);
+  const source = panels.find((pane) => pane.id === id);
+  if (
+    source?.type !== "terminal" ||
+    id === targetId ||
+    !panels.some((pane) => pane.id === targetId)
+  )
+    return layout;
+  const remaining = removePane(layout, id);
+  if (!remaining) return layout;
+  const moved = splitPane(
+    remaining,
+    targetId,
+    side === "left" || side === "right" ? "horizontal" : "vertical",
+    source,
+    side === "left" || side === "top",
+  );
+  return layoutFits(moved, size) ? moved : layout;
 }
 export function resizeSplit(layout: Layout, id: string, ratio: number): Layout {
   if (!Number.isFinite(ratio)) return layout;

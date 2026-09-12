@@ -12,18 +12,22 @@ import {
   MIN_PANE_HEIGHT,
   MIN_PANE_WIDTH,
   layoutPanes,
+  layoutPositions,
   SPLIT_DIVIDER_SIZE,
   splitGeometry,
 } from "./model";
 import type {
   EditorPosition,
   Layout,
+  LayoutBounds,
   LayoutSize,
   MarkdownView,
   ShellProfile,
   Split,
+  TabDropSide,
 } from "./model";
 import TerminalPane from "./TerminalPane";
+import { usePaneDrag } from "./pane-drag";
 
 const FileEditor = lazy(() => import("./FileEditor"));
 
@@ -36,34 +40,11 @@ interface Props {
   onFocus: (id: string) => void;
   onRestart: (id: string, useProjectDirectory?: boolean) => void;
   onResize: (id: string, ratio: number) => void;
+  onMove: (id: string, targetId: string, side: TabDropSide) => void;
   onFilePosition: (id: string, position: EditorPosition) => void;
   onMarkdownView: (id: string, view: MarkdownView) => void;
   onOpenFile: (root: string, relative: string) => void;
   onClosePane: (id: string) => void;
-}
-
-interface Bounds extends LayoutSize {
-  left: number;
-  top: number;
-}
-
-function layoutPositions(layout: Layout, size: LayoutSize) {
-  const positions: { layout: Layout; bounds: Bounds }[] = [];
-  const visit = (layout: Layout, bounds: Bounds) => {
-    positions.push({ layout, bounds });
-    if (layout.type !== "split") return;
-    const geometry = splitGeometry(layout, bounds);
-    visit(layout.first, { ...bounds, ...geometry.first });
-    visit(layout.second, {
-      ...bounds,
-      ...geometry.second,
-      ...(layout.axis === "horizontal"
-        ? { left: bounds.left + geometry.first.width + SPLIT_DIVIDER_SIZE }
-        : { top: bounds.top + geometry.first.height + SPLIT_DIVIDER_SIZE }),
-    });
-  };
-  visit(layout, { ...size, left: 0, top: 0 });
-  return positions;
 }
 
 export default function SplitView({
@@ -82,6 +63,12 @@ export default function SplitView({
       pane.id === maximizedPaneId &&
       pane.id === props.activePaneId,
   );
+  const { beginDrag, controlHeld, suppressClick } = usePaneDrag({
+    layout: props.layout,
+    root,
+    enabled: showTitles && !props.overview && !maximizedPane,
+    onMove: props.onMove,
+  });
   useEffect(() => {
     if (!maximizedPane) setMaximizedPaneId(null);
   }, [maximizedPane]);
@@ -116,6 +103,17 @@ export default function SplitView({
     <div
       className={`split-container${props.layout.type === "split" ? " is-split" : ""}`}
       ref={root}
+      onPointerDown={beginDrag}
+      onPointerDownCapture={(event) => {
+        if (event.isPrimary) suppressClick.current = false;
+      }}
+      onClickCapture={(event) => {
+        if (suppressClick.current && event.detail !== 0) {
+          event.preventDefault();
+          event.stopPropagation();
+          suppressClick.current = false;
+        }
+      }}
     >
       {size &&
         size.width > 0 &&
@@ -137,6 +135,7 @@ export default function SplitView({
                   active={props.activePaneId === layout.id}
                   overview={props.overview}
                   showTitle={showTitles}
+                  canMove={controlHeld}
                   canMaximize={props.layout.type === "split"}
                   maximized={maximizedPane?.id === layout.id}
                   onToggleMaximize={() => {
@@ -219,7 +218,7 @@ function Divider({
   onResize,
 }: {
   layout: Split;
-  bounds: Bounds;
+  bounds: LayoutBounds;
   onResize: Props["onResize"];
 }) {
   const horizontal = layout.axis === "horizontal";

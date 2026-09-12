@@ -32,6 +32,7 @@ interface Props {
   active: boolean;
   overview: boolean;
   showTitle: boolean;
+  canMove: boolean;
   canMaximize: boolean;
   maximized: boolean;
   onToggleMaximize: () => void;
@@ -62,6 +63,7 @@ function LiveTerminal({
   active,
   overview,
   showTitle,
+  canMove,
   canMaximize,
   maximized,
   onToggleMaximize,
@@ -127,6 +129,7 @@ function LiveTerminal({
       ? snapshot.title || snapshot.foregroundProgram
       : "";
   const titleBusy = snapshot.status === "running" && snapshot.titleBusy;
+  const displayTitle = title || (canMove ? profile.name : "");
   return (
     <section
       className={`terminal-pane${active ? " is-active" : ""}${overview ? " is-overview" : ""}`}
@@ -202,10 +205,17 @@ function LiveTerminal({
       )}
       <div className="terminal-body" inert={overview}>
         <div className="terminal-mount" ref={container} />
-        {canMaximize && (title || titleBusy || maximized) && (
+        {canMaximize && (displayTitle || titleBusy || maximized) && (
           <div className="terminal-heading">
-            <div className="terminal-title-box">
-              {showTitle && (title || titleBusy) && (
+            <div
+              className={`terminal-title-box${canMove ? " is-movable" : ""}`}
+              title={
+                canMove
+                  ? "Ctrl+drag to move terminal · Esc to cancel"
+                  : undefined
+              }
+            >
+              {showTitle && (displayTitle || titleBusy) && (
                 <>
                   <span className="terminal-title-icon" data-busy={titleBusy}>
                     <Terminal size={13} aria-hidden="true" />
@@ -230,9 +240,13 @@ function LiveTerminal({
                       />
                     </svg>
                   </span>
-                  {title && (
-                    <span className="terminal-title" title={title} dir="auto">
-                      {title}
+                  {displayTitle && (
+                    <span
+                      className="terminal-title"
+                      title={canMove ? undefined : title}
+                      dir="auto"
+                    >
+                      {displayTitle}
                     </span>
                   )}
                 </>

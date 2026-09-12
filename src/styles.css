@@ -1065,21 +1065,27 @@ svg {
   background: var(--color-surface-container-highest);
 }
 .dragging-tab,
-.dragging-tab * {
+.dragging-tab *,
+.dragging-pane,
+.dragging-pane * {
   cursor: grabbing !important;
   user-select: none !important;
 }
-.tab.is-dragging {
+.tab.is-dragging,
+.terminal-title-box.is-dragging {
   opacity: 0.5;
 }
 .tab-drag-ghost,
+.pane-drag-ghost,
 .tab-drop-marker,
-.tab-merge-preview {
+.tab-merge-preview,
+.pane-drop-preview {
   position: fixed;
   z-index: 1000;
   pointer-events: none;
 }
-.tab-drag-ghost {
+.tab-drag-ghost,
+.pane-drag-ghost {
   padding: var(--space-6) var(--space-10);
   max-width: var(--tab-max-width);
   overflow: hidden;
@@ -1094,7 +1100,8 @@ svg {
 .tab-drop-marker {
   background: var(--color-primary);
 }
-.tab-merge-preview {
+.tab-merge-preview,
+.pane-drop-preview {
   display: grid;
   place-items: center;
   padding: var(--space-20);
@@ -1105,13 +1112,53 @@ svg {
   font-size: var(--font-size-12);
   text-align: center;
 }
-.tab-merge-preview.is-blocked {
+.tab-merge-preview.is-blocked,
+.pane-drop-preview.is-blocked {
   border-style: dashed;
   border-color: var(--color-outline);
 }
 .tab-drop-marker[hidden],
 .tab-merge-preview[hidden] {
   display: none;
+}
+.pane-drop-preview {
+  transition:
+    left 160ms ease-out,
+    top 160ms ease-out,
+    width 160ms ease-out,
+    height 160ms ease-out,
+    opacity 100ms ease-out,
+    visibility 0s;
+}
+.pane-drop-preview[hidden] {
+  display: grid;
+  opacity: 0;
+  visibility: hidden;
+  transition-delay: 0s, 0s, 0s, 0s, 0s, 100ms;
+}
+@media (prefers-reduced-motion: reduce) {
+  .pane-drop-preview,
+  .pane-drop-preview[hidden] {
+    transition: none;
+  }
+}
+:root.moving-panes {
+  view-transition-name: none;
+}
+.moving-panes::view-transition {
+  pointer-events: none;
+}
+.moving-panes::view-transition-group(*) {
+  animation-duration: 180ms;
+  animation-timing-function: ease-out;
+}
+.moving-panes::view-transition-old(*),
+.moving-panes::view-transition-new(*) {
+  width: 100%;
+  height: 100%;
+  object-fit: none;
+  object-position: top left;
+  animation-duration: 180ms;
 }
 .tab-navigation {
   display: flex;
@@ -1735,6 +1782,11 @@ svg {
 }
 .terminal-pane.is-active .terminal-title-box {
   color: var(--color-surface-text);
+}
+.terminal-title-box.is-movable {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
 }
 .terminal-title-icon,
 .terminal-title-box .icon-button {

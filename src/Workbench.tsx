@@ -35,6 +35,7 @@ import {
   mapLayout,
   mergeTabs,
   moveTab,
+  movePane,
   moveSidebar,
   showSidebar,
   toggleSidebar,
@@ -1425,6 +1426,19 @@ export default function Workbench() {
                     modifyTab((tab) => ({ ...tab, activePaneId: id }));
                 }}
                 onRestart={restartPane}
+                onMove={(id, targetId, side) => {
+                  const container = terminalLayout.current;
+                  if (!container) return;
+                  modifyTab((tab) => {
+                    const layout = movePane(tab.layout, id, targetId, side, {
+                      width: container.clientWidth,
+                      height: container.clientHeight,
+                    });
+                    return layout === tab.layout
+                      ? tab
+                      : { ...tab, layout, activePaneId: id };
+                  });
+                }}
                 onClosePane={closePane}
                 onFilePosition={(id, position) =>
                   change((state) => updateFilePosition(state, id, position))
