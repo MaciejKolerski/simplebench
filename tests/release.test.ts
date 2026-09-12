@@ -25,7 +25,7 @@ test("release preparation rejects mismatched versions, unsafe tags, and missing 
       writeFileSync(path.join(root, file), content);
     const run = (tag: string) =>
       spawnSync(process.execPath, [script, tag], { encoding: "utf8" });
-    const manifests = () => {
+    const manifests = (lineEnding = "\n") => {
       write(
         "package.json",
         JSON.stringify({ version: "0.1.0", license: "MIT" }),
@@ -33,16 +33,25 @@ test("release preparation rejects mismatched versions, unsafe tags, and missing 
       write("src-tauri/tauri.conf.json", JSON.stringify({ version: "0.1.0" }));
       write(
         "src-tauri/Cargo.toml",
-        '[package]\nname = "simplebench"\nversion = "0.1.0"\nlicense = "MIT"\n',
+        '[package]\nname = "simplebench"\nversion = "0.1.0"\nlicense = "MIT"\n'.replaceAll(
+          "\n",
+          lineEnding,
+        ),
       );
       write(
         "src-tauri/Cargo.lock",
-        '[[package]]\nname = "dependency"\nversion = "9.9.9"\n\n[[package]]\nname = "simplebench"\nversion = "0.1.0"\n',
+        '[[package]]\nname = "dependency"\nversion = "9.9.9"\n\n[[package]]\nname = "simplebench"\nversion = "0.1.0"\n'.replaceAll(
+          "\n",
+          lineEnding,
+        ),
       );
       write("LICENSE", "License fixture for the release-readiness check.\n");
     };
-    manifests();
-    assert.equal(run("v0.1.0").status, 0);
+    for (const lineEnding of ["\n", "\r\n"]) {
+      manifests(lineEnding);
+      const result = run("v0.1.0");
+      assert.equal(result.status, 0, result.stderr);
+    }
     for (const tag of [
       "v0.1.1",
       "0.1.0",

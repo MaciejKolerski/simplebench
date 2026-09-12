@@ -3,7 +3,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const root = new URL("../", import.meta.url);
-const read = (file) => readFileSync(new URL(file, root), "utf8");
+const read = (file) =>
+  readFileSync(new URL(file, root), "utf8").replaceAll("\r\n", "\n");
 const tag = process.argv[2];
 assert.match(
   tag ?? "",
