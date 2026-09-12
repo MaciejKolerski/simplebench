@@ -192,7 +192,7 @@ test("closing a modified tab supports cancel, failed save, retry and discard", a
   });
   await expect(dialog).toBeVisible();
   await expect(
-    dialog.getByRole("button", { name: "Cancel", exact: true }),
+    dialog.getByRole("button", { name: "Save changes", exact: true }),
   ).toBeFocused();
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(page.locator(".cm-content")).toHaveText("unsaved 🦀");
@@ -202,9 +202,7 @@ test("closing a modified tab supports cancel, failed save, retry and discard", a
   await page
     .getByRole("button", { name: "Close README.md", exact: true })
     .click();
-  await dialog
-    .getByRole("button", { name: "Save changes", exact: true })
-    .click();
+  await page.keyboard.press("Enter");
   await expect(dialog.getByRole("alert")).toHaveText("Disk is full");
   await expect(page.getByRole("tab")).toHaveCount(2);
   await page.evaluate(() => {
@@ -212,7 +210,8 @@ test("closing a modified tab supports cancel, failed save, retry and discard", a
   });
   await dialog
     .getByRole("button", { name: "Save changes", exact: true })
-    .click();
+    .focus();
+  await page.keyboard.press("Enter");
   await expect(dialog).toHaveCount(0);
   await expect(page.getByRole("tab")).toHaveCount(1);
   await openReadme(page);

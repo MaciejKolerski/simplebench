@@ -5,7 +5,7 @@ use crate::{
 use portable_pty::{native_pty_system, ChildKiller, MasterPty, PtySize};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     io::{Read, Write},
     path::PathBuf,
     sync::{Arc, Condvar, Mutex},
@@ -35,6 +35,24 @@ struct Session {
 }
 
 impl Session {
+    fn has_foreground_process(&self) -> bool {
+        #[cfg(unix)]
+        if let Ok(master) = self.master.lock() {
+            if master
+                .process_group_leader()
+                .is_some_and(|group| Some(group as u32) != self.pid)
+            {
+                return true;
+            }
+        }
+        #[cfg(target_os = "linux")]
+        if self.foreground_program().is_some() {
+            // exec can replace the shell without changing its PID or process group.
+            return true;
+        }
+        false
+    }
+
     fn title_process(&self) -> Option<crate::cli_titles::TitleProcess> {
         #[cfg(target_os = "linux")]
         if self.profile.distro.is_none() {
@@ -119,6 +137,32 @@ fn size(cols: u16, rows: u16) -> Result<PtySize, String> {
 }
 
 impl Terminals {
+    fn busy(&self, ids: &[String]) -> Result<Vec<String>, String> {
+        let sessions: Vec<_> = self
+            .sessions
+            .lock()
+            .map_err(|error| error.to_string())?
+            .iter()
+            .filter(|(id, _)| ids.contains(id))
+            .map(|(id, session)| (id.clone(), session.clone()))
+            .collect();
+        if sessions.is_empty() {
+            return Ok(Vec::new());
+        }
+        let parents = process_parents()?;
+        Ok(sessions
+            .into_iter()
+            .filter(|(_, session)| {
+                // ponytail: WSL processes are outside the host process tree; confirm
+                // conservatively until a per-terminal WSL process probe is available.
+                session.profile.distro.is_some()
+                    || session.has_foreground_process()
+                    || session.pid.is_none_or(|pid| parents.contains(&pid))
+            })
+            .map(|(id, _)| id)
+            .collect())
+    }
+
     pub fn check_title_process(
         &self,
         id: &str,
@@ -293,6 +337,46 @@ impl Terminals {
             .and_then(|_| writer.flush())
             .map_err(|error| error.to_string())
     }
+}
+
+fn process_parents() -> Result<HashSet<u32>, String> {
+    #[cfg(unix)]
+    let output = shell::quiet_command("/bin/ps")
+        .args(["-A", "-o", "ppid=,stat="])
+        .env("LC_ALL", "C")
+        .output();
+    #[cfg(windows)]
+    let output = shell::quiet_command("powershell.exe")
+        .args([
+            "-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
+            "$ErrorActionPreference = 'Stop'; Get-CimInstance Win32_Process -Property ParentProcessId,Name | Where-Object { $_.Name -notin @('conhost.exe', 'OpenConsole.exe') } | ForEach-Object { '{0} S' -f $_.ParentProcessId }",
+        ])
+        .output();
+    let output = output.map_err(|error| format!("Cannot check terminal processes: {error}"))?;
+    if !output.status.success() {
+        return Err("Cannot check terminal processes.".into());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.split_whitespace();
+            let parent = fields.next()?.parse().ok()?;
+            (!fields.next()?.starts_with('Z')).then_some(parent)
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub async fn busy_terminals(
+    window: WebviewWindow,
+    state: State<'_, Terminals>,
+    ids: Vec<String>,
+) -> Result<Vec<String>, String> {
+    main_window(&window)?;
+    let state = state.inner().clone();
+    tauri::async_runtime::spawn_blocking(move || state.busy(&ids))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -525,12 +609,28 @@ mod tests {
                 thread::sleep(Duration::from_millis(10));
             }
             assert_eq!(session.foreground_program().as_deref(), Some("sleep"));
+            assert_eq!(manager.busy(&["test".into()]).unwrap(), ["test"]);
+            assert!(manager.busy(&["other".into()]).unwrap().is_empty());
             manager.write("test", "\u{3}").unwrap();
             let deadline = Instant::now() + Duration::from_secs(5);
             while session.foreground_program().is_some() && Instant::now() < deadline {
                 thread::sleep(Duration::from_millis(10));
             }
             assert_eq!(session.foreground_program(), None);
+            assert!(manager.busy(&["test".into()]).unwrap().is_empty());
+            manager.write("test", "sleep 30 &\r").unwrap();
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while manager.busy(&["test".into()]).unwrap().is_empty() && Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(10));
+            }
+            assert_eq!(session.foreground_program(), None);
+            assert_eq!(manager.busy(&["test".into()]).unwrap(), ["test"]);
+            manager.write("test", "kill %1; wait\r").unwrap();
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while !manager.busy(&["test".into()]).unwrap().is_empty() && Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(10));
+            }
+            assert!(manager.busy(&["test".into()]).unwrap().is_empty());
             use crate::cli_titles::TitleCli;
             for (name, cli) in [
                 ("codex", TitleCli::Codex),
@@ -572,19 +672,41 @@ mod tests {
             }
         }
         manager
-            .write("test", "printf 'UTF8: zażółć\\n'; stty size; exit\r")
+            .write(
+                "test",
+                "printf 'UTF8: zażółć\\n'; stty size; exec sleep 1\r",
+            )
             .unwrap();
+        #[cfg(target_os = "linux")]
+        {
+            let session = manager.get("test").unwrap();
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while session.foreground_program().as_deref() != Some("sleep")
+                && Instant::now() < deadline
+            {
+                thread::sleep(Duration::from_millis(10));
+            }
+            assert_eq!(session.foreground_program().as_deref(), Some("sleep"));
+            assert_eq!(
+                session
+                    .master
+                    .lock()
+                    .unwrap()
+                    .process_group_leader()
+                    .map(|pid| pid as u32),
+                session.pid,
+            );
+            assert_eq!(manager.busy(&["test".into()]).unwrap(), ["test"]);
+        }
         let deadline = Instant::now() + Duration::from_secs(10);
         let mut bytes = Vec::new();
         while Instant::now() < deadline {
             if let Ok(chunk) = receive.recv_timeout(Duration::from_millis(100)) {
-                bytes.extend(chunk);
-            }
-            if exit_receive.try_recv().is_ok() {
-                while let Ok(chunk) = receive.try_recv() {
-                    bytes.extend(chunk);
+                if chunk.is_empty() {
+                    assert!(exit_receive.try_recv().is_ok());
+                    break;
                 }
-                break;
+                bytes.extend(chunk);
             }
         }
         manager.stop_all();

@@ -108,7 +108,7 @@ import {
   subscribeEditors,
   subscribeEditorSaves,
 } from "./editor-service";
-import { useEditorCloseGuard } from "./EditorCloseGuard";
+import { useCloseGuard } from "./CloseGuard";
 import { useCliTitleSetup } from "./CliTitleSetup";
 import {
   absoluteFilePath,
@@ -212,7 +212,7 @@ function useGit(root: string) {
 }
 
 export default function Workbench() {
-  const closeGuard = useEditorCloseGuard();
+  const closeGuard = useCloseGuard();
   useSyncExternalStore(subscribeEditors, editorRevision);
   const fileOpenRequest = useRef(0);
   const fileOperationBusy = useRef(false);
@@ -451,7 +451,18 @@ export default function Workbench() {
         .flatMap(filesInTab)
         .map((file) => file.id),
     );
-    if (!ids.size || !(await closeGuard.confirm(fileIds))) return;
+    if (
+      !ids.size ||
+      !(await closeGuard.confirm(
+        fileIds,
+        workspace.tabs.flatMap((tab) =>
+          ids.has(tab.id) && tab.type === "terminal"
+            ? panes(tab.layout).map((pane) => pane.id)
+            : [],
+        ),
+      ))
+    )
+      return;
     const current = currentSession.current?.projects
       .find((candidate) => candidate.id === project.id)
       ?.workspaces.find((candidate) => candidate.id === workspace.id);
@@ -844,6 +855,11 @@ export default function Workbench() {
           !target ||
           !(await closeGuard.confirm(
             new Set(target.tabs.flatMap(filesInTab).map((file) => file.id)),
+            target.tabs.flatMap((tab) =>
+              tab.type === "terminal"
+                ? panes(tab.layout).map((pane) => pane.id)
+                : [],
+            ),
           ))
         )
           return;
@@ -1017,7 +1033,12 @@ export default function Workbench() {
       await closeTab(current.id);
       return;
     }
-    if (pane.type === "file" && !(await closeGuard.confirm(new Set([id]))))
+    if (
+      !(await closeGuard.confirm(
+        new Set(pane.type === "file" ? [id] : []),
+        pane.type === "terminal" ? [id] : [],
+      ))
+    )
       return;
     if (pane.type === "terminal") closeTerminals([id]);
     change((state) =>
@@ -1160,7 +1181,25 @@ export default function Workbench() {
             )
             .map((file) => file.id),
         );
-        if (!(await closeGuard.confirm(ids))) return false;
+        if (
+          !(await closeGuard.confirm(
+            ids,
+            currentSession
+              .current!.projects.filter((project) =>
+                containsPath(path, project.path),
+              )
+              .flatMap((project) =>
+                project.workspaces.flatMap((workspace) =>
+                  workspace.tabs.flatMap((tab) =>
+                    tab.type === "terminal"
+                      ? panes(tab.layout).map((pane) => pane.id)
+                      : [],
+                  ),
+                ),
+              ),
+          ))
+        )
+          return false;
       }
       resume = await pauseEditorFileOperations();
       const result = await api<FileChange>("file_operation", {
@@ -1461,6 +1500,9 @@ export default function Workbench() {
                           .filter((pane) => pane.type === "file")
                           .map((pane) => pane.id),
                       ),
+                      removed
+                        .filter((pane) => pane.type === "terminal")
+                        .map((pane) => pane.id),
                     ))
                   )
                     return;
@@ -1588,6 +1630,7 @@ function AppDialog({
   dialog: Dialog;
   onClose: () => void;
 }) {
+  const confirmButton = useRef<HTMLButtonElement>(null);
   const [value, setValue] = useState(
     dialog.type === "name"
       ? dialog.initial
@@ -1600,6 +1643,7 @@ function AppDialog({
       title={dialog.title}
       onClose={onClose}
       wide={dialog.type === "preview"}
+      initialFocus={dialog.type === "confirm" ? confirmButton : undefined}
     >
       {dialog.type === "preview" ? (
         <pre className="file-preview">{dialog.content || "(empty file)"}</pre>
@@ -1675,6 +1719,7 @@ function AppDialog({
               Cancel
             </button>
             <button
+              ref={confirmButton}
               className="button button-primary"
               disabled={
                 dialog.type === "name"

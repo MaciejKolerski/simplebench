@@ -87,6 +87,9 @@ export async function mockDesktop(
         calls,
         sessions,
         terminalContexts: {},
+        busyTerminals: [] as string[],
+        terminalProcessError: "",
+        terminalProcessDelay: 0,
         cliTitleSetup: null,
         cliTitleError: "",
         cliTitleSaveDelay: 0,
@@ -531,6 +534,17 @@ export async function mockDesktop(
           }
           if (command === "terminal_contexts")
             return desktop.__nativeTest.terminalContexts;
+          if (command === "busy_terminals") {
+            if (desktop.__nativeTest.terminalProcessDelay)
+              await new Promise((resolve) =>
+                setTimeout(resolve, desktop.__nativeTest.terminalProcessDelay),
+              );
+            if (desktop.__nativeTest.terminalProcessError)
+              throw new Error(desktop.__nativeTest.terminalProcessError);
+            return desktop.__nativeTest.busyTerminals.filter((id: string) =>
+              args.ids.includes(id),
+            );
+          }
           if (command === "inspect_cli_titles")
             return desktop.__nativeTest.cliTitleSetup;
           if (command === "enable_cli_titles") {

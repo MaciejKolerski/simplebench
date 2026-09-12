@@ -213,6 +213,10 @@ export class TerminalRuntime {
     };
   };
   readonly getSnapshot = () => this.snapshot;
+  async prepareCloseCheck() {
+    await this.startPromise;
+    await this.input;
+  }
   observeForegroundProgram(value: string | null) {
     const foregroundProgram = this.atPrompt
       ? ""
@@ -654,6 +658,28 @@ export function terminalFor(
   return runtime;
 }
 export const runningTerminal = (id: string) => runtimes.get(id);
+export async function terminalsWithProcesses(ids?: readonly string[]) {
+  const selected = [...runtimes.values()].filter(
+    (runtime) => !ids || ids.includes(runtime.paneId),
+  );
+  await Promise.all(selected.map((runtime) => runtime.prepareCloseCheck()));
+  const running = selected.filter(
+    (runtime) => runtime.getSnapshot().status === "running",
+  );
+  if (!running.length) return 0;
+  const busy = new Set(
+    await api<string[]>("busy_terminals", {
+      ids: running.map((runtime) => runtime.sessionId),
+    }),
+  );
+  return running.filter(
+    (runtime) =>
+      busy.has(runtime.sessionId) ||
+      runtime
+        .getSnapshot()
+        .blocks.some((block) => block.finished === undefined),
+  ).length;
+}
 export function closeTerminals(ids: string[]) {
   for (const id of ids) {
     runtimes.get(id)?.dispose();

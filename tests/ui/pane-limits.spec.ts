@@ -115,6 +115,11 @@ test("a queued shortcut burst respects panel dimensions and never reaches the PT
         }),
       );
   });
+  // Repeated closes during a process check must not spill into neighboring panes.
+  await expectUsablePanels(page, 3);
+  await page.keyboard.press("Control+w");
+  await expectUsablePanels(page, 2);
+  await page.keyboard.press("Control+w");
   await expectUsablePanels(page, 1);
   await expect(page.getByRole("tab")).toHaveCount(1);
 });

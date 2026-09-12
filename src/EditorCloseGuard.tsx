@@ -17,7 +17,7 @@ export function useEditorCloseGuard() {
   const current = useRef<Request>(undefined);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const cancelButton = useRef<HTMLButtonElement>(null);
+  const saveButton = useRef<HTMLButtonElement>(null);
   const confirm = useCallback((ids?: ReadonlySet<string>): Promise<boolean> => {
     if (current.current) return Promise.resolve(false);
     const documents = closingEditorDocuments(ids);
@@ -60,7 +60,7 @@ export function useEditorCloseGuard() {
         title="Save changes before closing?"
         className="editor-close-dialog"
         descriptionId={descriptionId}
-        initialFocus={cancelButton}
+        initialFocus={saveButton}
         onClose={() => finish(false)}
       >
         <div className="editor-close-content">
@@ -95,7 +95,6 @@ export function useEditorCloseGuard() {
         </div>
         <div className="editor-close-actions">
           <button
-            ref={cancelButton}
             type="button"
             className="button editor-close-cancel"
             disabled={busy}
@@ -112,6 +111,7 @@ export function useEditorCloseGuard() {
             Discard changes
           </button>
           <button
+            ref={saveButton}
             type="button"
             className="button button-primary"
             disabled={busy}

@@ -377,7 +377,10 @@ test("sidebar actions manage inactive workspaces and can remove the last workspa
     await menu
       .getByRole("menuitem", { name: "Delete workspace…", exact: true })
       .click();
-    await page.getByRole("button", { name: "Continue", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "Continue", exact: true }),
+    ).toBeFocused();
+    await page.keyboard.press("Enter");
     await expect(
       list.getByRole("button", { name: new RegExp(`^${name} `) }),
     ).toHaveCount(0);

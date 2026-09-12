@@ -183,6 +183,7 @@ pub fn run() {
             terminal::resize_terminal,
             terminal::acknowledge_terminal,
             terminal::close_terminal,
+            terminal::busy_terminals,
             terminal::reset_terminals,
             terminal::quote_paths,
             terminal::terminal_contexts,
