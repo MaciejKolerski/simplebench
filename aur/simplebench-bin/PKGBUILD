@@ -12,7 +12,7 @@ provides=('simplebench')
 conflicts=('simplebench')
 options=('!strip' '!debug')
 source_x86_64=("SimpleBench_${pkgver}_amd64.deb::${url}/releases/download/v${pkgver}/SimpleBench_${pkgver}_amd64.deb")
-# The publication workflow replaces SKIP after checking the release's SHA256SUMS.
+# The publication workflow replaces SKIP with the released DEB's SHA-256.
 sha256sums_x86_64=('SKIP')
 
 package() {

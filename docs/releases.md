@@ -8,31 +8,34 @@ did not exist when this workflow was prepared on 2026-09-11.
 
 ## Release workflow
 
-`.github/workflows/release.yml` runs for a stable `vX.Y.Z` tag. It can also be
-started manually with an existing tag to retry an unpublished release.
+`.github/workflows/release.yml` is named **publish** and follows Simple Voice's
+tag-triggered `publish-tauri` matrix:
 
-1. Validate the tag against `package.json`, `src-tauri/tauri.conf.json`,
-   `src-tauri/Cargo.toml`, and the app entry in `src-tauri/Cargo.lock`. Require
-   matching project licenses in the package manifests and a root `LICENSE`.
-2. Require the Apple signing, notarization, and AUR secrets before building.
-3. Run formatting, frontend build, model tests, and the Playwright interface
-   suite with mocked native commands.
-4. Create a draft GitHub release, or reuse the draft for this tag. A published
-   release cannot be overwritten by rerunning the workflow.
-5. Run native formatting, Clippy, and Rust tests on each build runner. Produce
-   signed and notarized macOS apps and DMGs, Windows NSIS and MSI installers,
-   and Linux AppImage, DEB, and RPM packages.
-6. Verify both macOS apps with `codesign`, `stapler`, and Gatekeeper. Keep the
-   release in draft if any build or signature check fails.
-7. Verify all nine downloads, upload `SHA256SUMS`, and publish the release.
-8. Publish AUR packages, using checksums of the published assets and tagged
-   source. This step can be retried independently through **Publish AUR**.
+1. Start four parallel jobs on `macos-latest` (Apple Silicon), `macos-15-intel`,
+   `ubuntu-22.04`, and `windows-latest`.
+2. Install pnpm from `package.json`, Node LTS, Rust stable, and the platform's
+   build dependencies. Validate the tag, app versions, and Apache-2.0 metadata.
+3. Install frontend dependencies with the frozen lockfile and run
+   `tauri-apps/tauri-action@v0` through `pnpm tauri`, using the locked Rust
+   dependencies. Tauri's frontend build includes TypeScript checking.
+4. Sign and notarize the macOS apps using the Apple secrets. Build the native
+   installers for each platform and upload them directly to the published
+   `vX.Y.Z` GitHub release.
+5. After all four builds succeed, publish `simplebench` and `simplebench-bin`
+   to AUR. Retry temporary AUR failures up to three times; the **publish AUR**
+   workflow can also be started independently for an existing release.
+6. Notify Flathub only when `FLATHUB_TOKEN` is configured.
 
-The macOS runners explicitly select Xcode 26.3 for the Icon Composer source.
-The Linux runner uses Ubuntu 22.04 for the same base compatibility as Simple
-Voice. Windows installers are not Authenticode-signed. SimpleBench has no
-in-app updater, so this workflow does not create `latest.json` or require an
-unrelated Tauri updater key. macOS app archives are still published as downloads.
+As in Simple Voice, the release becomes visible as platforms finish uploading;
+it can be incomplete while other builds are running. This workflow does not
+run Playwright, model tests, Clippy, or Rust tests. Run the relevant checks before
+tagging, as described in the [development guide](../README.md#validation-and-builds).
+
+SimpleBench selects Xcode 26.3 to compile its Icon Composer source and uses its
+own pnpm version. It does not need Simple Voice's audio, Vulkan, or ONNX build
+dependencies. Windows installers are not Authenticode-signed. SimpleBench has
+no in-app updater, so it does not create `latest.json` or require a Tauri updater
+key. macOS app archives are still published as downloads.
 
 ## Apple Developer configuration
 
@@ -64,17 +67,17 @@ available in the shell and install the Developer ID identity in Keychain Access,
 then run `pnpm tauri build --bundles app,dmg -- --locked`. A locally installed
 identity does not require `APPLE_CERTIFICATE` or its export password. Omitting
 the notarization credentials can produce a signed app without notarization;
-the release workflow rejects that situation before publication.
+configure all listed Apple secrets before starting a release.
 
 ## Publish a version
 
 SimpleBench uses Apache-2.0, with the license text in [`LICENSE`](../LICENSE)
 and its SPDX identifier in `package.json` and `src-tauri/Cargo.toml`. The workflow
 requires matching license identifiers and the license file before publication.
-The AUR recipes receive that same license during package preparation.
+Both AUR recipes declare the same license.
 
-1. Update the four app version entries together and add user-facing notes in
-   `releases/vX.Y.Z.md`. Without that notes file, GitHub generates release notes.
+1. Update the four app version entries together and prepare optional user-facing
+   notes in `releases/vX.Y.Z.md`.
 2. Run `pnpm release:check vX.Y.Z` and the checks appropriate to the changes.
 3. Commit and push the release source to `main`.
 4. Create and push the tag:
@@ -84,18 +87,22 @@ The AUR recipes receive that same license during package preparation.
    git push origin vX.Y.Z
    ```
 
-5. Follow the **Release** workflow. Its draft stays unpublished until every
-   platform is ready. Download and smoke-test the installers on the supported
-   systems; CI builds and mocked UI tests do not establish native behavior on
-   every operating system.
+5. Follow the **publish** workflow. Wait for all four platforms and AUR jobs to
+   finish. Download and smoke-test the installers on the supported systems;
+   successful CI builds do not establish native behavior on every operating
+   system.
+6. To replace the default release description with the prepared notes, run:
 
-For a failed build, fix the problem in source. Use a new version for a published
-release. For an unpublished draft, retry failed jobs when the failure was only
-an external service or credential issue. Never move a tag already used by a
-published release. The very first Apple notarization can take considerably
-longer than later submissions; the workflow deliberately waits for acceptance.
+   ```sh
+   gh release edit vX.Y.Z --notes-file releases/vX.Y.Z.md
+   ```
 
-If GitHub publication succeeded but AUR failed, run **Publish AUR** with the
+Retry failed jobs when the failure was an external service or credential issue.
+For a source change after publication, use a new version. Never move a tag already
+used by a published release. The first Apple notarization can take considerably
+longer than later submissions; Tauri waits for Apple's response.
+
+If GitHub publication succeeded but AUR failed, run **publish AUR** with the
 same tag. It only accepts the latest stable release, avoiding an accidental
 package downgrade. The `SKIP` checksums in the upstream PKGBUILD templates are
 replaced before anything is sent to AUR; published package recipes contain the
@@ -112,7 +119,7 @@ project-folder access before claiming Flatpak support.
 
 After a dedicated `flathub/io.github.MaciejKolerski.simplebench` repository and
 its maintenance workflow exist, configure `FLATHUB_TOKEN` with access to that
-repository and set the upstream variable `FLATHUB_ENABLED=true`. Successful
-releases then dispatch `simplebench-release` with `client_payload.tag`, matching
-the handoff used by Simple Voice. Leave the variable unset until the receiving
-workflow is ready; this hook alone does not publish an application on Flathub.
+repository. Successful releases then dispatch `simplebench-release` with
+`client_payload.tag` and `client_payload.commit`, matching Simple Voice. Leave
+the token unset until the receiving workflow is ready; this hook alone does not
+publish an application on Flathub.
