@@ -68,15 +68,20 @@ async function setup(page: Page, git = true) {
           if (args.relative && !relative.startsWith(args.relative + "/"))
             continue;
           file.content.split("\n").forEach((line: string, index: number) => {
-            const column = args.caseSensitive
-              ? line.indexOf(args.query)
-              : line.toLowerCase().indexOf(args.query.toLowerCase());
-            if (column >= 0)
+            const options = args.options;
+            const expression = options.regex
+              ? args.query
+              : args.query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const pattern = new RegExp(
+              options.wholeWord ? `\\b(?:${expression})\\b` : expression,
+              options.caseSensitive ? "g" : "gi",
+            );
+            for (const match of line.matchAll(pattern))
               result.matches.push({
                 relative,
                 line: index + 1,
-                column: column + 1,
-                length: args.query.length,
+                column: match.index + 1,
+                length: match[0].length,
                 preview: line,
                 previewStart: 0,
               });
@@ -170,7 +175,7 @@ test("searches the project or a folder and opens the matching editor selection",
   await setup(page);
   await menu(page, "src", "Search in Folder…");
   await page.getByRole("textbox", { name: "Search in files" }).fill("needle");
-  await expect(page.getByRole("status")).toContainText("2 matches in 1 file");
+  await expect(page.locator(".search-match")).toHaveCount(2);
   await page
     .getByRole("button", { name: "src/main.ts, line 2, column 4", exact: true })
     .click();
@@ -179,11 +184,21 @@ test("searches the project or a folder and opens the matching editor selection",
   await page.keyboard.insertText("REPLACED");
   await expect(page.locator(".cm-content")).toContainText("🦀 REPLACED here");
   await page.getByRole("button", { name: "Search entire project" }).click();
-  await expect(page.getByRole("status")).toContainText("3 matches in 2 files");
+  await expect(page.locator(".search-match")).toHaveCount(3);
   await page.screenshot({ path: test.info().outputPath("project-search.png") });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.locator(".project-search").screenshot({
+    path: test.info().outputPath("project-search-dark.png"),
+  });
   await page.getByRole("button", { name: "Back to Explorer" }).click();
   await menu(page, "Project folder project", "Search in Folder…");
-  await expect(page.getByText("Entire project", { exact: true })).toBeVisible();
+  await expect(
+    page.getByRole("textbox", { name: "Search in files" }),
+  ).toHaveValue("needle");
+  await expect(
+    page.getByRole("textbox", { name: "Search in files" }),
+  ).toBeFocused();
+  await expect(page.locator(".search-match")).toHaveCount(3);
 });
 
 test("renames a folder without losing dirty editor text or undo history", async ({
@@ -352,9 +367,9 @@ test("a newer search cannot be replaced by a slower previous response", async ({
     )
     .toBe(true);
   await input.fill("first");
-  await expect(page.getByRole("status")).toContainText("1 matches in 1 file");
+  await expect(page.locator(".search-match")).toHaveCount(1);
   await page.waitForTimeout(1100);
-  await expect(page.getByRole("status")).toContainText("1 matches in 1 file");
+  await expect(page.locator(".search-match")).toHaveCount(1);
   await expect(
     page.getByRole("button", {
       name: "src/main.ts, line 1, column 1",
@@ -389,4 +404,167 @@ test("moving a dirty file updates its buffer location and keeps failed operation
   await page.screenshot({
     path: test.info().outputPath("rename-folder-dark.png"),
   });
+});
+
+test("navigates and collapses results, applies search options and recovers from invalid regex", async ({
+  page,
+}) => {
+  await setup(page);
+  await page
+    .getByRole("button", { name: "Search in project", exact: true })
+    .click();
+  const input = page.getByRole("textbox", { name: "Search in files" });
+  await input.fill("needle");
+  await expect(page.locator(".search-match")).toHaveCount(3);
+  await input.press("ArrowDown");
+  const readme = page.getByRole("button", {
+    name: "README.md, 1 result",
+    exact: true,
+  });
+  await expect(readme).toBeFocused();
+  await readme.press("ArrowLeft");
+  await expect(readme).toHaveAttribute("aria-expanded", "false");
+  await readme.press("ArrowRight");
+  await readme.press("ArrowDown");
+  const match = page.getByRole("button", {
+    name: "README.md, line 2, column 1",
+    exact: true,
+  });
+  await expect(match).toBeFocused();
+  await match.press("Enter");
+  await expect(page.locator(".cm-content")).toContainText("needle in readme");
+  await expect(match).toHaveAttribute("aria-current", "true");
+  await page
+    .getByRole("button", { name: "Collapse all results", exact: true })
+    .click();
+  await expect(page.locator(".search-match")).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Expand all results", exact: true })
+    .click();
+  await expect(page.locator(".search-match")).toHaveCount(3);
+  await page.getByRole("button", { name: "Match case", exact: true }).click();
+  await input.fill("NEEDLE");
+  await expect(page.getByRole("status")).toContainText("No results");
+  await page.getByRole("button", { name: "Match case", exact: true }).click();
+  await expect(page.locator(".search-match")).toHaveCount(3);
+  await page
+    .getByRole("button", { name: "Match whole word", exact: true })
+    .click();
+  await input.fill("need");
+  await expect(page.getByRole("status")).toContainText("No results");
+  await page
+    .getByRole("button", { name: "Use regular expression", exact: true })
+    .click();
+  await input.fill("ne{2}dle");
+  await expect(page.locator(".search-match")).toHaveCount(3);
+  await input.fill("[");
+  await expect(page.getByRole("alert")).toContainText(
+    "Invalid regular expression",
+  );
+  await expect(page.locator(".search-match")).toHaveCount(0);
+  await input.fill("needle");
+  await expect(page.locator(".search-match")).toHaveCount(3);
+  await page
+    .getByRole("button", { name: "Toggle search details", exact: true })
+    .click();
+  await page
+    .getByRole("textbox", { name: "Files to include", exact: true })
+    .fill("*.ts, src/**");
+  await page
+    .getByRole("textbox", { name: "Files to exclude", exact: true })
+    .fill("dist, **/*.test.ts");
+  await page
+    .getByRole("checkbox", { name: "Include ignored files", exact: true })
+    .check();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__nativeTest.calls
+            .filter((call: any) => call.command === "search_project")
+            .at(-1)?.args.options,
+      ),
+    )
+    .toEqual({
+      caseSensitive: false,
+      wholeWord: true,
+      regex: true,
+      include: "*.ts, src/**",
+      exclude: "dist, **/*.test.ts",
+      includeIgnored: true,
+    });
+  await page
+    .getByRole("button", { name: "Toggle search details", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Back to Explorer", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Search in project", exact: true })
+    .click();
+  await expect(input).toHaveValue("needle");
+  await expect(
+    page.getByRole("button", { name: "Match whole word", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page
+    .getByRole("button", { name: "Toggle search details", exact: true })
+    .click();
+  await expect(
+    page.getByRole("textbox", { name: "Files to include", exact: true }),
+  ).toHaveValue("*.ts, src/**");
+  await page
+    .getByRole("button", { name: "Clear search results", exact: true })
+    .click();
+  await expect(input).toHaveValue("");
+  await expect(input).toBeFocused();
+  await expect(page.locator(".search-match")).toHaveCount(0);
+});
+
+test("fits narrow sidebars in both appearances and keeps composition out of searches", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 800, height: 420 });
+  await setup(page);
+  await page
+    .getByRole("button", { name: "Search in project", exact: true })
+    .click();
+  const input = page.getByRole("textbox", { name: "Search in files" });
+  await input.dispatchEvent("compositionstart");
+  await input.fill("need");
+  await page.waitForTimeout(350);
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.calls.filter(
+        (call: any) => call.command === "search_project",
+      ),
+    ),
+  ).toHaveLength(0);
+  await input.fill("needle");
+  await input.dispatchEvent("compositionend");
+  await expect(page.locator(".search-match")).toHaveCount(3);
+  await page
+    .getByRole("button", { name: "Toggle search details", exact: true })
+    .click();
+  const divider = page.getByRole("separator", {
+    name: "Resize sidebar",
+    exact: true,
+  });
+  for (let step = 0; step < 6; step++) await divider.press("ArrowLeft");
+  const panel = page.locator(".project-search");
+  for (const appearance of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: appearance });
+    await expect(page.locator(".search-match")).toHaveCount(3);
+    const bounds = await panel.boundingBox();
+    for (const control of await panel.locator("input, button").all()) {
+      if (!(await control.isVisible())) continue;
+      const box = (await control.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(bounds!.x);
+      expect(box.x + box.width).toBeLessThanOrEqual(
+        bounds!.x + bounds!.width + 1,
+      );
+    }
+    await page.screenshot({
+      path: test.info().outputPath(`search-narrow-${appearance}.png`),
+    });
+  }
 });

@@ -38,10 +38,15 @@ interface Props {
 export default function Explorer(props: Props) {
   const [revision, setRevision] = useState(0);
   const [searchScope, setSearchScope] = useState<string>();
+  const [searchOpen, setSearchOpen] = useState(false);
+  const search = (relative: string) => {
+    setSearchScope(relative);
+    setSearchOpen(true);
+  };
   const refresh = () => setRevision((revision) => revision + 1);
   const actions = useExplorerActions({
     ...props,
-    onSearch: setSearchScope,
+    onSearch: search,
     onRefresh: refresh,
   });
   const rootEntry: FileEntry = {
@@ -60,81 +65,82 @@ export default function Explorer(props: Props) {
       else next.add(path);
       return next;
     });
-  if (searchScope !== undefined)
-    return (
-      <ProjectSearch
-        root={props.root}
-        relative={searchScope}
-        onClose={() => setSearchScope(undefined)}
-        onScope={setSearchScope}
-        onOpenFile={props.onOpenFile}
-      />
-    );
   return (
-    <div className="sidebar-panel explorer-panel" aria-busy={actions.busy}>
-      <header className="sidebar-heading">
-        <span>EXPLORER</span>
-        <div>
-          <IconButton
-            title="Search in project"
-            onClick={() => setSearchScope("")}
-          >
-            <Search size={14} />
-          </IconButton>
-          <IconButton
-            title={showHidden ? "Hide dotfiles" : "Show dotfiles"}
-            onClick={() => setShowHidden(!showHidden)}
-          >
-            {showHidden ? <Eye size={14} /> : <EyeOff size={14} />}
-          </IconButton>
-          <IconButton
-            title="Collapse folders"
-            onClick={() => setExpanded(new Set())}
-          >
-            <ChevronsDownUp size={14} />
-          </IconButton>
-          <IconButton
-            title="Refresh explorer"
-            onClick={() => setRevision(revision + 1)}
-          >
-            <RefreshCw size={14} />
-          </IconButton>
-        </div>
-      </header>
-      <div
-        className="project-tree-heading"
-        tabIndex={0}
-        role="button"
-        aria-label={`Project folder ${rootEntry.name}`}
-        onContextMenu={(event) => actions.onContext(event, rootEntry)}
-        onKeyDown={(event) => actions.onKey(event, rootEntry)}
-      >
-        <FolderOpen size={14} />
-        <span title={props.root}>{basename(props.root)}</span>
-        <IconButton
-          title="Open terminal in project folder"
-          onClick={() => props.onTerminal(props.root)}
-        >
-          <Terminal size={14} />
-        </IconButton>
-      </div>
-      <div className="file-tree" aria-label="Project files">
-        <Directory
-          {...props}
-          relative=""
-          depth={0}
-          revision={revision}
-          showHidden={showHidden}
-          expanded={expanded}
-          toggle={toggle}
-          onContext={actions.onContext}
-          onKey={actions.onKey}
+    <>
+      {searchScope !== undefined && (
+        <ProjectSearch
+          root={props.root}
+          relative={searchScope}
+          hidden={!searchOpen}
+          onClose={() => setSearchOpen(false)}
+          onScope={setSearchScope}
+          onOpenFile={props.onOpenFile}
         />
-      </div>
-      {actions.menu}
-      {actions.dialog}
-      {actions.historyDialog}
-    </div>
+      )}
+      {!searchOpen && (
+        <div className="sidebar-panel explorer-panel" aria-busy={actions.busy}>
+          <header className="sidebar-heading">
+            <span>EXPLORER</span>
+            <div>
+              <IconButton title="Search in project" onClick={() => search("")}>
+                <Search size={14} />
+              </IconButton>
+              <IconButton
+                title={showHidden ? "Hide dotfiles" : "Show dotfiles"}
+                onClick={() => setShowHidden(!showHidden)}
+              >
+                {showHidden ? <Eye size={14} /> : <EyeOff size={14} />}
+              </IconButton>
+              <IconButton
+                title="Collapse folders"
+                onClick={() => setExpanded(new Set())}
+              >
+                <ChevronsDownUp size={14} />
+              </IconButton>
+              <IconButton
+                title="Refresh explorer"
+                onClick={() => setRevision(revision + 1)}
+              >
+                <RefreshCw size={14} />
+              </IconButton>
+            </div>
+          </header>
+          <div
+            className="project-tree-heading"
+            tabIndex={0}
+            role="button"
+            aria-label={`Project folder ${rootEntry.name}`}
+            onContextMenu={(event) => actions.onContext(event, rootEntry)}
+            onKeyDown={(event) => actions.onKey(event, rootEntry)}
+          >
+            <FolderOpen size={14} />
+            <span title={props.root}>{basename(props.root)}</span>
+            <IconButton
+              title="Open terminal in project folder"
+              onClick={() => props.onTerminal(props.root)}
+            >
+              <Terminal size={14} />
+            </IconButton>
+          </div>
+          <div className="file-tree" aria-label="Project files">
+            <Directory
+              {...props}
+              relative=""
+              depth={0}
+              revision={revision}
+              showHidden={showHidden}
+              expanded={expanded}
+              toggle={toggle}
+              onContext={actions.onContext}
+              onKey={actions.onKey}
+            />
+          </div>
+          {actions.menu}
+          {actions.dialog}
+          {actions.historyDialog}
+        </div>
+      )}
+    </>
   );
 }
 
