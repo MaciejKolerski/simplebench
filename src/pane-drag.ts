@@ -132,7 +132,7 @@ export function usePaneDrag({ layout, root, enabled, onMove }: Props) {
       const { bounds } = target;
       const horizontal = (x - area.left - bounds.left) / bounds.width;
       const vertical = (y - area.top - bounds.top) / bounds.height;
-      let side: TabDropSide =
+      const side: TabDropSide =
         Math.min(horizontal, 1 - horizontal) <= Math.min(vertical, 1 - vertical)
           ? horizontal < 0.5
             ? "left"
@@ -151,11 +151,6 @@ export function usePaneDrag({ layout, root, enabled, onMove }: Props) {
         destination?.targetId === target.layout.id &&
         distances[destination.side] - distances[side] <
           12 / Math.min(bounds.width, bounds.height)
-      )
-        side = destination.side;
-      if (
-        destination?.targetId === target.layout.id &&
-        destination.side === side
       )
         return;
       const moved = movePane(layout, id, target.layout.id, side, area);
