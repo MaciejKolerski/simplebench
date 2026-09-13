@@ -11,7 +11,7 @@ use std::{
 use tauri::Window;
 
 const PAGE_SIZE: usize = 50;
-const PATCH_LIMIT: usize = 2 * 1024 * 1024;
+pub(super) const PATCH_LIMIT: usize = 2 * 1024 * 1024;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -57,8 +57,8 @@ pub struct CommitDetails {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommitDiff {
-    patch: String,
-    truncated: bool,
+    pub(super) patch: String,
+    pub(super) truncated: bool,
 }
 
 fn object_id(id: &str) -> Result<(), String> {
@@ -295,6 +295,10 @@ fn patch(
         args.push(original);
     }
     let bytes = patch_bytes(root, &args)?;
+    Ok(limit_patch(&bytes))
+}
+
+pub(super) fn limit_patch(bytes: &[u8]) -> CommitDiff {
     let mut end = bytes.len().min(PATCH_LIMIT);
     let mut lines = 0;
     for (index, byte) in bytes[..end].iter().enumerate() {
@@ -306,13 +310,13 @@ fn patch(
             break;
         }
     }
-    Ok(CommitDiff {
+    CommitDiff {
         patch: text(&bytes[..end]),
         truncated: end < bytes.len(),
-    })
+    }
 }
 
-fn patch_bytes(root: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
+pub(super) fn patch_bytes(root: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
     let mut child = configured_command(root, args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -338,13 +342,10 @@ fn patch_bytes(root: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
     }
     let status = child.wait();
     let stderr = errors.join().unwrap_or_default();
-    read.map_err(|error| format!("Cannot read the commit diff: {error}"))?;
+    read.map_err(|error| format!("Cannot read Git content: {error}"))?;
     let status = status.map_err(|error| error.to_string())?;
     if !truncated && !status.success() {
-        return Err(format!(
-            "Cannot read the commit diff: {}",
-            text(&stderr).trim()
-        ));
+        return Err(format!("Cannot read Git content: {}", text(&stderr).trim()));
     }
     Ok(bytes)
 }

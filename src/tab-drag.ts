@@ -96,6 +96,7 @@ export function useTabDrag(props: Props) {
         !source ||
         !target ||
         source.type === "commit" ||
+        source.type === "diff" ||
         target.type !== "terminal" ||
         source.id === target.id ||
         x < area.left ||

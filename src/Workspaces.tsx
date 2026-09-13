@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import {
+  FileDiff,
   ChevronRight,
   FileCode,
   GitCommitHorizontal,
@@ -147,6 +148,8 @@ export default function Workspaces({
                     >
                       {tab.type === "commit" ? (
                         <GitCommitHorizontal size={14} aria-hidden="true" />
+                      ) : tab.type === "diff" ? (
+                        <FileDiff size={14} aria-hidden="true" />
                       ) : tab.type === "file" ? (
                         <FileCode size={14} aria-hidden="true" />
                       ) : (

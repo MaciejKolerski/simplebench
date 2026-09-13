@@ -63,6 +63,9 @@ export interface GitCommitDiff {
   patch: string;
   truncated: boolean;
 }
+export interface GitFileDiff extends GitCommitDiff {
+  notice: string | null;
+}
 
 export const getInfo = () => api<AppInfo>("app_info");
 export const loadSession = () => api<unknown>("load_session");

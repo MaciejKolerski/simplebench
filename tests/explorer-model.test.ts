@@ -13,6 +13,7 @@ import {
   newSession,
   newWorkspace,
   openFileTab,
+  openDiffTab,
   panes,
   splitPane,
 } from "../src/model.ts";
@@ -201,4 +202,35 @@ test("project renames and cross-project moves retarget open files, while root de
     containsPath("C:\\project\\src", "C:\\project\\src\\file"),
     true,
   );
+});
+
+test("file diff tabs follow renames and retain deleted files for comparison", () => {
+  const project = newProject("/project", "bash");
+  let state = {
+    ...newSession(),
+    projects: [project],
+    activeProjectId: project.id,
+  };
+  state = openDiffTab(
+    state,
+    project.workspaces[0].id,
+    "/project",
+    "src/file.ts",
+    false,
+  );
+  state = applyFileChange(
+    state,
+    { oldPath: "/project/src", newPath: "/project/code" },
+    "bash",
+  );
+  const tab = state.projects[0].workspaces[0].tabs[1];
+  assert.equal(tab.type, "diff");
+  if (tab.type !== "diff") throw new Error("Expected a file diff tab");
+  assert.equal(tab.relative, "code/file.ts");
+  state = applyFileChange(
+    state,
+    { oldPath: "/project/code/file.ts", newPath: null },
+    "bash",
+  );
+  assert.equal(state.projects[0].workspaces[0].tabs[1].id, tab.id);
 });

@@ -47,6 +47,7 @@ import {
   newTab,
   newFileTab,
   openCommitTab,
+  openDiffTab,
   openFileTab,
   panes,
   removePane,
@@ -89,6 +90,7 @@ import SidebarToggle from "./SidebarToggle";
 import Workspaces from "./Workspaces";
 import Welcome from "./Welcome";
 import CommitDetails from "./CommitDetails";
+import FileDiff from "./FileDiff";
 import BrowserPane from "./BrowserPane";
 import { configureBrowsers, retainBrowsers } from "./browser-runtime";
 import SplitView from "./SplitView";
@@ -253,6 +255,7 @@ export default function Workbench() {
     [renderPaneLayout],
   );
   const [error, setError] = useState("");
+  const [diffRevision, setDiffRevision] = useState(0);
   useWindowZoom(setError);
   const [restoreError, setRestoreError] = useState("");
   useEffect(
@@ -1306,21 +1309,17 @@ export default function Workbench() {
       ),
     );
   };
-  const diff = async (path: string, staged: boolean) => {
-    try {
-      const content = await api<string>("git_diff", {
-        root: git.status?.root ?? project.path,
+  const diff = (path: string, staged: boolean) => {
+    setDiffRevision((value) => value + 1);
+    change((state) =>
+      openDiffTab(
+        state,
+        workspace.id,
+        git.status?.root ?? project.path,
         path,
         staged,
-      });
-      setDialog({
-        type: "preview",
-        title: `${staged ? "Staged" : "Working tree"} · ${path}`,
-        content,
-      });
-    } catch (error) {
-      setError(errorMessage(error));
-    }
+      ),
+    );
   };
 
   return (
@@ -1449,7 +1448,7 @@ export default function Workbench() {
                   status={git.status}
                   loading={git.loading}
                   onRefresh={git.refresh}
-                  onDiff={(path, staged) => void diff(path, staged)}
+                  onDiff={diff}
                   onOpenCommit={openHistoryCommit}
                   onOpenFile={(path) => void openFile(path, git.status!.root)}
                   onDiscard={async (change) => {
@@ -1492,7 +1491,14 @@ export default function Workbench() {
           role="tabpanel"
           aria-labelledby={`tab-${tab.id}`}
         >
-          {tab.type === "commit" ? (
+          {tab.type === "diff" ? (
+            <FileDiff
+              key={tab.id}
+              tab={tab}
+              requestRevision={diffRevision}
+              onOpenFile={() => void openFile(tab.relative, tab.root)}
+            />
+          ) : tab.type === "commit" ? (
             <CommitDetails
               key={tab.id}
               root={tab.root}

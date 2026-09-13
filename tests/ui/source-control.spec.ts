@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import type { GitChange } from "../../src/api";
+import type { GitChange, GitFileDiff } from "../../src/api";
 import { mockDesktop } from "./desktop";
 
 async function openSourceControl(page: Page, changes: GitChange[]) {
@@ -16,6 +16,9 @@ async function openSourceControl(page: Page, changes: GitChange[]) {
       failStage: false,
       failCommit: false,
       failDiscard: false,
+      failDiff: false,
+      diffs: {} as Record<string, GitFileDiff>,
+      diffDelays: {} as Record<string, number>,
     };
     desktop.__sourceControlTest = state;
     desktop.__TAURI_INTERNALS__.invoke = async (
@@ -27,7 +30,21 @@ async function openSourceControl(page: Page, changes: GitChange[]) {
       state.calls.push({ command, args });
       if (command === "git_status")
         return { root: args.root, branch: "main", changes: state.changes };
-      if (command === "git_diff") return `diff for ${args.path}\n-old\n+new`;
+      if (command === "git_diff") {
+        if (state.diffDelays[args.path])
+          await new Promise((resolve) =>
+            setTimeout(resolve, state.diffDelays[args.path]),
+          );
+        if (state.failDiff)
+          throw new Error("Unable to read this file's changes");
+        return (
+          state.diffs[args.path] ?? {
+            patch: `@@ -1,3 +1,4 @@\n first line\n-${args.staged ? "HEAD" : "index"} version\n+${args.staged ? "staged" : "working"} version\n+added line\n last line\n`,
+            truncated: false,
+            notice: null,
+          }
+        );
+      }
       if (command === "git_history") return invoke(command, args);
       if (command === "ignore_project_item") return;
       if (command === "git_discard") {
@@ -95,6 +112,163 @@ const changed = (
   originalPath,
 });
 
+test("file changes open full read-only tabs, preserve dirty editors and restore without starting shells", async ({
+  page,
+}, testInfo) => {
+  await openSourceControl(page, [changed("README.md", "M", "M")]);
+  const source = page.getByRole("button", {
+    name: "View diff for README.md",
+    exact: true,
+  });
+  await source.click();
+  const tab = page.getByRole("tab", {
+    name: "README.md · Changes",
+    exact: true,
+  });
+  await expect(tab).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  const diff = page.getByRole("region", {
+    name: "Diff for README.md",
+    exact: true,
+  });
+  await expect(diff.locator(".diff-line-context").first()).toContainText(
+    "first line",
+  );
+  await expect(diff.locator(".diff-line-context").last()).toContainText(
+    "last line",
+  );
+  await expect(diff.locator(".diff-line-addition")).toHaveCount(2);
+  await expect(diff.locator(".diff-line-deletion")).toContainText(
+    "index version",
+  );
+  await expect(
+    diff
+      .locator(".diff-line-addition")
+      .first()
+      .locator(".diff-line-number")
+      .last(),
+  ).toHaveText("2");
+  await expect(diff.locator("[contenteditable=true], textarea")).toHaveCount(0);
+  for (const mode of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: mode });
+    await expect(page.locator("html")).toHaveAttribute("data-appearance", mode);
+    await page
+      .locator(".working-file-diff")
+      .screenshot({ path: testInfo.outputPath(`file-diff-${mode}.png`) });
+  }
+  await source.click();
+  await expect(tab).toHaveCount(1);
+  await page.getByRole("button", { name: "Open file", exact: true }).click();
+  await page.locator(".cm-content").fill("unsaved editor text");
+  await source.click();
+  await expect(diff).toContainText("working version");
+  await page.getByRole("button", { name: "Open file", exact: true }).click();
+  await expect(page.locator(".cm-content")).toHaveText("unsaved editor text");
+  await source.click();
+  await page
+    .getByRole("button", {
+      name: "View staged diff for README.md",
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByRole("tab", { name: "README.md · Staged changes", exact: true }),
+  ).toBeVisible();
+  await expect(diff).toContainText("HEAD version");
+  await expect(diff).toContainText("staged version");
+  expect(
+    await page.evaluate(
+      () =>
+        (window as any).__nativeTest.calls.filter(
+          (call: any) => call.command === "start_terminal",
+        ).length,
+    ),
+  ).toBe(1);
+  await page
+    .getByRole("button", { name: "Close README.md", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Discard changes", exact: true })
+    .click();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        JSON.parse(
+          localStorage.getItem("test-session")!,
+        ).projects[0].workspaces[0].tabs.map((tab: any) => tab.type),
+      ),
+    )
+    .toEqual(["terminal", "diff", "diff"]);
+  await page.reload();
+  await expect(
+    page.getByRole("tab", { name: "README.md · Staged changes", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
+  await expect(
+    page.getByRole("region", { name: "Diff for README.md", exact: true }),
+  ).toContainText("new");
+  expect(
+    await page.evaluate(
+      () =>
+        (window as any).__nativeTest.calls.filter(
+          (call: any) => call.command === "start_terminal",
+        ).length,
+    ),
+  ).toBe(0);
+});
+
+test("file diff errors retry in place and stale responses cannot replace another file", async ({
+  page,
+}, testInfo) => {
+  await openSourceControl(page, [changed("README.md"), changed("other.md")]);
+  await page.evaluate(() => {
+    (window as any).__sourceControlTest.failDiff = true;
+  });
+  await page
+    .getByRole("button", { name: "View diff for README.md", exact: true })
+    .click();
+  await expect(page.locator(".working-file-diff [role=alert]")).toContainText(
+    "Unable to read",
+  );
+  await page.evaluate(() => {
+    (window as any).__sourceControlTest.failDiff = false;
+  });
+  await page.getByRole("button", { name: "Retry diff", exact: true }).click();
+  await expect(page.locator(".working-file-diff")).toContainText("last line");
+  await page.evaluate(() => {
+    const state = (window as any).__sourceControlTest;
+    state.diffDelays["README.md"] = 600;
+    state.diffs["README.md"] = {
+      patch: "@@ -1 +1 @@\n-old\n+stale response\n",
+      truncated: false,
+      notice: null,
+    };
+    state.diffs["other.md"] = {
+      patch: "@@ -1 +1 @@\n-old\n+new file\n",
+      truncated: true,
+      notice: null,
+    };
+  });
+  await page
+    .getByRole("button", { name: "Refresh file changes", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "View diff for other.md", exact: true })
+    .click();
+  await expect(page.locator(".working-file-diff")).toContainText("new file");
+  await page.waitForTimeout(700);
+  await expect(page.locator(".working-file-diff")).not.toContainText(
+    "stale response",
+  );
+  await expect(page.locator(".working-file-diff")).toContainText(
+    "preview limit",
+  );
+  await page.setViewportSize({ width: 800, height: 420 });
+  await page.screenshot({ path: testInfo.outputPath("file-diff-minimum.png") });
+  await expect(
+    page.getByRole("button", { name: "Refresh file changes", exact: true }),
+  ).toBeInViewport();
+});
+
 test("file menus stage, unstage renames, open both diffs and copy exact paths", async ({
   page,
 }, testInfo) => {
@@ -128,16 +302,31 @@ test("file menus stage, unstage renames, open both diffs and copy exact paths", 
   await menu
     .getByRole("menuitem", { name: "Staged Changes", exact: true })
     .click();
-  await expect(page.getByRole("dialog")).toContainText("Staged · README.md");
-  await page.getByRole("button", { name: "Close dialog", exact: true }).click();
+  await expect(
+    page.getByRole("tab", { name: "README.md · Staged changes", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".working-file-diff")).toContainText(
+    "staged version",
+  );
+  await page
+    .getByRole("button", {
+      name: "Close README.md · Staged changes",
+      exact: true,
+    })
+    .click();
   await file.click({ button: "right" });
   await menu
     .getByRole("menuitem", { name: "Unstaged Changes", exact: true })
     .click();
-  await expect(page.getByRole("dialog")).toContainText(
-    "Working tree · README.md",
+  await expect(
+    page.getByRole("tab", { name: "README.md · Changes", exact: true }),
+  ).toBeVisible();
+  await expect(page.locator(".working-file-diff")).toContainText(
+    "working version",
   );
-  await page.getByRole("button", { name: "Close dialog", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Close README.md · Changes", exact: true })
+    .click();
   for (const label of ["Copy Path", "Copy Relative Path"]) {
     await file.click({ button: "right" });
     await menu.getByRole("menuitem", { name: label, exact: true }).click();
@@ -347,20 +536,37 @@ test("source control groups changes and keeps staged and working diffs separate"
   await tracked
     .getByRole("button", { name: "View diff for src/App.tsx", exact: true })
     .click();
-  await expect(page.getByRole("dialog")).toContainText("diff for src/App.tsx");
-  await page.getByRole("button", { name: "Close dialog", exact: true }).click();
+  await expect(page.locator(".working-file-diff")).toContainText(
+    "working version",
+  );
+  await page
+    .getByRole("button", { name: "Close App.tsx · Changes", exact: true })
+    .click();
   await staged
     .getByRole("button", {
       name: "View staged diff for src/App.tsx",
       exact: true,
     })
     .click();
-  await page.getByRole("button", { name: "Close dialog", exact: true }).click();
+  await expect(page.locator(".working-file-diff")).toContainText(
+    "staged version",
+  );
+  await page
+    .getByRole("button", {
+      name: "Close App.tsx · Staged changes",
+      exact: true,
+    })
+    .click();
   expect(
     await page.evaluate(() =>
       (window as any).__sourceControlTest.calls
         .filter((call: any) => call.command === "git_diff")
-        .map((call: any) => call.args),
+        .map((call: any) => call.args)
+        .filter(
+          (args: any, index: number, calls: any[]) =>
+            index === 0 ||
+            JSON.stringify(args) !== JSON.stringify(calls[index - 1]),
+        ),
     ),
   ).toEqual([
     { root: "/project", path: "src/App.tsx", staged: false },

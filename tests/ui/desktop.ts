@@ -597,7 +597,11 @@ export async function mockDesktop(
             return;
           }
           if (command === "git_diff")
-            return "diff --git a/README.md b/README.md\n-old\n+new";
+            return {
+              patch: "@@ -1 +1 @@\n-old\n+new\n",
+              truncated: false,
+              notice: null,
+            };
           if (command === "git_commit") {
             changes = [];
             return;

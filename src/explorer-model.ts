@@ -129,6 +129,22 @@ export function applyFileChange(
           return updated ? [updated] : [];
         }
         if (tab.type === "browser") return [tab];
+        if (tab.type === "diff") {
+          if (newPath === null && containsPath(oldPath, tab.root)) return [];
+          const root = relocate(tab.root);
+          const destination = relocate(absoluteFilePath(tab));
+          const relative = containsPath(root, destination)
+            ? normalizePath(destination).slice(normalizePath(root).length + 1)
+            : tab.relative;
+          return [
+            {
+              ...tab,
+              root,
+              relative,
+              title: `${basename(relative)} · ${tab.staged ? "Staged changes" : "Changes"}`,
+            },
+          ];
+        }
         if (tab.type === "commit")
           return newPath === null && containsPath(oldPath, tab.root)
             ? []

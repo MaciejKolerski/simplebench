@@ -5,6 +5,7 @@ import {
   ChevronRight,
   GitCommitHorizontal,
   FileCode,
+  FileDiff,
   Globe,
   Plus,
   Terminal,
@@ -215,6 +216,8 @@ export default function TabBar({
               >
                 {tab.type === "commit" ? (
                   <GitCommitHorizontal size={14} />
+                ) : tab.type === "diff" ? (
+                  <FileDiff size={14} />
                 ) : tab.type === "browser" ? (
                   <Globe size={14} />
                 ) : tab.type === "file" ? (

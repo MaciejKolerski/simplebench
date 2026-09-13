@@ -11,6 +11,8 @@ import {
   newFileTab,
   newWorkspace,
   openCommitTab,
+  openDiffTab,
+  canMergeTabs,
   openFileTab,
   fileTabs,
   panes,
@@ -381,6 +383,29 @@ test("large terminal input preserves emoji at transport boundaries", () => {
   assert.equal(chunks.join(""), input);
   assert.ok(chunks.every((chunk) => chunk.isWellFormed()));
   assert.ok(chunks.every((chunk) => chunk.length <= 16_384));
+});
+
+test("file diff tabs restore and deduplicate each comparison without becoming editors or terminals", () => {
+  let state = projectSession();
+  const { workspace, tab: terminal } = active(state)!;
+  state = openFileTab(state, workspace.id, "/project", "src/file.ts");
+  state = openDiffTab(state, workspace.id, "/project", "src/file.ts", false);
+  const working = active(state)!.tab;
+  assert.equal(working.type, "diff");
+  assert.equal("layout" in working, false);
+  assert.equal(fileTabs(state).length, 1);
+  assert.equal(
+    canMergeTabs(working, terminal, "right", { width: 2000, height: 1200 }),
+    false,
+  );
+  state = openDiffTab(state, workspace.id, "/project", "src/file.ts", true);
+  const staged = active(state)!.tab;
+  assert.notEqual(staged.id, working.id);
+  state = openDiffTab(state, workspace.id, "/project", "src/file.ts", false);
+  assert.equal(active(state)!.tab.id, working.id);
+  assert.equal(active(state)!.workspace.tabs.length, 4);
+  const restored = restoreSession(JSON.parse(JSON.stringify(state)), info);
+  assert.deepEqual(restored, state);
 });
 
 test("commit tabs persist their repository and revision without acquiring terminal panes", () => {

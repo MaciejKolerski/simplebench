@@ -5,7 +5,7 @@
 SimpleBench is a desktop ADE application developed incrementally around project
 folders, named workspaces, and terminal tabs. A project owns workspaces sharing
 its folder; each workspace owns tabs; each terminal tab owns a default shell
-environment and a tree of terminal, file editor, and browser panels. Browser, file, and commit tabs
+environment and a tree of terminal, file editor, and browser panels. Browser, file, diff, and commit tabs
 do not own shells. There is no hardcoded tab count limit.
 
 The current milestone includes project selection, workspaces, tabs, a file
@@ -24,7 +24,8 @@ or acronym.
 - Plain CSS defines the interface and theme in `src/styles.css`.
 - `src/model.ts` owns the persisted layout and pure layout transformations.
   Workspace tabs are terminals with pane layouts, file editors with project-relative
-  paths and positions, browsers with an HTTP(S) URL, or commit views with a repository
+  paths and positions, read-only file diffs with a repository path and staged/working
+  comparison, browsers with an HTTP(S) URL, or commit views with a repository
   path and full commit hash.
   Dragging terminal, browser, or file tabs into a terminal layout preserves pane IDs,
   editor buffers, and running PTYs; moved terminal panes may override the tab's default shell profile, including after restoration.
@@ -97,6 +98,10 @@ or acronym.
   and closes removed views; migrate shared editor aliases before retaining the
   updated session, preserving dirty text and undo history across renames.
   `src-tauri/src/git.rs` handles Git through argument-based CLI calls.
+  `src/FileDiff.tsx` opens Source Control comparisons in separate read-only tabs.
+  `src-tauri/src/git/diff.rs` provides full-file context, including new and deleted
+  files, with explicit binary and size-limit notices. Diff tabs do not own shells
+  or editor buffers and restore by loading fresh comparisons.
   `src-tauri/src/git/history.rs` provides paginated history and commit details.
   History and commit tabs are read-only; merge diffs use the first parent.
 - pnpm manages frontend dependencies; Cargo manages Rust dependencies.

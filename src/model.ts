@@ -60,6 +60,15 @@ export interface CommitTab {
   root: string;
   commit: string;
 }
+export interface DiffTab {
+  type: "diff";
+  id: string;
+  title: string;
+  customTitle?: string;
+  root: string;
+  relative: string;
+  staged: boolean;
+}
 export interface EditorPosition {
   anchor: number;
   head: number;
@@ -91,7 +100,7 @@ export const newBrowserTab = (url = "about:blank"): BrowserTab => ({
   title: "Browser",
   url: restoreBrowserUrl(url),
 });
-export type Tab = TerminalTab | CommitTab | FileTab | BrowserTab;
+export type Tab = TerminalTab | CommitTab | DiffTab | FileTab | BrowserTab;
 export const tabTitle = (tab: Tab) => tab.customTitle ?? tab.title;
 export type TabDropSide = "left" | "right" | "top" | "bottom";
 export type TabCloseAction =
@@ -278,7 +287,9 @@ export function filesInTab(tab: Tab): FileTab[] {
         )
       : [];
 }
-export function activePanel(tab: Tab): LayoutPane | CommitTab | undefined {
+export function activePanel(
+  tab: Tab,
+): LayoutPane | CommitTab | DiffTab | undefined {
   return tab.type === "terminal"
     ? layoutPanes(tab.layout).find((pane) => pane.id === tab.activePaneId)
     : tab;
@@ -529,6 +540,7 @@ export function canMergeTabs(
   if (
     source.id === target.id ||
     source.type === "commit" ||
+    source.type === "diff" ||
     target.type !== "terminal"
   )
     return false;
@@ -555,6 +567,7 @@ export function mergeTabs(
   if (
     !source ||
     source.type === "commit" ||
+    source.type === "diff" ||
     target?.type !== "terminal" ||
     !canMergeTabs(source, target, side, size)
   )
@@ -650,6 +663,37 @@ export function openCommitTab(
     );
     if (existing) return { ...workspace, activeTabId: existing.id };
     const tab: CommitTab = { type: "commit", id: newId(), root, commit, title };
+    return {
+      ...workspace,
+      tabs: [...workspace.tabs, tab],
+      activeTabId: tab.id,
+    };
+  });
+}
+export function openDiffTab(
+  session: Session,
+  workspaceId: string,
+  root: string,
+  relative: string,
+  staged: boolean,
+): Session {
+  return updateWorkspace(session, workspaceId, (workspace) => {
+    const existing = workspace.tabs.find(
+      (tab) =>
+        tab.type === "diff" &&
+        tab.root === root &&
+        tab.relative === relative &&
+        tab.staged === staged,
+    );
+    if (existing) return { ...workspace, activeTabId: existing.id };
+    const tab: DiffTab = {
+      type: "diff",
+      id: newId(),
+      root,
+      relative,
+      staged,
+      title: `${basename(relative)} · ${staged ? "Staged changes" : "Changes"}`,
+    };
     return {
       ...workspace,
       tabs: [...workspace.tabs, tab],
@@ -955,6 +999,19 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
                   : {}),
                 root: string(tab.root, path),
                 commit: string(tab.commit, ""),
+              };
+            }
+            if (tab.type === "diff") {
+              return {
+                type: "diff",
+                id: id(tab.id),
+                title: string(tab.title, "File changes"),
+                ...(string(tab.customTitle, "")
+                  ? { customTitle: tab.customTitle as string }
+                  : {}),
+                root: string(tab.root, path),
+                relative: string(tab.relative, ""),
+                staged: tab.staged === true,
               };
             }
             const tree = layout(tab.layout, path);

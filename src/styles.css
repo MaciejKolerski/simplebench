@@ -2723,6 +2723,25 @@ svg {
   min-height: 0;
   overflow: auto;
 }
+.working-diff-path {
+  flex: 1;
+  min-width: 0;
+}
+.working-diff-comparison {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8) var(--space-16);
+  padding: var(--space-8) var(--space-14);
+  border-bottom: var(--border-width) solid var(--color-surface-variant);
+  color: var(--color-surface-variant-text);
+  font-size: var(--font-size-11);
+}
+.working-diff-comparison > span:first-child {
+  margin-right: auto;
+}
+.working-file-diff .diff-line-addition .diff-line-text {
+  color: var(--color-info);
+}
 .commit-patch-lines {
   margin: 0;
   padding: var(--space-8) 0;

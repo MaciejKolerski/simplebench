@@ -260,8 +260,24 @@ export default function CommitDetails({
   );
 }
 
-function Patch({ patch }: { patch: string }) {
-  const lines = useMemo(() => diffLines(patch), [patch]);
+export function Patch({
+  patch,
+  fullFile = false,
+}: {
+  patch: string;
+  fullFile?: boolean;
+}) {
+  const lines = useMemo(
+    () =>
+      diffLines(patch).filter(
+        (line) =>
+          !fullFile ||
+          line.oldLine !== undefined ||
+          line.newLine !== undefined ||
+          line.text.startsWith("\\ No newline"),
+      ),
+    [patch, fullFile],
+  );
   return (
     <pre className="commit-patch-lines">
       <code>

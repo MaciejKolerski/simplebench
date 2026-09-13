@@ -6,6 +6,7 @@ use std::{
 };
 use tauri::Window;
 
+mod diff;
 pub mod history;
 
 fn configured_command(root: &Path, args: &[&str]) -> Command {
@@ -236,35 +237,11 @@ pub async fn git_diff(
     root: String,
     path: String,
     staged: bool,
-) -> Result<String, String> {
+) -> Result<diff::FileDiff, String> {
     main_window(&window)?;
-    tauri::async_runtime::spawn_blocking(move || {
-        relative(&path)?;
-        let root = repository(&root)?;
-        let mut args = vec![
-            "--literal-pathspecs",
-            "diff",
-            "--no-ext-diff",
-            "--no-textconv",
-            "--no-color",
-        ];
-        if staged {
-            args.push("--cached");
-        }
-        args.extend(["--", &path]);
-        let bytes = checked(&root, &args)?;
-        let mut text =
-            String::from_utf8_lossy(&bytes[..bytes.len().min(2 * 1024 * 1024)]).into_owned();
-        if bytes.len() > 2 * 1024 * 1024 {
-            text.push_str("\n[Diff truncated at 2 MiB]");
-        }
-        if text.is_empty() {
-            text = "No text diff is available. This may be an untracked or binary file.".into();
-        }
-        Ok(text)
-    })
-    .await
-    .map_err(|error| error.to_string())?
+    tauri::async_runtime::spawn_blocking(move || diff::read(&root, &path, staged))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
