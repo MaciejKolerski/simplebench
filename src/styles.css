@@ -2895,10 +2895,6 @@ svg {
   font-size: var(--font-size-10);
   padding: 0;
 }
-.status-warning {
-  order: 1;
-  color: var(--color-warning);
-}
 .modal {
   padding: 0;
   background: transparent;

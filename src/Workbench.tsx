@@ -174,7 +174,7 @@ function initialize() {
 
 function useGit(root: string) {
   const [results, setResults] = useState<
-    Record<string, { status: GitStatus | null; error: string }>
+    Record<string, { status: GitStatus | null }>
   >({});
   const [revision, setRevision] = useState(0);
   const refresh = useCallback(() => setRevision((value) => value + 1), []);
@@ -190,14 +190,14 @@ function useGit(root: string) {
         if (current) {
           setResults((previous) => ({
             ...previous,
-            [root]: { status: next, error: "" },
+            [root]: { status: next },
           }));
         }
-      } catch (error) {
+      } catch {
         if (current) {
           setResults((previous) => ({
             ...previous,
-            [root]: { status: null, error: errorMessage(error) },
+            [root]: { status: null },
           }));
         }
       } finally {
@@ -216,7 +216,6 @@ function useGit(root: string) {
   return {
     status: results[root]?.status ?? null,
     loading: !!root && !results[root],
-    error: results[root]?.error ?? "",
     refresh,
   };
 }
@@ -1695,11 +1694,6 @@ export default function Workbench() {
             }
           />
         </div>
-        {git.error && (
-          <span className="status-warning" title={git.error}>
-            Git unavailable
-          </span>
-        )}
         <span className="status-spacer" />
         {editorDocument && (
           <FileEditorStatus
