@@ -115,24 +115,30 @@ export default function Explorer(props: Props) {
               </IconButton>
             </div>
           </header>
-          <div
-            className="project-tree-heading"
-            data-git-status={gitStatuses.get(gitFilePath(props.root))}
-            tabIndex={0}
-            role="button"
-            aria-label={`Project folder ${rootEntry.name}`}
-            onContextMenu={(event) => actions.onContext(event, rootEntry)}
-            onKeyDown={(event) => actions.onKey(event, rootEntry)}
-          >
-            <FolderOpen size={14} />
-            <span title={props.root}>{basename(props.root)}</span>
-            <IconButton
-              title="Open terminal in project folder"
-              onClick={() => props.onTerminal(props.root)}
+          {actions.rename?.relative === "" ? (
+            <div style={{ padding: "var(--tree-heading-padding)" }}>
+              {actions.rename.node}
+            </div>
+          ) : (
+            <div
+              className="project-tree-heading"
+              data-git-status={gitStatuses.get(gitFilePath(props.root))}
+              tabIndex={0}
+              role="button"
+              aria-label={`Project folder ${rootEntry.name}`}
+              onContextMenu={(event) => actions.onContext(event, rootEntry)}
+              onKeyDown={(event) => actions.onKey(event, rootEntry)}
             >
-              <Terminal size={14} />
-            </IconButton>
-          </div>
+              <FolderOpen size={14} />
+              <span title={props.root}>{basename(props.root)}</span>
+              <IconButton
+                title="Open terminal in project folder"
+                onClick={() => props.onTerminal(props.root)}
+              >
+                <Terminal size={14} />
+              </IconButton>
+            </div>
+          )}
           <div
             className="file-tree"
             aria-label="Project files"
@@ -151,6 +157,7 @@ export default function Explorer(props: Props) {
               onContext={actions.onContext}
               onKey={actions.onKey}
               creation={actions.creation}
+              rename={actions.rename}
             />
           </div>
           {actions.menu}
@@ -168,6 +175,7 @@ interface DirectoryProps extends Props {
   onContext: ReturnType<typeof useExplorerActions>["onContext"];
   onKey: ReturnType<typeof useExplorerActions>["onKey"];
   creation: ReturnType<typeof useExplorerActions>["creation"];
+  rename: ReturnType<typeof useExplorerActions>["rename"];
   relative: string;
   depth: number;
   revision: number;
@@ -248,75 +256,87 @@ function Directory(props: DirectoryProps) {
         const open = expanded.has(entry.relativePath);
         return (
           <div key={entry.relativePath}>
-            <div
-              className="tree-row"
-              onContextMenu={(event) => props.onContext(event, entry)}
-              onKeyDown={(event) => props.onKey(event, entry)}
-              style={{
-                paddingLeft: `calc(${depth} * var(--tree-indent) + var(--space-10))`,
-              }}
-              onPointerDown={(event) =>
-                beginFileDrag(event, entry.path, onError)
-              }
-            >
-              <button
-                className="tree-entry"
-                data-git-status={props.gitStatuses.get(gitFilePath(entry.path))}
-                title={entry.path}
-                aria-expanded={entry.isDirectory ? open : undefined}
-                onClick={() =>
-                  entry.isDirectory
-                    ? toggle(entry.relativePath)
-                    : onOpenFile(entry.relativePath)
+            {props.rename?.relative === entry.relativePath ? (
+              <div
+                style={{
+                  paddingLeft: `calc(${depth} * var(--tree-indent) + var(--space-10))`,
+                }}
+              >
+                {props.rename.node}
+              </div>
+            ) : (
+              <div
+                className="tree-row"
+                onContextMenu={(event) => props.onContext(event, entry)}
+                onKeyDown={(event) => props.onKey(event, entry)}
+                style={{
+                  paddingLeft: `calc(${depth} * var(--tree-indent) + var(--space-10))`,
+                }}
+                onPointerDown={(event) =>
+                  beginFileDrag(event, entry.path, onError)
                 }
               >
-                {entry.isDirectory ? (
-                  open ? (
-                    <ChevronDown size={12} />
-                  ) : (
-                    <ChevronRight size={12} />
-                  )
-                ) : (
-                  <span className="tree-indent" />
-                )}
-                {entry.isDirectory ? (
-                  open ? (
-                    <FolderOpen size={14} />
-                  ) : (
-                    <Folder size={14} />
-                  )
-                ) : (
-                  <File size={14} />
-                )}
-                <span className={entry.name.startsWith(".") ? "dotfile" : ""}>
-                  {entry.name}
-                </span>
-                {entry.isSymlink && <span className="symlink-mark">↗</span>}
-              </button>
-              {entry.isDirectory ? (
                 <button
-                  className="tree-action"
-                  title="Open terminal here"
-                  aria-label={`Open terminal in ${entry.name}`}
-                  onClick={() => onTerminal(entry.path)}
-                >
-                  <Terminal size={13} />
-                </button>
-              ) : (
-                <button
-                  className="tree-action"
-                  title="Copy file path"
-                  aria-label={`Copy path of ${entry.name}`}
+                  className="tree-entry"
+                  data-git-status={props.gitStatuses.get(
+                    gitFilePath(entry.path),
+                  )}
+                  title={entry.path}
+                  aria-expanded={entry.isDirectory ? open : undefined}
                   onClick={() =>
-                    void writeText(entry.path).catch((error) =>
-                      onError(errorMessage(error)),
-                    )
+                    entry.isDirectory
+                      ? toggle(entry.relativePath)
+                      : onOpenFile(entry.relativePath)
                   }
                 >
-                  <Copy size={12} />
+                  {entry.isDirectory ? (
+                    open ? (
+                      <ChevronDown size={12} />
+                    ) : (
+                      <ChevronRight size={12} />
+                    )
+                  ) : (
+                    <span className="tree-indent" />
+                  )}
+                  {entry.isDirectory ? (
+                    open ? (
+                      <FolderOpen size={14} />
+                    ) : (
+                      <Folder size={14} />
+                    )
+                  ) : (
+                    <File size={14} />
+                  )}
+                  <span className={entry.name.startsWith(".") ? "dotfile" : ""}>
+                    {entry.name}
+                  </span>
+                  {entry.isSymlink && <span className="symlink-mark">↗</span>}
                 </button>
-              )}
-            </div>
+                {entry.isDirectory ? (
+                  <button
+                    className="tree-action"
+                    title="Open terminal here"
+                    aria-label={`Open terminal in ${entry.name}`}
+                    onClick={() => onTerminal(entry.path)}
+                  >
+                    <Terminal size={13} />
+                  </button>
+                ) : (
+                  <button
+                    className="tree-action"
+                    title="Copy file path"
+                    aria-label={`Copy path of ${entry.name}`}
+                    onClick={() =>
+                      void writeText(entry.path).catch((error) =>
+                        onError(errorMessage(error)),
+                      )
+                    }
+                  >
+                    <Copy size={12} />
+                  </button>
+                )}
+              </div>
+            )}
             {entry.isDirectory && open && (
               <Directory
                 {...props}

@@ -47,7 +47,10 @@ export function useExplorerActions(props: Props) {
   const dismiss = () => {
     setContext(undefined);
     if (trigger.current?.isConnected)
-      trigger.current.focus({ preventScroll: true });
+      (
+        trigger.current.querySelector<HTMLElement>(".tree-entry") ??
+        trigger.current
+      ).focus({ preventScroll: true });
   };
   const open = (
     entry: FileEntry,
@@ -56,8 +59,7 @@ export function useExplorerActions(props: Props) {
     y?: number,
     background = false,
   ) => {
-    trigger.current =
-      element.querySelector<HTMLElement>(".tree-entry") ?? element;
+    trigger.current = element;
     const bounds = element.getBoundingClientRect();
     setContext({
       entry,
@@ -164,6 +166,7 @@ export function useExplorerActions(props: Props) {
     if (action) {
       event.preventDefault();
       event.stopPropagation();
+      trigger.current = event.currentTarget;
       action();
     }
   };
@@ -280,8 +283,13 @@ export function useExplorerActions(props: Props) {
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (busy || !prompt) return;
-    if (creating && !value.trim()) {
+    if (
+      !deleting &&
+      (!value.trim() ||
+        (prompt.kind === "rename" && value === prompt.entry.name))
+    ) {
       setPrompt(undefined);
+      requestAnimationFrame(dismiss);
       return;
     }
     setBusy(true);
@@ -302,10 +310,10 @@ export function useExplorerActions(props: Props) {
       .catch((error) => setError(errorMessage(error)))
       .finally(() => setBusy(false));
   };
-  const creation =
-    prompt && creating
+  const naming =
+    prompt && !deleting
       ? {
-          relative: parent(prompt.entry),
+          relative: creating ? parent(prompt.entry) : prompt.entry.relativePath,
           node: (
             <form
               className="tree-create"
@@ -315,7 +323,11 @@ export function useExplorerActions(props: Props) {
               <div className="tree-row">
                 <div className="tree-entry">
                   <span className="tree-indent" />
-                  {prompt.kind === "newFolder" ? (
+                  {(
+                    creating
+                      ? prompt.kind === "newFolder"
+                      : prompt.entry.isDirectory
+                  ) ? (
                     <Folder size={14} />
                   ) : (
                     <File size={14} />
@@ -324,13 +336,14 @@ export function useExplorerActions(props: Props) {
                     aria-label={`${title} name`}
                     aria-invalid={!!error}
                     aria-describedby={error ? errorId : undefined}
-                    title="Enter to create, Escape to cancel"
+                    title={`Enter to ${creating ? "create" : "rename"}, Escape to cancel`}
                     autoFocus
                     autoComplete="off"
                     spellCheck={false}
                     value={value}
                     readOnly={busy}
                     onChange={(event) => setValue(event.target.value)}
+                    onFocus={(event) => event.target.select()}
                     onBlur={() => {
                       if (!busy) setPrompt(undefined);
                     }}
@@ -347,7 +360,7 @@ export function useExplorerActions(props: Props) {
                         event.stopPropagation();
                         if (!busy) {
                           setPrompt(undefined);
-                          dismiss();
+                          requestAnimationFrame(dismiss);
                         }
                       }
                     }}
@@ -367,7 +380,9 @@ export function useExplorerActions(props: Props) {
           ),
         }
       : undefined;
-  const dialog = prompt && !creating && (
+  const creation = creating ? naming : undefined;
+  const rename = prompt?.kind === "rename" ? naming : undefined;
+  const dialog = prompt && deleting && (
     <Modal
       title={title}
       onClose={() => {
@@ -376,29 +391,14 @@ export function useExplorerActions(props: Props) {
     >
       <form className="dialog-form" onSubmit={submit}>
         <div className="dialog-body">
-          {deleting ? (
-            <p>
-              {prompt.kind === "trash" ? "Move" : "Permanently delete"}{" "}
-              <strong>{prompt.entry.name}</strong>
-              {prompt.entry.isDirectory ? " and all its contents" : ""}?{" "}
-              {prompt.kind === "delete" && "This cannot be undone."}
-              {!prompt.entry.relativePath &&
-                " This also closes the project and its terminals."}
-            </p>
-          ) : (
-            <label>
-              Name
-              <input
-                aria-label="Name"
-                autoFocus
-                value={value}
-                onChange={(event) => setValue(event.target.value)}
-                onFocus={(event) => event.target.select()}
-                disabled={busy}
-                required
-              />
-            </label>
-          )}
+          <p>
+            {prompt.kind === "trash" ? "Move" : "Permanently delete"}{" "}
+            <strong>{prompt.entry.name}</strong>
+            {prompt.entry.isDirectory ? " and all its contents" : ""}?{" "}
+            {prompt.kind === "delete" && "This cannot be undone."}
+            {!prompt.entry.relativePath &&
+              " This also closes the project and its terminals."}
+          </p>
           {error && (
             <p className="text-error" role="alert">
               {error}
@@ -414,11 +414,7 @@ export function useExplorerActions(props: Props) {
           >
             Cancel
           </button>
-          <button
-            type="submit"
-            className={`button ${deleting ? "text-error" : "button-primary"}`}
-            disabled={busy || (!deleting && !value)}
-          >
+          <button type="submit" className="button text-error" disabled={busy}>
             {busy ? "Working…" : title}
           </button>
         </div>
@@ -445,5 +441,14 @@ export function useExplorerActions(props: Props) {
       />
     </Modal>
   );
-  return { onContext, onKey, menu, dialog, historyDialog, busy, creation };
+  return {
+    onContext,
+    onKey,
+    menu,
+    dialog,
+    historyDialog,
+    busy,
+    creation,
+    rename,
+  };
 }

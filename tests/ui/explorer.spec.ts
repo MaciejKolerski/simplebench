@@ -105,6 +105,15 @@ async function setup(
         /\/$/,
         "",
       );
+      if (operation.kind === "rename" && !relative) {
+        const newPath = `${root.slice(0, root.lastIndexOf("/"))}/${operation.name}`;
+        for (const [path, content] of Object.entries(native.editorFiles))
+          if (path.startsWith(oldPath + "/")) {
+            native.editorFiles[newPath + path.slice(oldPath.length)] = content;
+            delete native.editorFiles[path];
+          }
+        return { oldPath, newPath };
+      }
       if (["delete", "trash"].includes(operation.kind)) {
         entries = entries.filter(
           (entry) =>
@@ -363,9 +372,19 @@ test("renames a folder without losing dirty editor text or undo history", async 
   await page.keyboard.press("Control+End");
   await page.keyboard.insertText("unsaved");
   await menu(page, "src", "Rename…");
-  await page.getByRole("textbox", { name: "Name", exact: true }).fill("code");
-  await page.getByRole("button", { name: "Rename", exact: true }).click();
+  const input = page.locator(".file-tree").getByRole("textbox", {
+    name: "Rename name",
+    exact: true,
+  });
   await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue("src");
+  await expect(
+    page.getByRole("button", { name: "main.ts", exact: true }),
+  ).toBeVisible();
+  await input.fill("code");
+  await input.press("Enter");
+  await expect(input).toHaveCount(0);
   await expect(page.locator(".editor-path")).toContainText("code/main.ts");
   await expect(page.locator(".cm-content")).toContainText("unsaved");
   await page.locator(".cm-content").focus();
@@ -646,7 +665,7 @@ test("creates and copies items and exposes scoped Git history", async ({
     .toBe("src");
 });
 
-test("context menus fit small windows and report failed renames without closing the editor", async ({
+test("context menus fit small windows and inline renames retain errors and support retry", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 800, height: 420 });
@@ -665,12 +684,157 @@ test("context menus fit small windows and report failed renames without closing 
   await page.keyboard.press("Escape");
   await page.getByRole("button", { name: "README.md", exact: true }).focus();
   await page.keyboard.press("F2");
-  await page.getByRole("textbox", { name: "Name", exact: true }).fill("src");
-  await page.getByRole("button", { name: "Rename", exact: true }).click();
-  await expect(page.getByRole("dialog")).toContainText("already exists");
+  const input = page.locator(".file-tree").getByRole("textbox", {
+    name: "Rename name",
+    exact: true,
+  });
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue("README.md");
+  expect(
+    await input.evaluate((element: HTMLInputElement) => [
+      element.selectionStart,
+      element.selectionEnd,
+    ]),
+  ).toEqual([0, "README.md".length]);
+  await input.fill("src");
+  await input.press("Enter");
+  await expect(page.getByRole("alert")).toContainText("already exists");
+  await expect(input).toHaveValue("src");
+  await expect(input).toBeFocused();
+  await input.fill("草稿.md");
+  for (const key of ["Enter", "Escape"])
+    await input.dispatchEvent("keydown", { key, isComposing: true });
+  await expect(input).toHaveValue("草稿.md");
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.calls.filter(
+        (call: any) => call.command === "file_operation",
+      ),
+    ),
+  ).toHaveLength(1);
+  for (const colorScheme of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme });
+    await page.locator(".explorer-panel").screenshot({
+      path: test.info().outputPath(`rename-file-${colorScheme}.png`),
+    });
+  }
+  await input.press("Enter");
+  await expect(input).toHaveCount(0);
   await expect(
-    page.getByRole("button", { name: "README.md", exact: true }),
+    page.getByRole("button", { name: "草稿.md", exact: true }),
   ).toBeVisible();
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.calls
+        .filter((call: any) => call.command === "file_operation")
+        .at(-1),
+    ),
+  ).toMatchObject({
+    args: {
+      root: "/project",
+      relative: "README.md",
+      operation: { kind: "rename", name: "草稿.md" },
+    },
+  });
+});
+
+test("cancels inline file and folder renames without changing disk contents", async ({
+  page,
+}) => {
+  await setup(page, false);
+  for (const [entry, original] of [
+    ["README.md", "README.md"],
+    ["src", "src"],
+    ["Project folder project", "project"],
+  ]) {
+    const row = page.getByRole("button", { name: entry, exact: true });
+    for (const [name, finish] of [
+      ["", "Enter"],
+      ["   ", "Enter"],
+      [original, "Enter"],
+      ["cancelled", "Escape"],
+      ["cancelled", "blur"],
+    ]) {
+      await menu(page, entry, "Rename…");
+      const input = page.getByRole("textbox", {
+        name: "Rename name",
+        exact: true,
+      });
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await expect(input).toBeFocused();
+      await expect(input).toHaveValue(original);
+      await input.fill(name);
+      if (finish === "blur")
+        await page
+          .getByRole("button", { name: "Refresh explorer", exact: true })
+          .click();
+      else await input.press(finish);
+      await expect(input).toHaveCount(0);
+      await expect(row).toBeVisible();
+      if (finish !== "blur") await expect(row).toBeFocused();
+    }
+  }
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.calls.filter(
+        (call: any) => call.command === "file_operation",
+      ),
+    ),
+  ).toHaveLength(0);
+});
+
+test("renames nested files and the project root inline while keeping the editor open", async ({
+  page,
+}) => {
+  await setup(page, false);
+  await page.getByRole("button", { name: "src", exact: true }).click();
+  await page.getByRole("button", { name: "main.ts", exact: true }).click();
+  await page.locator(".cm-content").fill("unsaved rename");
+  for (const [entry, name, relative] of [
+    ["main.ts", "renamed.ts", "src/main.ts"],
+    ["Project folder project", "renamed-project", ""],
+  ]) {
+    await menu(page, entry, "Rename…");
+    const input = page.getByRole("textbox", {
+      name: "Rename name",
+      exact: true,
+    });
+    await expect(input).toBeFocused();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await input.fill(name);
+    await input.press("Enter");
+    await expect(input).toHaveCount(0);
+    await expect(page.locator(".cm-content")).toContainText("unsaved rename");
+    expect(
+      await page.evaluate(() =>
+        (window as any).__nativeTest.calls
+          .filter((call: any) => call.command === "file_operation")
+          .at(-1),
+      ),
+    ).toMatchObject({
+      args: { root: "/project", relative, operation: { kind: "rename", name } },
+    });
+  }
+  await expect(
+    page.getByRole("button", {
+      name: "Project folder renamed-project",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.locator(".editor-path")).toContainText("src/renamed.ts");
+  await page.locator(".cm-content").focus();
+  await page.keyboard.press("Control+s");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__nativeTest.editorFiles[
+            "/renamed-project/src/renamed.ts"
+          ].content,
+      ),
+    )
+    .toBe("unsaved rename");
 });
 
 test("a newer search cannot be replaced by a slower previous response", async ({
