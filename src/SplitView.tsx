@@ -26,6 +26,7 @@ import type {
   Split,
   TabDropSide,
 } from "./model";
+import BrowserPane from "./BrowserPane";
 import TerminalPane from "./TerminalPane";
 import { usePaneDrag } from "./pane-drag";
 
@@ -146,6 +147,15 @@ export default function SplitView({
                   onRestart={(useProjectDirectory) =>
                     props.onRestart(layout.id, useProjectDirectory)
                   }
+                />
+              </div>
+            ) : layout.type === "browser" ? (
+              <div key={layout.id} className="split-child" style={bounds}>
+                <BrowserPane
+                  tab={layout}
+                  overview={props.overview}
+                  onFocus={() => props.onFocus(layout.id)}
+                  onClose={() => props.onClosePane(layout.id)}
                 />
               </div>
             ) : layout.type === "file" ? (

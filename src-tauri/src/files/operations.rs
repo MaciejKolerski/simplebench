@@ -5,7 +5,7 @@ use std::{
     io::Write,
     path::{Component, Path, PathBuf},
 };
-use tauri::{Manager, WebviewWindow};
+use tauri::{Manager, Window};
 use tauri_plugin_opener::OpenerExt;
 
 #[derive(Deserialize)]
@@ -261,7 +261,7 @@ fn perform(root: &str, relative: &str, operation: Operation) -> Result<FileChang
 
 #[tauri::command]
 pub async fn resolve_project_entry(
-    window: WebviewWindow,
+    window: Window,
     root: String,
     relative: String,
 ) -> Result<String, String> {
@@ -275,7 +275,7 @@ pub async fn resolve_project_entry(
 
 #[tauri::command]
 pub async fn file_operation(
-    window: WebviewWindow,
+    window: Window,
     root: String,
     relative: String,
     operation: Operation,
@@ -301,7 +301,7 @@ pub async fn file_operation(
 
 #[tauri::command]
 pub async fn open_project_item(
-    window: WebviewWindow,
+    window: Window,
     root: String,
     relative: String,
     reveal: bool,
@@ -324,7 +324,7 @@ pub async fn open_project_item(
 
 #[tauri::command]
 pub async fn git_discard(
-    window: WebviewWindow,
+    window: Window,
     root: String,
     change: crate::git::Change,
 ) -> Result<(), String> {
@@ -343,7 +343,7 @@ pub async fn git_discard(
 
 #[tauri::command]
 pub async fn ignore_project_item(
-    window: WebviewWindow,
+    window: Window,
     root: String,
     relative: String,
     local: bool,

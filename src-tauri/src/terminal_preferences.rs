@@ -1,6 +1,6 @@
 use serde_json::Value;
 use std::{fs, io::Read, path::Path, sync::Mutex};
-use tauri::{Emitter, Manager, State, WebviewWindow};
+use tauri::{Emitter, Manager, State, Window};
 
 const LIMIT: u64 = 16 * 1024;
 
@@ -184,7 +184,7 @@ fn save(path: &Path, data: &TerminalPreferences) -> Result<(), String> {
 
 #[tauri::command]
 pub fn load_terminal_preferences(
-    window: WebviewWindow,
+    window: Window,
     app: tauri::AppHandle,
     state: State<'_, TerminalPreferencesFile>,
 ) -> Result<Option<TerminalPreferences>, String> {
@@ -204,7 +204,7 @@ pub fn load_terminal_preferences(
 
 #[tauri::command]
 pub fn save_terminal_preferences(
-    window: WebviewWindow,
+    window: Window,
     app: tauri::AppHandle,
     state: State<'_, TerminalPreferencesFile>,
     data: TerminalPreferences,

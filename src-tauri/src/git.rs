@@ -4,7 +4,7 @@ use std::{
     path::{Component, Path},
     process::{Command, Output},
 };
-use tauri::WebviewWindow;
+use tauri::Window;
 
 pub mod history;
 
@@ -114,7 +114,7 @@ pub fn status(path: &str) -> Result<Option<GitStatus>, String> {
 }
 
 #[tauri::command]
-pub async fn git_status(window: WebviewWindow, root: String) -> Result<Option<GitStatus>, String> {
+pub async fn git_status(window: Window, root: String) -> Result<Option<GitStatus>, String> {
     main_window(&window)?;
     tauri::async_runtime::spawn_blocking(move || status(&root))
         .await
@@ -219,7 +219,7 @@ pub(crate) fn discard(root: &str, expected: &Change) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn git_stage(
-    window: WebviewWindow,
+    window: Window,
     root: String,
     paths: Vec<String>,
     stage: bool,
@@ -232,7 +232,7 @@ pub async fn git_stage(
 
 #[tauri::command]
 pub async fn git_diff(
-    window: WebviewWindow,
+    window: Window,
     root: String,
     path: String,
     staged: bool,
@@ -268,11 +268,7 @@ pub async fn git_diff(
 }
 
 #[tauri::command]
-pub async fn git_commit(
-    window: WebviewWindow,
-    root: String,
-    message: String,
-) -> Result<(), String> {
+pub async fn git_commit(window: Window, root: String, message: String) -> Result<(), String> {
     main_window(&window)?;
     if message.trim().is_empty() {
         return Err("Enter a commit message.".into());

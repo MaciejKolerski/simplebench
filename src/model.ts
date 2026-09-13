@@ -1,3 +1,5 @@
+import { restoreBrowserUrl } from "./browser-url.ts";
+
 export interface ShellProfile {
   id: string;
   name: string;
@@ -28,7 +30,7 @@ export interface Split {
   first: Layout;
   second: Layout;
 }
-export type LayoutPane = Pane | FileTab;
+export type LayoutPane = Pane | FileTab | BrowserTab;
 export type Layout = LayoutPane | Split;
 export interface LayoutSize {
   width: number;
@@ -73,7 +75,19 @@ export interface FileTab {
   markdownView?: "split" | "preview";
 }
 export type MarkdownView = "editor" | "split" | "preview";
-export type Tab = TerminalTab | CommitTab | FileTab;
+export interface BrowserTab {
+  type: "browser";
+  id: string;
+  title: string;
+  url: string;
+}
+export const newBrowserTab = (url = "about:blank"): BrowserTab => ({
+  type: "browser",
+  id: newId(),
+  title: "Browser",
+  url: restoreBrowserUrl(url),
+});
+export type Tab = TerminalTab | CommitTab | FileTab | BrowserTab;
 export type TabDropSide = "left" | "right" | "top" | "bottom";
 export type TabCloseAction =
   "close" | "others" | "left" | "right" | "clean" | "all";
@@ -515,7 +529,7 @@ export function canMergeTabs(
     return false;
   const first = minimumLayoutSize(target.layout);
   const second = minimumLayoutSize(
-    source.type === "file" ? source : source.layout,
+    source.type !== "terminal" ? source : source.layout,
   );
   return side === "left" || side === "right"
     ? size.width >= first.width + SPLIT_DIVIDER_SIZE + second.width &&
@@ -542,7 +556,7 @@ export function mergeTabs(
     return workspace;
   // Moved panes retain their shells even after restoring or restarting them.
   const moved =
-    source.type === "file"
+    source.type !== "terminal"
       ? source
       : mapLayout(source.layout, (pane) =>
           pane.profileId !== undefined || source.profileId === target.profileId
@@ -569,7 +583,7 @@ export function mergeTabs(
               ...target,
               layout,
               activePaneId:
-                source.type === "file" ? source.id : source.activePaneId,
+                source.type !== "terminal" ? source.id : source.activePaneId,
             }
           : tab,
       ),
@@ -776,6 +790,57 @@ export function updateFile(
   };
 }
 
+export function browsersInTab(tab: Tab): BrowserTab[] {
+  return tab.type === "browser"
+    ? [tab]
+    : tab.type === "terminal"
+      ? layoutPanes(tab.layout).filter(
+          (pane): pane is BrowserTab => pane.type === "browser",
+        )
+      : [];
+}
+
+export function browserTabs(session: Session): BrowserTab[] {
+  return session.projects.flatMap((project) =>
+    project.workspaces.flatMap((workspace) =>
+      workspace.tabs.flatMap(browsersInTab),
+    ),
+  );
+}
+
+export function updateBrowser(
+  session: Session,
+  id: string,
+  change: Partial<Pick<BrowserTab, "url" | "title">>,
+): Session {
+  const update = (layout: Layout): Layout =>
+    layout.type === "split"
+      ? {
+          ...layout,
+          first: update(layout.first),
+          second: update(layout.second),
+        }
+      : layout.type === "browser" && layout.id === id
+        ? { ...layout, ...change }
+        : layout;
+  return {
+    ...session,
+    projects: session.projects.map((project) => ({
+      ...project,
+      workspaces: project.workspaces.map((workspace) => ({
+        ...workspace,
+        tabs: workspace.tabs.map((tab) =>
+          tab.type === "terminal"
+            ? { ...tab, layout: update(tab.layout) }
+            : tab.type === "browser" && tab.id === id
+              ? { ...tab, ...change }
+              : tab,
+        ),
+      })),
+    })),
+  };
+}
+
 const record = (value: unknown): Record<string, unknown> =>
   typeof value === "object" && value !== null
     ? (value as Record<string, unknown>)
@@ -821,9 +886,16 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
         : {}),
     };
   };
+  const browser = (node: Record<string, unknown>): BrowserTab => ({
+    type: "browser",
+    id: id(node.id),
+    title: string(node.title, "Browser"),
+    url: restoreBrowserUrl(node.url),
+  });
   const layout = (value: unknown, cwd: string, depth = 0): Layout => {
     const node = record(value);
     if (node.type === "file") return file(node, cwd);
+    if (node.type === "browser") return browser(node);
     // Preserve every layout accepted by the native JSON parser's nesting limit.
     if (node.type === "split" && depth < 128)
       return {
@@ -858,6 +930,7 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
         const tabs = (Array.isArray(workspace.tabs) ? workspace.tabs : []).map(
           (value): Tab => {
             const tab = record(value);
+            if (tab.type === "browser") return browser(tab);
             if (tab.type === "file") {
               return file(tab, path);
             }

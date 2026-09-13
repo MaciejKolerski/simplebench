@@ -5,7 +5,7 @@ use std::{
     path::{Component, Path, PathBuf},
     sync::Mutex,
 };
-use tauri::{Manager, State, WebviewWindow};
+use tauri::{Manager, State, Window};
 
 pub mod editor;
 pub mod markdown;
@@ -15,7 +15,7 @@ pub mod search;
 #[derive(Default)]
 pub struct SessionFile(pub Mutex<()>);
 
-pub fn main_window(window: &WebviewWindow) -> Result<(), String> {
+pub fn main_window(window: &Window) -> Result<(), String> {
     if window.label() == "main" {
         Ok(())
     } else {
@@ -91,7 +91,7 @@ pub fn read_directory(root: &str, relative: &str) -> Result<Vec<Entry>, String> 
 
 #[tauri::command]
 pub async fn list_directory(
-    window: WebviewWindow,
+    window: Window,
     root: String,
     relative: String,
 ) -> Result<Vec<Entry>, String> {
@@ -102,7 +102,7 @@ pub async fn list_directory(
 }
 
 #[tauri::command]
-pub async fn validate_directory(window: WebviewWindow, path: String) -> Result<String, String> {
+pub async fn validate_directory(window: Window, path: String) -> Result<String, String> {
     main_window(&window)?;
     tauri::async_runtime::spawn_blocking(move || {
         directory(&path).map(|path| path.to_string_lossy().into_owned())
@@ -113,7 +113,7 @@ pub async fn validate_directory(window: WebviewWindow, path: String) -> Result<S
 
 #[tauri::command]
 pub async fn preview_file(
-    window: WebviewWindow,
+    window: Window,
     root: String,
     relative: String,
 ) -> Result<String, String> {
@@ -152,7 +152,7 @@ fn session_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
 
 #[tauri::command]
 pub fn load_session(
-    window: WebviewWindow,
+    window: Window,
     app: tauri::AppHandle,
     state: State<'_, SessionFile>,
 ) -> Result<Option<serde_json::Value>, String> {
@@ -184,7 +184,7 @@ pub fn load_session(
 
 #[tauri::command]
 pub fn save_session(
-    window: WebviewWindow,
+    window: Window,
     app: tauri::AppHandle,
     state: State<'_, SessionFile>,
     data: serde_json::Value,

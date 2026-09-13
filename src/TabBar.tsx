@@ -5,6 +5,7 @@ import {
   ChevronRight,
   GitCommitHorizontal,
   FileCode,
+  Globe,
   Plus,
   Terminal,
   X,
@@ -22,6 +23,7 @@ interface Props {
   newTabTitle: string;
   onNew: () => void;
   onNewFile: () => void;
+  onNewBrowser: () => void;
   onSelect: (id: string) => void;
   onClose: (id: string, action?: TabCloseAction) => void;
   onRename: (tab: Tab) => void;
@@ -37,6 +39,7 @@ export default function TabBar({
   newTabTitle,
   onNew,
   onNewFile,
+  onNewBrowser,
   onSelect,
   onClose,
   onRename,
@@ -211,6 +214,8 @@ export default function TabBar({
               >
                 {tab.type === "commit" ? (
                   <GitCommitHorizontal size={14} />
+                ) : tab.type === "browser" ? (
+                  <Globe size={14} />
                 ) : tab.type === "file" ? (
                   <FileCode size={14} />
                 ) : (
@@ -290,6 +295,11 @@ export default function TabBar({
               label: "New file",
               icon: <FileCode size={14} aria-hidden="true" />,
               run: onNewFile,
+            },
+            {
+              label: "New browser",
+              icon: <Globe size={14} aria-hidden="true" />,
+              run: onNewBrowser,
             },
           ]}
           onClose={() => {

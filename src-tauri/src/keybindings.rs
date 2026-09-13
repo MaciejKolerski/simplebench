@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fs, io::Read, path::Path, sync::Mutex};
-use tauri::{Emitter, Manager, State, WebviewWindow};
+use tauri::{Emitter, Manager, State, Window};
 
 const LIMIT: u64 = 64 * 1024;
 
@@ -51,7 +51,7 @@ fn save(path: &Path, data: &Keybindings) -> Result<(), String> {
 
 #[tauri::command]
 pub fn load_keybindings(
-    window: WebviewWindow,
+    window: Window,
     app: tauri::AppHandle,
     state: State<'_, KeybindingsFile>,
 ) -> Result<Option<serde_json::Value>, String> {
@@ -69,7 +69,7 @@ pub fn load_keybindings(
 
 #[tauri::command]
 pub fn save_keybindings(
-    window: WebviewWindow,
+    window: Window,
     app: tauri::AppHandle,
     state: State<'_, KeybindingsFile>,
     data: Keybindings,

@@ -11,7 +11,7 @@ use std::{
     },
     time::{Duration, Instant},
 };
-use tauri::{State, WebviewWindow};
+use tauri::{State, Window};
 
 const FILE_LIMIT: u64 = 16 * 1024 * 1024;
 const MATCH_LIMIT: usize = 1000;
@@ -248,7 +248,7 @@ fn search(
 
 #[tauri::command]
 pub async fn search_project(
-    window: WebviewWindow,
+    window: Window,
     state: State<'_, ProjectSearch>,
     root: String,
     relative: String,
@@ -269,7 +269,7 @@ pub async fn search_project(
 
 #[tauri::command]
 pub fn cancel_project_search(
-    window: WebviewWindow,
+    window: Window,
     state: State<'_, ProjectSearch>,
 ) -> Result<(), String> {
     main_window(&window)?;

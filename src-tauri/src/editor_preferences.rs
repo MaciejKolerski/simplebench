@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{fs, io::Read, path::Path, sync::Mutex};
-use tauri::{Emitter, Manager, State, WebviewWindow};
+use tauri::{Emitter, Manager, State, Window};
 
 const LIMIT: u64 = 4 * 1024;
 
@@ -56,7 +56,7 @@ fn save(path: &Path, data: &EditorPreferences) -> Result<(), String> {
 
 #[tauri::command]
 pub fn load_editor_preferences(
-    window: WebviewWindow,
+    window: Window,
     app: tauri::AppHandle,
     state: State<'_, EditorPreferencesFile>,
 ) -> Result<Option<EditorPreferences>, String> {
@@ -74,7 +74,7 @@ pub fn load_editor_preferences(
 
 #[tauri::command]
 pub fn save_editor_preferences(
-    window: WebviewWindow,
+    window: Window,
     app: tauri::AppHandle,
     state: State<'_, EditorPreferencesFile>,
     data: EditorPreferences,

@@ -1,5 +1,5 @@
 use std::sync::Mutex;
-use tauri::{Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder, Window};
 
 #[derive(Default)]
 struct Lifecycle {
@@ -19,7 +19,7 @@ pub async fn prepare(app: &tauri::AppHandle) -> Result<(), String> {
     // Preloading and rapid clicks must share one webview. Creation stays off
     // the event thread because WebView2 can deadlock when built there.
     let _creation = state.creation.lock().await;
-    if app.get_webview_window("settings").is_some() {
+    if app.get_window("settings").is_some() {
         return Ok(());
     }
     *state.lifecycle.lock().map_err(|error| error.to_string())? = Lifecycle::default();
@@ -46,7 +46,7 @@ pub async fn prepare(app: &tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-pub fn ready(window: &WebviewWindow) -> Result<bool, String> {
+pub fn ready(window: &Window) -> Result<bool, String> {
     let state = window.state::<SettingsWindow>();
     let requested = {
         let mut lifecycle = state.lifecycle.lock().map_err(|error| error.to_string())?;
@@ -59,7 +59,7 @@ pub fn ready(window: &WebviewWindow) -> Result<bool, String> {
     Ok(requested)
 }
 
-fn show(window: &WebviewWindow) -> Result<(), String> {
+fn show(window: &Window) -> Result<(), String> {
     let page = window
         .state::<SettingsWindow>()
         .lifecycle
@@ -79,7 +79,7 @@ fn show(window: &WebviewWindow) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn open_settings(
-    window: WebviewWindow,
+    window: Window,
     app: tauri::AppHandle,
     page: Option<String>,
 ) -> Result<(), String> {
@@ -101,7 +101,7 @@ pub async fn open_settings(
         lifecycle.ready
     };
     if ready {
-        if let Some(window) = app.get_webview_window("settings") {
+        if let Some(window) = app.get_window("settings") {
             show(&window)?;
         }
     }

@@ -1,5 +1,5 @@
 use std::{fs, io::Read};
-use tauri::{ipc::Response, WebviewWindow};
+use tauri::{ipc::Response, Window};
 
 const IMAGE_LIMIT: u64 = 16 * 1024 * 1024;
 
@@ -33,7 +33,7 @@ fn read_image(root: &str, relative: &str) -> Result<Vec<u8>, String> {
 
 #[tauri::command]
 pub async fn read_markdown_image(
-    window: WebviewWindow,
+    window: Window,
     root: String,
     relative: String,
 ) -> Result<Response, String> {

@@ -5,7 +5,7 @@
 SimpleBench is a desktop ADE application developed incrementally around project
 folders, named workspaces, and terminal tabs. A project owns workspaces sharing
 its folder; each workspace owns tabs; each terminal tab owns a default shell
-environment and a tree of terminal and file editor panels. File and commit tabs
+environment and a tree of terminal, file editor, and browser panels. Browser, file, and commit tabs
 do not own shells. There is no hardcoded tab count limit.
 
 The current milestone includes project selection, workspaces, tabs, a file
@@ -24,8 +24,9 @@ or acronym.
 - Plain CSS defines the interface and theme in `src/styles.css`.
 - `src/model.ts` owns the persisted layout and pure layout transformations.
   Workspace tabs are terminals with pane layouts, file editors with project-relative
-  paths and positions, or commit views with a repository path and full commit hash.
-  Dragging terminal or file tabs into a terminal layout preserves pane IDs,
+  paths and positions, browsers with an HTTP(S) URL, or commit views with a repository
+  path and full commit hash.
+  Dragging terminal, browser, or file tabs into a terminal layout preserves pane IDs,
   editor buffers, and running PTYs; moved terminal panes may override the tab's default shell profile, including after restoration.
   Keep terminal operations scoped to
   terminal tabs and preserve compatibility with saved tabs without a type.
@@ -64,6 +65,19 @@ or acronym.
   windows. Settings → Terminal owns writes to `terminal-preferences.json` through
   `src-tauri/src/terminal_preferences.rs`. Apply changes to live and hidden xterm
   instances without restarting PTYs; unset appearance options inherit the theme.
+- `src/BrowserPane.tsx` provides browser controls; `src/browser-runtime.ts` positions
+  native child webviews and retains them across tab/workspace switches and docking.
+  `src-tauri/src/browser.rs` uses the system Tauri engine, with a GTK overlay on Linux.
+  `src-tauri/src/browser/servers.rs` discovers local HTTP listeners for address
+  suggestions; probe only loopback addresses and keep discovery in the main view.
+  Stream confirmed addresses without waiting for other probes; share the last results
+  and the in-flight scan across browser panels in `src/browser-runtime.ts`.
+  Restore addresses lazily; close webviews only when their last panel is removed.
+  Browser pages have a separate storage profile and no application command privileges.
+  Their only IPC permission reports events for their own browser panel. Scope native
+  capabilities by webview label: child browser views share the main window. Extract
+  `Window`, not `WebviewWindow`, in commands because main contains multiple webviews;
+  preserve the caller webview check in the application invoke handler.
 - xterm.js renders terminals; `src/terminal-runtime.ts` owns their lifecycle and
   streaming independently of React. Rust `portable-pty` owns native processes.
 - `src/CliTitleSetup.tsx` requests consent when a local Linux terminal runs

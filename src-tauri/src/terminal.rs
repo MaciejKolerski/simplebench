@@ -13,7 +13,7 @@ use std::{
 };
 use tauri::{
     ipc::{Channel, Response},
-    State, WebviewWindow,
+    State, Window,
 };
 
 const HIGH_WATER: usize = 128 * 1024;
@@ -368,7 +368,7 @@ fn process_parents() -> Result<HashSet<u32>, String> {
 
 #[tauri::command]
 pub async fn busy_terminals(
-    window: WebviewWindow,
+    window: Window,
     state: State<'_, Terminals>,
     ids: Vec<String>,
 ) -> Result<Vec<String>, String> {
@@ -381,7 +381,7 @@ pub async fn busy_terminals(
 
 #[tauri::command]
 pub async fn start_terminal(
-    window: WebviewWindow,
+    window: Window,
     state: State<'_, Terminals>,
     shells: State<'_, Shells>,
     request: StartRequest,
@@ -398,7 +398,7 @@ pub async fn start_terminal(
 
 #[tauri::command]
 pub async fn write_terminal(
-    window: WebviewWindow,
+    window: Window,
     state: State<'_, Terminals>,
     id: String,
     data: String,
@@ -412,7 +412,7 @@ pub async fn write_terminal(
 
 #[tauri::command]
 pub fn acknowledge_terminal(
-    window: WebviewWindow,
+    window: Window,
     state: State<'_, Terminals>,
     id: String,
     bytes: usize,
@@ -424,7 +424,7 @@ pub fn acknowledge_terminal(
 
 #[tauri::command]
 pub fn resize_terminal(
-    window: WebviewWindow,
+    window: Window,
     state: State<'_, Terminals>,
     id: String,
     cols: u16,
@@ -443,7 +443,7 @@ pub fn resize_terminal(
 
 #[tauri::command]
 pub async fn close_terminal(
-    window: WebviewWindow,
+    window: Window,
     state: State<'_, Terminals>,
     id: String,
 ) -> Result<(), String> {
@@ -455,10 +455,7 @@ pub async fn close_terminal(
 }
 
 #[tauri::command]
-pub async fn reset_terminals(
-    window: WebviewWindow,
-    state: State<'_, Terminals>,
-) -> Result<(), String> {
+pub async fn reset_terminals(window: Window, state: State<'_, Terminals>) -> Result<(), String> {
     main_window(&window)?;
     let state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || state.stop_all())
@@ -468,7 +465,7 @@ pub async fn reset_terminals(
 
 #[tauri::command]
 pub async fn quote_paths(
-    window: WebviewWindow,
+    window: Window,
     shells: State<'_, Shells>,
     profile_id: String,
     paths: Vec<String>,
@@ -508,7 +505,7 @@ pub struct TerminalContext {
 
 #[tauri::command]
 pub fn terminal_contexts(
-    window: WebviewWindow,
+    window: Window,
     state: State<'_, Terminals>,
 ) -> Result<HashMap<String, TerminalContext>, String> {
     main_window(&window)?;

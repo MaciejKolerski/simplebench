@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Mutex,
 };
-use tauri::{Emitter, Manager, State, WebviewWindow};
+use tauri::{Emitter, Manager, State, Window};
 use tauri_plugin_opener::OpenerExt;
 
 const JSON_LIMIT: u64 = 256 * 1024;
@@ -385,7 +385,7 @@ fn read_preferences(path: &Path) -> Result<Preferences, String> {
 
 #[tauri::command]
 pub fn load_theme_preferences(
-    window: WebviewWindow,
+    window: Window,
     app: tauri::AppHandle,
     state: State<'_, Themes>,
 ) -> Result<Current, String> {
@@ -410,17 +410,13 @@ pub fn load_theme_preferences(
 }
 
 #[tauri::command]
-pub fn load_theme(
-    window: WebviewWindow,
-    app: tauri::AppHandle,
-    id: String,
-) -> Result<Bundle, String> {
+pub fn load_theme(window: Window, app: tauri::AppHandle, id: String) -> Result<Bundle, String> {
     authorize(window.label(), false)?;
     bundle(&library(&app)?, &id)
 }
 
 #[tauri::command]
-pub fn list_themes(window: WebviewWindow, app: tauri::AppHandle) -> Result<Catalog, String> {
+pub fn list_themes(window: Window, app: tauri::AppHandle) -> Result<Catalog, String> {
     authorize(window.label(), true)?;
     let directory = library(&app)?;
     let mut themes = Vec::new();
@@ -462,7 +458,7 @@ pub fn list_themes(window: WebviewWindow, app: tauri::AppHandle) -> Result<Catal
 
 #[tauri::command]
 pub fn save_theme_preferences(
-    window: WebviewWindow,
+    window: Window,
     app: tauri::AppHandle,
     state: State<'_, Themes>,
     data: Preferences,
@@ -487,7 +483,7 @@ pub fn save_theme_preferences(
 }
 
 #[tauri::command]
-pub fn refresh_themes(window: WebviewWindow, app: tauri::AppHandle) -> Result<(), String> {
+pub fn refresh_themes(window: Window, app: tauri::AppHandle) -> Result<(), String> {
     authorize(window.label(), true)?;
     app.emit("theme-changed", ())
         .map_err(|error| error.to_string())
@@ -495,7 +491,7 @@ pub fn refresh_themes(window: WebviewWindow, app: tauri::AppHandle) -> Result<()
 
 #[tauri::command]
 pub fn save_theme_manifest(
-    window: WebviewWindow,
+    window: Window,
     app: tauri::AppHandle,
     state: State<'_, Themes>,
     id: String,
@@ -550,7 +546,7 @@ fn save_manifest(root: &Path, id: &str, expected: &Value, data: &Value) -> Resul
 
 #[tauri::command]
 pub fn open_themes_folder(
-    window: WebviewWindow,
+    window: Window,
     app: tauri::AppHandle,
     id: Option<String>,
 ) -> Result<(), String> {
@@ -656,7 +652,7 @@ fn import(root: &Path, source: &Path) -> Result<String, String> {
 
 #[tauri::command]
 pub async fn import_theme(
-    window: WebviewWindow,
+    window: Window,
     app: tauri::AppHandle,
     path: String,
 ) -> Result<String, String> {
@@ -672,7 +668,7 @@ pub async fn import_theme(
 
 #[tauri::command]
 pub fn create_theme(
-    window: WebviewWindow,
+    window: Window,
     app: tauri::AppHandle,
     state: State<'_, Themes>,
 ) -> Result<String, String> {
@@ -733,7 +729,7 @@ fn create_starter(root: &Path) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn sync_theme_window(window: WebviewWindow, appearance: Appearance) -> Result<(), String> {
+pub fn sync_theme_window(window: Window, appearance: Appearance) -> Result<(), String> {
     authorize(window.label(), false)?;
     window
         .set_theme(appearance.native())

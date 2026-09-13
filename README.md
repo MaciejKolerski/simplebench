@@ -25,7 +25,7 @@ AUR publication, and the optional Flathub handoff.
   to rename or delete it. Any workspace can be deleted, including the last one;
   deletion closes its tabs and checks unsaved edits without deleting its folder.
   A shortcut for the panel can be assigned in Settings → Keybinds.
-- Drag a tab along the title bar to reorder it. Drag an inactive terminal or file tab
+- Drag a tab along the title bar to reorder it. Drag an inactive terminal, browser, or file tab
   onto the active terminal view to combine them; the nearest edge selects the
   split direction. The source tab disappears and its panels keep their running
   shells, output, directories, and environments. Hold near the tab strip's edge
@@ -90,6 +90,40 @@ AUR publication, and the optional Flathub handoff.
   to its output.
 - Drag explorer files or desktop files into a terminal to insert paths quoted for
   that terminal's shell. Dropping a path inserts text without submitting it.
+
+## Browser panels
+
+Use **+ → New browser**, enter an HTTP(S) address (including `localhost:3000`),
+then press Enter. Other text searches DuckDuckGo. The toolbar provides back,
+forward, reload/stop, and opening the page in your default external browser.
+Ctrl/Cmd+L selects the address; Ctrl/Cmd+F searches the page.
+
+Focusing the address shows active local HTTP servers, such as
+`http://localhost:3000`. Click an address or select it with the arrow keys and
+Enter. Typing filters the list, which refreshes every five seconds while open.
+Detected addresses appear as they respond, without waiting for other ports.
+Reopening the list reuses the last results while checking for changes in the background.
+Discovery checks local listening sockets with a bounded HTTP probe; HTTPS-only
+servers and servers inside containers/VMs without a host port are not discovered.
+Their addresses can still be entered manually.
+
+To place a browser beside terminals, select the terminal tab and drag the browser
+tab onto an edge of its layout. The page, form contents and history remain loaded
+when docking or switching tabs/workspaces. Closing the browser panel releases its
+webview. Restarting SimpleBench restores its saved address with a fresh page;
+unsent forms and browsing history are not session backups.
+
+Pages use Tauri's existing system engine: WebKitGTK on Linux, WKWebView on macOS,
+and WebView2 on Windows. No additional browser engine is bundled. Cookies and
+site storage belong to SimpleBench, separate from the user's external browser.
+The same system prerequisites as the desktop app apply.
+
+This does not reproduce every Firefox/Chrome feature. Extensions, external browser
+profiles/passwords, DRM and some authentication flows depend on the system webview.
+Links requesting a new window open in another browser tab; script-controlled popup
+relationships (`window.opener`) are not preserved. Use **Open in default browser**
+for sites that require those features. Web pages cannot access project files,
+terminals or application preferences.
 
 ## Getting started
 

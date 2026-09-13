@@ -8,7 +8,7 @@ use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
-use tauri::{Emitter, Manager, WebviewWindow};
+use tauri::{Emitter, Manager, Window};
 use tauri_plugin_dialog::DialogExt;
 
 const FILE_LIMIT: u64 = 16 * 1024 * 1024;
@@ -363,7 +363,7 @@ fn write_new(
 
 #[tauri::command]
 pub async fn save_new_editor_file(
-    window: WebviewWindow,
+    window: Window,
     app: tauri::AppHandle,
     content: String,
     suggested_name: String,
@@ -393,7 +393,7 @@ pub async fn save_new_editor_file(
 
 #[tauri::command]
 pub async fn resolve_editor_file(
-    window: WebviewWindow,
+    window: Window,
     root: String,
     relative: String,
 ) -> Result<String, EditorError> {
@@ -407,7 +407,7 @@ pub async fn resolve_editor_file(
 
 #[tauri::command]
 pub async fn read_editor_file(
-    window: WebviewWindow,
+    window: Window,
     root: String,
     relative: String,
     known_revision: Option<String>,
@@ -420,7 +420,7 @@ pub async fn read_editor_file(
 
 #[tauri::command]
 pub async fn save_editor_file(
-    window: WebviewWindow,
+    window: Window,
     app: tauri::AppHandle,
     request: SaveFile,
 ) -> Result<String, EditorError> {
@@ -436,7 +436,7 @@ pub async fn save_editor_file(
 
 #[tauri::command]
 pub async fn watch_editor_files(
-    window: WebviewWindow,
+    window: Window,
     app: tauri::AppHandle,
     files: Vec<FileLocation>,
 ) -> Result<(), String> {

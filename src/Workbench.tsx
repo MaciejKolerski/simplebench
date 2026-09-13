@@ -24,6 +24,9 @@ import type { GitStatus } from "./api";
 import {
   active,
   activePanel,
+  browserTabs,
+  newBrowserTab,
+  updateBrowser,
   addWorkspace,
   filesInTab,
   fileTabs,
@@ -85,6 +88,8 @@ import SidebarToggle from "./SidebarToggle";
 import Workspaces from "./Workspaces";
 import Welcome from "./Welcome";
 import CommitDetails from "./CommitDetails";
+import BrowserPane from "./BrowserPane";
+import { configureBrowsers, retainBrowsers } from "./browser-runtime";
 import SplitView from "./SplitView";
 import { usePointerFocus } from "./usePointerFocus";
 import { useWindowZoom } from "./useWindowZoom";
@@ -230,6 +235,7 @@ export default function Workbench() {
       // Queued shortcuts must see the updated layout before React renders it.
       currentSession.current = next;
       retainEditorTabs(next);
+      retainBrowsers(next);
       renderSession(next);
     },
     [],
@@ -271,6 +277,38 @@ export default function Workbench() {
   const selected = session ? active(session) : undefined;
   const git = useGit(selected?.project.path ?? "");
   const closeProjectMenu = useCallback(() => setProjectMenuOpen(false), []);
+
+  useEffect(() => {
+    configureBrowsers(
+      (id, change) =>
+        setSession((state) =>
+          state ? updateBrowser(state, id, change) : state,
+        ),
+      (id, url) =>
+        setSession((state) => {
+          if (!state) return state;
+          const workspace = state.projects
+            .flatMap((project) => project.workspaces)
+            .find((workspace) =>
+              workspace.tabs.some((tab) =>
+                tab.type === "browser"
+                  ? tab.id === id
+                  : tab.type === "terminal" &&
+                    layoutPanes(tab.layout).some((pane) => pane.id === id),
+              ),
+            );
+          if (!workspace || !browserTabs(state).some((tab) => tab.id === id))
+            return state;
+          const added = newBrowserTab(url);
+          return updateWorkspace(state, workspace.id, (current) => ({
+            ...current,
+            tabs: [...current.tabs, added],
+            activeTabId: added.id,
+          }));
+        }),
+      setError,
+    );
+  }, [setSession]);
 
   useEffect(() => {
     if (preferences.error) setError(preferences.error);
@@ -1285,6 +1323,16 @@ export default function Workbench() {
           activeTabId={tab.id}
           newTabTitle={shortcutTitle("New tab", bindings.newTab)}
           onNew={() => addTab()}
+          onNewBrowser={() =>
+            change((state) => {
+              const added = newBrowserTab();
+              return updateWorkspace(state, workspace.id, (current) => ({
+                ...current,
+                tabs: [...current.tabs, added],
+                activeTabId: added.id,
+              }));
+            })
+          }
           onNewFile={() =>
             change((state) => {
               const file = newFileTab(state);
@@ -1430,6 +1478,12 @@ export default function Workbench() {
               onOpenFile={(path) => void openFile(path, tab.root)}
               onOpenCommit={(commit) => openHistoryCommit(commit, tab.root)}
               onError={setError}
+            />
+          ) : tab.type === "browser" ? (
+            <BrowserPane
+              key={tab.id}
+              tab={tab}
+              onClose={() => void closeTab(tab.id)}
             />
           ) : tab.type === "file" ? (
             <Suspense

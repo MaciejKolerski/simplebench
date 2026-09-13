@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "browser",
+  "description": "Web pages can report focus and request address, search or close controls for their own browser panel.",
+  "webviews": ["browser-*"],
+  "remote": { "urls": ["http://*:*/*", "https://*:*/*"] },
+  "permissions": ["browser:allow-signal"]
+}

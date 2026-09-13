@@ -8,7 +8,7 @@ use std::{
     process::Stdio,
     thread,
 };
-use tauri::WebviewWindow;
+use tauri::Window;
 
 const PAGE_SIZE: usize = 50;
 const PATCH_LIMIT: usize = 2 * 1024 * 1024;
@@ -351,7 +351,7 @@ fn patch_bytes(root: &Path, args: &[&str]) -> Result<Vec<u8>, String> {
 
 #[tauri::command]
 pub async fn git_history(
-    window: WebviewWindow,
+    window: Window,
     root: String,
     tips: Option<Vec<String>>,
     skip: u32,
@@ -367,7 +367,7 @@ pub async fn git_history(
 
 #[tauri::command]
 pub async fn git_commit_details(
-    window: WebviewWindow,
+    window: Window,
     root: String,
     id: String,
 ) -> Result<CommitDetails, String> {
@@ -379,7 +379,7 @@ pub async fn git_commit_details(
 
 #[tauri::command]
 pub async fn git_commit_diff(
-    window: WebviewWindow,
+    window: Window,
     root: String,
     id: String,
     path: String,

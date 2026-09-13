@@ -5,6 +5,81 @@
   font-weight: 400;
   font-display: swap;
 }
+
+.browser-pane {
+  display: flex;
+  flex: 1;
+  width: 100%;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  background: var(--color-background);
+}
+
+.browser-toolbar,
+.browser-search {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 2px;
+  padding: 5px;
+  border-bottom: var(--border-width) solid var(--color-outline);
+  background: var(--color-surface);
+}
+
+.browser-toolbar input,
+.browser-search input {
+  flex: 1;
+  min-width: 0;
+  width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: var(--border-width) solid var(--color-outline);
+  border-radius: var(--radius-control);
+  background: var(--input-background);
+  color: var(--color-surface-text);
+}
+
+.browser-toolbar .icon-button,
+.browser-search .icon-button {
+  flex-shrink: 0;
+  width: 24px;
+  height: 28px;
+}
+
+.browser-viewport {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.browser-viewport .empty-message {
+  height: 100%;
+}
+
+.browser-message {
+  padding: 5px 8px;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+  color: var(--color-surface-variant-text);
+}
+
+.browser-message[role="alert"] {
+  color: var(--color-error);
+}
+
+.browser-servers .select-option {
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.browser-servers .select-option > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 @font-face {
   font-family: "JetBrains Mono";
   src: url("/fonts/jetbrains-mono/JetBrainsMono-Bold.woff2") format("woff2");

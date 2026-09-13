@@ -63,6 +63,7 @@ export function applyFileChange(
   };
   const layout = (item: Layout, project: Project): Layout | null => {
     if (item.type === "file") return file(item);
+    if (item.type === "browser") return item;
     if (item.type === "terminal")
       return {
         ...item,
@@ -83,6 +84,7 @@ export function applyFileChange(
           const updated = file(tab);
           return updated ? [updated] : [];
         }
+        if (tab.type === "browser") return [tab];
         if (tab.type === "commit")
           return newPath === null && containsPath(oldPath, tab.root)
             ? []

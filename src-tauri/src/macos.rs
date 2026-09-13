@@ -85,7 +85,7 @@ pub fn handle_run_event(app: &AppHandle, event: &RunEvent) {
         #[cfg(dev)]
         RunEvent::Ready => use_development_bundle_icon(),
         RunEvent::ExitRequested { api, .. } => {
-            if let Some(window) = app.get_webview_window("main") {
+            if let Some(window) = app.get_window("main") {
                 // Quit from the menu or Dock must use the editor/session close guard.
                 api.prevent_exit();
                 let _ = window.unminimize();
@@ -95,7 +95,7 @@ pub fn handle_run_event(app: &AppHandle, event: &RunEvent) {
             }
         }
         RunEvent::Reopen { .. } => {
-            if let Some(window) = app.get_webview_window("main") {
+            if let Some(window) = app.get_window("main") {
                 let _ = window.unminimize();
                 let _ = window.show();
                 let _ = window.set_focus();

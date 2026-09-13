@@ -8,7 +8,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Mutex,
 };
-use tauri::{State, WebviewWindow};
+use tauri::{State, Window};
 use toml_edit::{Array, DocumentMut, Item, Table};
 
 const LIMIT: u64 = 1024 * 1024;
@@ -586,7 +586,7 @@ fn enable(cli: TitleCli, path: &Path, expected: Option<&str>) -> Result<(), Stri
 
 #[tauri::command]
 pub async fn inspect_cli_titles(
-    window: WebviewWindow,
+    window: Window,
     terminals: State<'_, Terminals>,
     state: State<'_, CliTitleConfig>,
     id: String,
@@ -601,7 +601,7 @@ pub async fn inspect_cli_titles(
 
 #[tauri::command]
 pub async fn enable_cli_titles(
-    window: WebviewWindow,
+    window: Window,
     terminals: State<'_, Terminals>,
     state: State<'_, CliTitleConfig>,
     id: String,

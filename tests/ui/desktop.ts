@@ -48,6 +48,7 @@ export async function mockDesktop(
         { path: "README.md", originalPath: null, index: " ", worktree: "M" },
       ];
       const calls: { command: string; args: Record<string, any> }[] = [];
+      const browsers = new Map<string, any>();
       const sessions = new Map<string, { output: number; index: number }>();
       const events = new Map<number, { event: string; handler: number }>();
       const emitEvent = async (event: string, payload: unknown = null) => {
@@ -70,6 +71,11 @@ export async function mockDesktop(
       const desktop = window as any;
       desktop.isTauri = true;
       desktop.__nativeTest = {
+        localWebServers: [] as string[],
+        localWebServersError: "",
+        localWebServersDelay: 0,
+        localWebServersProgress: null as string[] | null,
+        localWebServersCompleted: 0,
         editorFiles: JSON.parse(
           localStorage.getItem("test-editor-files") ??
             JSON.stringify(editorFiles),
@@ -86,6 +92,7 @@ export async function mockDesktop(
         emitEvent,
         calls,
         sessions,
+        browsers,
         terminalContexts: {},
         busyTerminals: [] as string[],
         terminalProcessError: "",
@@ -149,6 +156,80 @@ export async function mockDesktop(
         },
         async invoke(command: string, args: Record<string, any> = {}) {
           calls.push({ command, args: JSON.parse(JSON.stringify(args)) });
+          if (command === "local_web_servers") {
+            const result = [...desktop.__nativeTest.localWebServers];
+            let index = 0;
+            try {
+              if (desktop.__nativeTest.localWebServersError)
+                throw new Error(desktop.__nativeTest.localWebServersError);
+              for (const url of desktop.__nativeTest.localWebServersProgress ??
+                result)
+                callbacks.get(args.onFound.id)?.({
+                  index: index++,
+                  message: url,
+                });
+              if (desktop.__nativeTest.localWebServersDelay)
+                await new Promise((resolve) =>
+                  setTimeout(
+                    resolve,
+                    desktop.__nativeTest.localWebServersDelay,
+                  ),
+                );
+              desktop.__nativeTest.localWebServersCompleted++;
+              return result;
+            } finally {
+              callbacks.get(args.onFound.id)?.({ index, end: true });
+            }
+          }
+          if (command === "sync_browsers") {
+            for (const id of browsers.keys())
+              if (!args.retained.includes(id)) browsers.delete(id);
+            for (const browser of browsers.values()) browser.visible = false;
+            for (const slot of args.slots) {
+              if (!browsers.has(slot.id))
+                browsers.set(slot.id, {
+                  id: slot.id,
+                  url: slot.url,
+                  title: "Browser",
+                  loading: false,
+                  error: "",
+                  download: "",
+                  visits: 1,
+                });
+              Object.assign(browsers.get(slot.id), {
+                visible: true,
+                bounds: slot.bounds,
+              });
+            }
+            return [...browsers.values()].map(
+              ({ id, url, title, loading, error, download }) => ({
+                id,
+                url,
+                title,
+                loading,
+                error,
+                download,
+              }),
+            );
+          }
+          if (command === "browser_action") {
+            const browser = browsers.get(args.id);
+            if (!browser) throw new Error("Browser panel is closed.");
+            if (args.action.type === "navigate") {
+              browser.url = args.action.url;
+              browser.visits++;
+            }
+            if (args.action.type === "reload") browser.visits++;
+            await emitEvent("browser-page", {
+              id: browser.id,
+              url: browser.url,
+              title: browser.title,
+              loading: false,
+              error: "",
+              download: "",
+            });
+            return;
+          }
           if (command === "show_ready_window") return true;
           if (command === "plugin:webview|set_webview_zoom") {
             if (desktop.__nativeTest.zoomDelay)

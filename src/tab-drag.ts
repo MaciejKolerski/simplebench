@@ -116,7 +116,7 @@ export function useTabDrag(props: Props) {
             : "bottom";
       const allowed = canMergeTabs(source, target, side, area);
       if (source.type === "commit" || target.type !== "terminal") return;
-      const sourceLayout = source.type === "file" ? source : source.layout;
+      const sourceLayout = source.type !== "terminal" ? source : source.layout;
       if (allowed) destination = { type: "merge", targetId: target.id, side };
       indicator.className = `tab-merge-preview${allowed ? "" : " is-blocked"}`;
       indicator.dataset.side = side;
