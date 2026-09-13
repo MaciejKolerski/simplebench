@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useLayoutEffect, useRef } from "react";
 import type { ButtonHTMLAttributes, ReactNode, RefObject } from "react";
 import { Minus, Square, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -80,10 +80,11 @@ export function Modal({
 }) {
   const dialog = useRef<HTMLDialogElement>(null);
   const titleId = useId();
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = dialog.current;
     element?.showModal();
     initialFocus?.current?.focus();
+    // Close before DOM removal so the dialog can restore focus to its trigger.
     return () => element?.close();
   }, [initialFocus]);
   return (

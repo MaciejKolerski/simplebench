@@ -56,6 +56,7 @@ import {
   restoreSession,
   splitPane,
   tabsToClose,
+  tabTitle,
   updateDirectories,
   updateTab,
   updateFile,
@@ -1371,12 +1372,12 @@ export default function Workbench() {
             setDialog({
               type: "name",
               title: "Rename tab",
-              initial: candidate.title,
+              initial: tabTitle(candidate),
               submit: (title) =>
                 change((state) =>
                   updateTab(state, candidate.id, (tab) => ({
                     ...tab,
-                    title,
+                    customTitle: title,
                   })),
                 ),
             })
@@ -1684,6 +1685,7 @@ function AppDialog({
   dialog: Dialog;
   onClose: () => void;
 }) {
+  const nameInput = useRef<HTMLInputElement>(null);
   const confirmButton = useRef<HTMLButtonElement>(null);
   const [value, setValue] = useState(
     dialog.type === "name"
@@ -1697,7 +1699,13 @@ function AppDialog({
       title={dialog.title}
       onClose={onClose}
       wide={dialog.type === "preview"}
-      initialFocus={dialog.type === "confirm" ? confirmButton : undefined}
+      initialFocus={
+        dialog.type === "name"
+          ? nameInput
+          : dialog.type === "confirm"
+            ? confirmButton
+            : undefined
+      }
     >
       {dialog.type === "preview" ? (
         <pre className="file-preview">{dialog.content || "(empty file)"}</pre>
@@ -1724,7 +1732,7 @@ function AppDialog({
             <label>
               Name
               <input
-                autoFocus
+                ref={nameInput}
                 value={value}
                 onChange={(event) => setValue(event.target.value)}
                 maxLength={120}

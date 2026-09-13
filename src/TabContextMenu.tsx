@@ -24,12 +24,14 @@ export default function TabContextMenu({
   tabs,
   modified,
   onClose,
+  onRename,
   onDismiss,
 }: {
   anchor: TabMenuAnchor;
   tabs: Tab[];
   modified: ReadonlySet<string>;
   onClose: (id: string, action: TabCloseAction) => void;
+  onRename: (tab: Tab) => void;
   onDismiss: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -102,6 +104,20 @@ export default function TabContextMenu({
         items[next]?.focus();
       }}
     >
+      <button
+        type="button"
+        role="menuitem"
+        className="menu-item"
+        tabIndex={-1}
+        onClick={() => {
+          const tab = tabs.find((tab) => tab.id === anchor.id);
+          dismiss();
+          if (tab) onRename(tab);
+        }}
+      >
+        Rename tab…
+      </button>
+      <div className="menu-divider" role="separator" />
       {actions.map(({ action, label, divider }) => (
         <Fragment key={action}>
           {divider && <div className="menu-divider" role="separator" />}

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
-import { canMergeTabs, splitGeometry } from "./model";
+import { canMergeTabs, splitGeometry, tabTitle } from "./model";
 import type { Tab, TabDropSide } from "./model";
 
 interface Props {
@@ -56,7 +56,7 @@ export function useTabDrag(props: Props) {
       destination = undefined;
       indicator.hidden = true;
       indicator.textContent = "";
-      ghost.textContent = tab.title;
+      ghost.textContent = tabTitle(tab);
       ghost.style.left = `${Math.max(0, Math.min(x + 12, innerWidth - ghost.offsetWidth))}px`;
       ghost.style.top = `${Math.max(0, Math.min(y + 12, innerHeight - ghost.offsetHeight))}px`;
       const bounds = strip.current?.getBoundingClientRect();

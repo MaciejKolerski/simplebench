@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   active,
   addWorkspace,
+  newBrowserTab,
   newPane,
   newProject,
   newSession,
@@ -20,6 +21,8 @@ import {
   restoreSession,
   splitPane,
   tabsToClose,
+  tabTitle,
+  updateBrowser,
   updateDirectories,
   updateWorkspace,
   updateTab,
@@ -27,6 +30,7 @@ import {
 } from "../src/model.ts";
 import type { AppInfo, Split, Tab, TabCloseAction } from "../src/model.ts";
 import { inputChunks } from "../src/terminal-utils.ts";
+import { applyFileChange } from "../src/explorer-model.ts";
 
 const info: AppInfo = {
   directory: "/project",
@@ -79,6 +83,57 @@ test("untitled files keep distinct identities and become ordinary persisted file
     },
     second,
   ]);
+});
+
+test("custom tab titles survive restoration and automatic title updates", () => {
+  let session = projectSession();
+  const workspace = active(session)!.workspace;
+  session = openFileTab(session, workspace.id, "/project", "note.txt");
+  session = openCommitTab(
+    session,
+    workspace.id,
+    "/project",
+    "a".repeat(40),
+    "Commit",
+  );
+  const browser = newBrowserTab();
+  active(session)!.workspace.tabs.push(browser);
+  for (const tab of active(session)!.workspace.tabs) {
+    assert.equal(tabTitle(tab), tab.title);
+    session = updateTab(session, tab.id, (current) => ({
+      ...current,
+      customTitle: `Custom ${tab.type}`,
+    }));
+  }
+  session = updateBrowser(session, browser.id, {
+    title: "New page",
+    url: "https://example.com/",
+  });
+  session = applyFileChange(
+    session,
+    { oldPath: "/project/note.txt", newPath: "/project/renamed.txt" },
+    "local:bash",
+  );
+  const restored = restoreSession(JSON.parse(JSON.stringify(session)), info);
+  assert.deepEqual(restored, session);
+  assert.deepEqual(active(restored)!.workspace.tabs.map(tabTitle), [
+    "Custom terminal",
+    "Custom file",
+    "Custom commit",
+    "Custom browser",
+  ]);
+  assert.equal(fileTabs(restored)[0].relative, "renamed.txt");
+  assert.equal(fileTabs(restored)[0].title, "renamed.txt");
+  assert.equal(active(restored)!.workspace.tabs.at(-1)!.title, "New page");
+  for (const invalid of [null, 42, {}, ""]) {
+    const data = JSON.parse(JSON.stringify(session));
+    for (const tab of data.projects[0].workspaces[0].tabs)
+      tab.customTitle = invalid;
+    for (const tab of active(restoreSession(data, info))!.workspace.tabs) {
+      assert.equal(tab.customTitle, undefined);
+      assert.equal(tabTitle(tab), tab.title);
+    }
+  }
 });
 
 test("tab close actions use the clicked tab and preserve modified files", () => {

@@ -8,7 +8,7 @@ import {
   Terminal,
 } from "lucide-react";
 import type { Project, Workspace } from "./model";
-import { basename } from "./model";
+import { basename, tabTitle } from "./model";
 import ContextMenu from "./ContextMenu";
 import { IconButton } from "./ui";
 
@@ -140,7 +140,7 @@ export default function Workspaces({
                           ? "true"
                           : undefined
                       }
-                      title={tab.type === "file" ? tab.relative : tab.title}
+                      title={tab.type === "file" ? tab.relative : tabTitle(tab)}
                       onClick={() =>
                         onSelect(project.path, workspace.id, tab.id)
                       }
@@ -152,7 +152,7 @@ export default function Workspaces({
                       ) : (
                         <Terminal size={14} aria-hidden="true" />
                       )}
-                      <span>{tab.title}</span>
+                      <span>{tabTitle(tab)}</span>
                     </button>
                   </li>
                 ))}

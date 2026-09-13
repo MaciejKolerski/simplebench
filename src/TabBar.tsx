@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import type { Tab, TabCloseAction, TabDropSide } from "./model";
+import { tabTitle } from "./model";
 import { useTabDrag } from "./tab-drag";
 import { IconButton } from "./ui";
 import TabContextMenu from "./TabContextMenu";
@@ -169,7 +170,7 @@ export default function TabBar({
                 title={
                   tab.type === "file"
                     ? `${tab.untitled ? tab.title : tab.relative}${modified?.has(tab.id) ? " • Modified" : ""}`
-                    : tab.title
+                    : tabTitle(tab)
                 }
                 onClick={() => onSelect(tab.id)}
                 onDoubleClick={() => {
@@ -221,7 +222,7 @@ export default function TabBar({
                 ) : (
                   <Terminal size={14} />
                 )}
-                <span>{tab.title}</span>
+                <span>{tabTitle(tab)}</span>
                 {modified?.has(tab.id) && (
                   <span className="tab-modified" aria-label="Unsaved changes">
                     ●
@@ -231,8 +232,8 @@ export default function TabBar({
               <button
                 className="tab-close"
                 tabIndex={tab.id === activeTabId ? 0 : -1}
-                aria-label={`Close ${tab.title}`}
-                title={`Close ${tab.title}`}
+                aria-label={`Close ${tabTitle(tab)}`}
+                title={`Close ${tabTitle(tab)}`}
                 onClick={() => onClose(tab.id)}
               >
                 <X size={13} />
@@ -278,6 +279,7 @@ export default function TabBar({
           tabs={tabs}
           modified={modified}
           onClose={onClose}
+          onRename={onRename}
           onDismiss={dismissMenu}
         />
       )}

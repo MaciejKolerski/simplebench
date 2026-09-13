@@ -47,6 +47,7 @@ export interface TerminalTab {
   type: "terminal";
   id: string;
   title: string;
+  customTitle?: string;
   profileId: string;
   activePaneId: string;
   layout: Layout;
@@ -55,6 +56,7 @@ export interface CommitTab {
   type: "commit";
   id: string;
   title: string;
+  customTitle?: string;
   root: string;
   commit: string;
 }
@@ -68,6 +70,7 @@ export interface FileTab {
   type: "file";
   id: string;
   title: string;
+  customTitle?: string;
   root: string;
   relative: string;
   untitled?: true;
@@ -79,6 +82,7 @@ export interface BrowserTab {
   type: "browser";
   id: string;
   title: string;
+  customTitle?: string;
   url: string;
 }
 export const newBrowserTab = (url = "about:blank"): BrowserTab => ({
@@ -88,6 +92,7 @@ export const newBrowserTab = (url = "about:blank"): BrowserTab => ({
   url: restoreBrowserUrl(url),
 });
 export type Tab = TerminalTab | CommitTab | FileTab | BrowserTab;
+export const tabTitle = (tab: Tab) => tab.customTitle ?? tab.title;
 export type TabDropSide = "left" | "right" | "top" | "bottom";
 export type TabCloseAction =
   "close" | "others" | "left" | "right" | "clean" | "all";
@@ -868,6 +873,9 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
       type: "file",
       id: id(node.id),
       title: string(node.title, basename(string(node.relative, "File"))),
+      ...(string(node.customTitle, "")
+        ? { customTitle: node.customTitle as string }
+        : {}),
       root: node.untitled === true ? "" : string(node.root, cwd),
       relative: node.untitled === true ? "" : string(node.relative, ""),
       ...(node.untitled === true ? { untitled: true as const } : {}),
@@ -890,6 +898,9 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
     type: "browser",
     id: id(node.id),
     title: string(node.title, "Browser"),
+    ...(string(node.customTitle, "")
+      ? { customTitle: node.customTitle as string }
+      : {}),
     url: restoreBrowserUrl(node.url),
   });
   const layout = (value: unknown, cwd: string, depth = 0): Layout => {
@@ -939,6 +950,9 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
                 type: "commit",
                 id: id(tab.id),
                 title: string(tab.title, "Commit"),
+                ...(string(tab.customTitle, "")
+                  ? { customTitle: tab.customTitle as string }
+                  : {}),
                 root: string(tab.root, path),
                 commit: string(tab.commit, ""),
               };
@@ -949,6 +963,9 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
               type: "terminal",
               id: id(tab.id),
               title: string(tab.title, "Terminal"),
+              ...(string(tab.customTitle, "")
+                ? { customTitle: tab.customTitle as string }
+                : {}),
               profileId: string(tab.profileId, info.profiles[0]?.id ?? ""),
               activePaneId: leaves.some((pane) => pane.id === tab.activePaneId)
                 ? (tab.activePaneId as string)

@@ -493,8 +493,10 @@ Zoom shortcuts work in text fields and dialogs, and pause while recording a
 shortcut in Keybinds. Existing custom assignments take precedence over the
 new zoom defaults.
 
-Double-click a terminal or commit tab to rename it. File tabs retain their
-filenames. Drag split dividers to resize panes; focused
+Right-click any tab and choose **Rename tab…** to set a custom title that
+persists across app restarts, file saves, and browser navigation. File names
+stay unchanged. Double-clicking terminal, browser, or commit tabs also opens
+the rename dialog. Drag split dividers to resize panes; focused
 dividers also accept arrow keys, and double-click resets a split to 50/50.
 Workspace creation, renaming, and deletion are in the Workspaces sidebar.
 Closing the last panel closes its tab. Closing the last tab creates a fresh

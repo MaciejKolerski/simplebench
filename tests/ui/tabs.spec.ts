@@ -1,7 +1,15 @@
 import { test, expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { mockDesktop } from "./desktop";
-import { newProject, newSession, newTab, newWorkspace } from "../../src/model";
+import {
+  newBrowserTab,
+  newFileTab,
+  newProject,
+  newSession,
+  newTab,
+  newWorkspace,
+} from "../../src/model";
+import type { Tab } from "../../src/model";
 
 async function restoreTabs(
   page: Page,
@@ -192,6 +200,187 @@ test("long names keep the active tab centered and its close button visible", asy
   await expectActiveTabInView(page);
 });
 
+for (const type of ["terminal", "file", "browser", "commit"] as const) {
+  test(`renaming an inactive ${type} tab preserves its contents and restores its name`, async ({
+    page,
+  }, testInfo) => {
+    const project = newProject("/project", "local:bash");
+    const workspace = project.workspaces[0];
+    const candidate: Tab =
+      type === "terminal"
+        ? newTab("/project", "local:bash", "Terminal 2")
+        : type === "file"
+          ? {
+              type,
+              id: "file",
+              title: "README.md",
+              root: "/project",
+              relative: "README.md",
+            }
+          : type === "browser"
+            ? newBrowserTab()
+            : {
+                type,
+                id: "commit",
+                title: "Commit",
+                root: "/project",
+                commit: "a".repeat(40),
+              };
+    workspace.tabs.push(candidate);
+    await mockDesktop(page, true, {
+      ...newSession(),
+      projects: [project],
+      activeProjectId: project.id,
+    });
+    await page.goto("/");
+    await expect(page.locator(".xterm-screen")).toBeVisible();
+    const tab = page.locator(`#tab-${candidate.id}`);
+    await tab.click({ button: "right" });
+    await page
+      .getByRole("menuitem", { name: "Rename tab…", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog", { name: "Rename tab" });
+    const name = dialog.getByRole("textbox", { name: "Name", exact: true });
+    await expect(name).toBeFocused();
+    await expect(name).toHaveValue(candidate.title);
+    await name.fill("   ");
+    await expect(
+      dialog.getByRole("button", { name: "Save", exact: true }),
+    ).toBeDisabled();
+    await name.fill("Cancelled name");
+    await name.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(tab).toHaveText(candidate.title);
+    await expect(tab).toBeFocused();
+    await tab.press("Shift+F10");
+    await page
+      .getByRole("menuitem", { name: "Rename tab…", exact: true })
+      .press("Enter");
+    const title = "Zażółć 🦀 — backend";
+    await name.fill(`  ${title}  `);
+    if (type === "terminal")
+      await page.screenshot({
+        path: testInfo.outputPath("rename-tab-dialog.png"),
+      });
+    await name.press("Enter");
+    await expect(tab).toHaveText(title);
+    await expect(page.getByRole("tab", { selected: true })).toHaveText(
+      "Terminal",
+    );
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const saved = JSON.parse(
+            localStorage.getItem("test-session") ?? "null",
+          );
+          return saved?.projects[0].workspaces[0].tabs[1];
+        }),
+      )
+      .toEqual({ ...candidate, customTitle: title });
+    expect(
+      await page.evaluate(() =>
+        (window as any).__nativeTest.calls
+          .filter((call: any) =>
+            ["start_terminal", "close_terminal"].includes(call.command),
+          )
+          .map((call: any) => call.command),
+      ),
+    ).toEqual(["start_terminal"]);
+    await page.reload();
+    await expect(tab).toHaveText(title);
+    await expect(
+      page.getByRole("button", { name: `Close ${title}`, exact: true }),
+    ).toBeVisible();
+    await tab.click({ button: "right" });
+    await page
+      .getByRole("menuitem", { name: "Rename tab…", exact: true })
+      .click();
+    await expect(name).toHaveValue(title);
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(tab).toHaveText(title);
+  });
+}
+
+test("custom titles survive saving a draft and browser navigation", async ({
+  page,
+}) => {
+  const project = newProject("/project", "local:bash");
+  const session = {
+    ...newSession(),
+    projects: [project],
+    activeProjectId: project.id,
+  };
+  const workspace = project.workspaces[0];
+  const file = { ...newFileTab(session), customTitle: "Notes" };
+  const browser = { ...newBrowserTab(), customTitle: "Preview" };
+  workspace.tabs.push(file, browser);
+  workspace.activeTabId = file.id;
+  await mockDesktop(page, true, session);
+  await page.goto("/");
+  await expect(page.locator(".cm-content")).toBeVisible();
+  await page.locator(".cm-content").focus();
+  await page.keyboard.insertText("Draft content");
+  await page.evaluate(() => {
+    (window as any).__nativeTest.newFilePath = "/project/note.txt";
+  });
+  await page.keyboard.press("Control+s");
+  await expect(page.getByRole("tab", { selected: true })).toHaveText("Notes");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__nativeTest.editorFiles["/project/note.txt"]
+            ?.content,
+      ),
+    )
+    .toBe("Draft content");
+  await page.getByRole("tab", { name: "Preview", exact: true }).click();
+  const address = page.getByRole("combobox", { name: "Web address" });
+  await address.fill("localhost:3000");
+  await address.press("Enter");
+  await expect(address).toHaveValue("http://localhost:3000/");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (id) => (window as any).__nativeTest.browsers.get(id)?.url,
+        browser.id,
+      ),
+    )
+    .toBe("http://localhost:3000/");
+  await page.evaluate(async (id) => {
+    const native = (window as any).__nativeTest;
+    const updated = {
+      id,
+      url: "http://localhost:3000/next",
+      title: "Page title",
+      loading: false,
+      error: "",
+      download: "",
+    };
+    Object.assign(native.browsers.get(id), updated);
+    await native.emitEvent("browser-page", updated);
+  }, browser.id);
+  await expect(address).toHaveValue("http://localhost:3000/next");
+  await expect(page.getByRole("tab", { selected: true })).toHaveText("Preview");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          JSON.parse(localStorage.getItem("test-session") ?? "null")
+            ?.projects[0].workspaces[0].tabs[2]?.url,
+      ),
+    )
+    .toBe("http://localhost:3000/next");
+  await page.reload();
+  await expect(page.getByRole("tab")).toHaveText([
+    "Terminal",
+    "Notes",
+    "Preview",
+  ]);
+  await page.getByRole("tab", { name: "Notes", exact: true }).click();
+  await expect(page.locator(".cm-content")).toHaveText("Draft content");
+});
+
 for (const { action, remaining, active } of [
   {
     action: "Close",
@@ -323,6 +512,10 @@ test("tab context menu supports keyboard navigation, disabled actions and dismis
   await tab.focus();
   await page.keyboard.press("Shift+F10");
   await expect(
+    page.getByRole("menuitem", { name: "Rename tab…", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(
     page.getByRole("menuitem", { name: "Close", exact: true }),
   ).toBeFocused();
   for (const name of ["Close Others", "Close Left", "Close Right"])
@@ -339,7 +532,7 @@ test("tab context menu supports keyboard navigation, disabled actions and dismis
   ).toBeFocused();
   await page.keyboard.press("Home");
   await expect(
-    page.getByRole("menuitem", { name: "Close", exact: true }),
+    page.getByRole("menuitem", { name: "Rename tab…", exact: true }),
   ).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("menu")).toHaveCount(0);
