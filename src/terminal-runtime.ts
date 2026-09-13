@@ -73,6 +73,9 @@ export class TerminalRuntime {
   private observer?: ResizeObserver;
   private frame = 0;
   private firstRender?: IDisposable;
+  private receivedOutput = false;
+  private revealed = false;
+  private revealAnimation?: Animation;
   private rendererReady = false;
   private measuredFont?: string;
   private opened = false;
@@ -334,9 +337,19 @@ export class TerminalRuntime {
     this.rendererReady = true;
     this.fit();
     this.firstRender = this.terminal.onRender(() => {
+      if (!this.receivedOutput && this.snapshot.status !== "exited") return;
       this.firstRender?.dispose();
       this.firstRender = undefined;
       this.host.style.opacity = "";
+      if (
+        !this.revealed &&
+        !matchMedia("(prefers-reduced-motion: reduce)").matches
+      )
+        this.revealAnimation = this.host.animate(
+          [{ opacity: 0 }, { opacity: 1 }],
+          { duration: 180, easing: "ease-out" },
+        );
+      this.revealed = true;
     });
     this.terminal.refresh(0, this.terminal.rows - 1);
   }
@@ -348,6 +361,8 @@ export class TerminalRuntime {
     cancelAnimationFrame(this.frame);
     this.firstRender?.dispose();
     this.firstRender = undefined;
+    this.revealAnimation?.cancel();
+    this.revealAnimation = undefined;
     this.observer?.disconnect();
     this.host.remove();
     // Terminal.dispose owns addon teardown on close, avoiding an intermediate DOM renderer.
@@ -407,6 +422,7 @@ export class TerminalRuntime {
         }
         // Output stays outside React; acknowledgements follow xterm's parser callback.
         this.terminal.write(bytes, () => {
+          this.receivedOutput = true;
           this.unacknowledged += bytes.length;
           if (this.unacknowledged >= 32 * 1024) this.acknowledge();
           else if (this.ackTimer === undefined)

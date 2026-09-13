@@ -1192,10 +1192,10 @@ svg {
   border-style: dashed;
   border-color: var(--color-outline);
 }
-.tab-drop-marker[hidden],
-.tab-merge-preview[hidden] {
+.tab-drop-marker[hidden] {
   display: none;
 }
+.tab-merge-preview,
 .pane-drop-preview {
   transition:
     left 160ms ease-out,
@@ -1205,6 +1205,7 @@ svg {
     opacity 100ms ease-out,
     visibility 0s;
 }
+.tab-merge-preview[hidden],
 .pane-drop-preview[hidden] {
   display: grid;
   opacity: 0;
@@ -1212,6 +1213,8 @@ svg {
   transition-delay: 0s, 0s, 0s, 0s, 0s, 100ms;
 }
 @media (prefers-reduced-motion: reduce) {
+  .tab-merge-preview,
+  .tab-merge-preview[hidden],
   .pane-drop-preview,
   .pane-drop-preview[hidden] {
     transition: none;
@@ -1234,6 +1237,29 @@ svg {
   object-fit: none;
   object-position: top left;
   animation-duration: 180ms;
+  animation-timing-function: ease-out;
+  animation-name: none;
+  mix-blend-mode: normal;
+}
+/* Keep existing content opaque while the live terminal canvases refit. */
+.moving-panes::view-transition-new(*) {
+  opacity: 0;
+}
+.moving-panes::view-transition-old(*):only-child {
+  animation-name: pane-appear;
+  animation-direction: reverse;
+}
+.moving-panes::view-transition-new(*):only-child {
+  animation-name: pane-appear;
+  opacity: 1;
+}
+@keyframes pane-appear {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 .tab-navigation {
   display: flex;

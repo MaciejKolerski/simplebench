@@ -1,5 +1,4 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { flushSync } from "react-dom";
 import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
 import { layoutPositions, movePane } from "./model";
 import type { Layout, TabDropSide } from "./model";
@@ -15,54 +14,8 @@ interface Props {
 export function usePaneDrag({ layout, root, enabled, onMove }: Props) {
   const [controlHeld, setControlHeld] = useState(false);
   const cleanup = useRef<(() => void) | null>(null);
-  const finishMotion = useRef<(() => void) | null>(null);
   const suppressClick = useRef(false);
   useLayoutEffect(() => () => cleanup.current?.(), [layout, enabled]);
-  useLayoutEffect(() => () => finishMotion.current?.(), []);
-
-  const moveWithTransition = (
-    id: string,
-    targetId: string,
-    side: TabDropSide,
-  ) => {
-    finishMotion.current?.();
-    const container = root.current;
-    if (
-      !container ||
-      !document.startViewTransition ||
-      matchMedia("(prefers-reduced-motion: reduce)").matches
-    ) {
-      onMove(id, targetId, side);
-      return;
-    }
-    const panels = [
-      ...container.querySelectorAll<HTMLElement>(":scope > .split-child"),
-    ];
-    const names = panels.map((panel) => panel.style.viewTransitionName);
-    panels.forEach((panel, index) => {
-      panel.style.viewTransitionName = `terminal-pane-${index}`;
-    });
-    document.documentElement.classList.add("moving-panes");
-    // Animate captured panels while xterm fits each live terminal only to its final size.
-    const transition = document.startViewTransition(() => {
-      if (container.isConnected) flushSync(() => onMove(id, targetId, side));
-    });
-    const clean = () => {
-      if (finishMotion.current !== cancel) return;
-      panels.forEach((panel, index) => {
-        panel.style.viewTransitionName = names[index];
-      });
-      document.documentElement.classList.remove("moving-panes");
-      finishMotion.current = null;
-    };
-    const cancel = () => {
-      transition.skipTransition();
-      clean();
-    };
-    finishMotion.current = cancel;
-    void transition.ready.catch(() => {});
-    void transition.finished.then(clean, clean);
-  };
   useEffect(() => {
     if (!enabled) return;
     const key = (event: KeyboardEvent) => {
@@ -90,7 +43,6 @@ export function usePaneDrag({ layout, root, enabled, onMove }: Props) {
   }, [enabled]);
 
   const beginDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
-    finishMotion.current?.();
     if (!enabled || !event.ctrlKey || event.button !== 0 || !event.isPrimary)
       return;
     const element = event.target as Element;
@@ -219,7 +171,7 @@ export function usePaneDrag({ layout, root, enabled, onMove }: Props) {
       preview(event.clientX, event.clientY);
       const drop = event.ctrlKey && ghost ? destination : undefined;
       clean();
-      if (drop) moveWithTransition(id, drop.targetId, drop.side);
+      if (drop) onMove(id, drop.targetId, drop.side);
     };
     const cancel = (event: PointerEvent) => {
       if (event.pointerId === pointerId) clean();

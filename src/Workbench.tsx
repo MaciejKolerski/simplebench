@@ -92,6 +92,7 @@ import CommitDetails from "./CommitDetails";
 import BrowserPane from "./BrowserPane";
 import { configureBrowsers, retainBrowsers } from "./browser-runtime";
 import SplitView from "./SplitView";
+import { usePaneMotion } from "./pane-motion";
 import { usePointerFocus } from "./usePointerFocus";
 import { useWindowZoom } from "./useWindowZoom";
 import TabBar from "./TabBar";
@@ -227,19 +228,29 @@ export default function Workbench() {
   const [info, setInfo] = useState<AppInfo>();
   const [session, renderSession] = useState<Session>();
   const currentSession = useRef<Session>(undefined);
+  const terminalLayout = useRef<HTMLDivElement>(null);
+  const selected = session ? active(session) : undefined;
+  const renderPaneLayout = usePaneMotion(terminalLayout, selected?.tab.id);
   const setSession = useCallback(
     (
       update: Session | ((state: Session | undefined) => Session | undefined),
+      animate = false,
     ) => {
-      const next =
-        typeof update === "function" ? update(currentSession.current) : update;
+      const previous = currentSession.current;
+      const next = typeof update === "function" ? update(previous) : update;
       // Queued shortcuts must see the updated layout before React renders it.
       currentSession.current = next;
       retainEditorTabs(next);
       retainBrowsers(next);
-      renderSession(next);
+      renderPaneLayout(
+        () => renderSession(next),
+        animate &&
+          !!previous &&
+          !!next &&
+          active(previous)?.tab.id === active(next)?.tab.id,
+      );
     },
-    [],
+    [renderPaneLayout],
   );
   const [error, setError] = useState("");
   useWindowZoom(setError);
@@ -269,13 +280,11 @@ export default function Workbench() {
   const [browsing, setBrowsing] = useState(false);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [terminalOverview, setTerminalOverview] = useState(false);
-  const terminalLayout = useRef<HTMLDivElement>(null);
   usePointerFocus(
     preferences.focusFollowsPointer && !terminalOverview,
     terminalLayout,
   );
   const savingEnabled = useRef(false);
-  const selected = session ? active(session) : undefined;
   const git = useGit(selected?.project.path ?? "");
   const closeProjectMenu = useCallback(() => setProjectMenuOpen(false), []);
 
@@ -448,8 +457,8 @@ export default function Workbench() {
       .catch(() => {});
   }, [selected?.project.path, selected?.workspace.name]);
 
-  const change = (transform: (state: Session) => Session) =>
-    setSession((state) => (state ? transform(state) : state));
+  const change = (transform: (state: Session) => Session, animate = false) =>
+    setSession((state) => (state ? transform(state) : state), animate);
   const addTab = (cwd?: string) =>
     change((state) => {
       const selection = active(state);
@@ -1018,11 +1027,16 @@ export default function Workbench() {
         activeTabId: id,
       })),
     );
-  const modifyTab = (transform: (tab: TerminalTab) => TerminalTab) =>
-    change((state) =>
-      updateTab(state, tab.id, (current) =>
-        current.type === "terminal" ? transform(current) : current,
-      ),
+  const modifyTab = (
+    transform: (tab: TerminalTab) => TerminalTab,
+    animate = false,
+  ) =>
+    change(
+      (state) =>
+        updateTab(state, tab.id, (current) =>
+          current.type === "terminal" ? transform(current) : current,
+        ),
+      animate,
     );
   const split = (axis: Split["axis"]) => {
     const state = currentSession.current;
@@ -1053,12 +1067,14 @@ export default function Workbench() {
     if (pane.type === "terminal" && pane.profileId !== undefined)
       added.profileId = pane.profileId;
     setPaneNotice("");
-    change((state) =>
-      updateTab(state, current.id, (tab) => ({
-        ...tab,
-        layout: splitPane(current.layout, pane.id, axis, added),
-        activePaneId: added.id,
-      })),
+    change(
+      (state) =>
+        updateTab(state, current.id, (tab) => ({
+          ...tab,
+          layout: splitPane(current.layout, pane.id, axis, added),
+          activePaneId: added.id,
+        })),
+      true,
     );
   };
   const closePane = async (id: string) => {
@@ -1080,20 +1096,22 @@ export default function Workbench() {
     )
       return;
     if (pane.type === "terminal") closeTerminals([id]);
-    change((state) =>
-      updateTab(state, current.id, (tab) => {
-        if (tab.type !== "terminal") return tab;
-        const layout = removePane(tab.layout, id);
-        if (!layout) return tab;
-        return {
-          ...tab,
-          layout,
-          activePaneId:
-            tab.activePaneId === id
-              ? layoutPanes(layout)[0].id
-              : tab.activePaneId,
-        };
-      }),
+    change(
+      (state) =>
+        updateTab(state, current.id, (tab) => {
+          if (tab.type !== "terminal") return tab;
+          const layout = removePane(tab.layout, id);
+          if (!layout) return tab;
+          return {
+            ...tab,
+            layout,
+            activePaneId:
+              tab.activePaneId === id
+                ? layoutPanes(layout)[0].id
+                : tab.activePaneId,
+          };
+        }),
+      true,
     );
   };
   const restartPane = (id: string, useProjectDirectory = false) => {
@@ -1357,15 +1375,17 @@ export default function Workbench() {
           onMerge={(id, targetId, side) => {
             const container = terminalLayout.current;
             if (!container) return;
-            change((state) =>
-              updateWorkspace(state, workspace.id, (current) =>
-                current.activeTabId === targetId
-                  ? mergeTabs(current, id, targetId, side, {
-                      width: container.clientWidth,
-                      height: container.clientHeight,
-                    })
-                  : current,
-              ),
+            change(
+              (state) =>
+                updateWorkspace(state, workspace.id, (current) =>
+                  current.activeTabId === targetId
+                    ? mergeTabs(current, id, targetId, side, {
+                        width: container.clientWidth,
+                        height: container.clientHeight,
+                      })
+                    : current,
+                ),
+              true,
             );
           }}
           onRename={(candidate) =>
@@ -1531,7 +1551,7 @@ export default function Workbench() {
                     return layout === tab.layout
                       ? tab
                       : { ...tab, layout, activePaneId: id };
-                  });
+                  }, true);
                 }}
                 onClosePane={closePane}
                 onFilePosition={(id, position) =>

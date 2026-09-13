@@ -94,6 +94,7 @@ export async function mockDesktop(
         sessions,
         browsers,
         terminalContexts: {},
+        terminalOutputDelay: 10,
         busyTerminals: [] as string[],
         terminalProcessError: "",
         terminalProcessDelay: 0,
@@ -609,7 +610,7 @@ export async function mockDesktop(
                   args.request.id,
                   `\x1b]7;file://localhost${args.request.cwd}\x07\x1b]133;A\x07bash $ \x1b]133;B\x07`,
                 ),
-              10,
+              desktop.__nativeTest.terminalOutputDelay,
             );
             return { cwd: args.request.cwd, profileId: args.request.profileId };
           }

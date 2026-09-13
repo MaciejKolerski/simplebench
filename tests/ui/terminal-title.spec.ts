@@ -652,6 +652,10 @@ for (const colorScheme of ["dark", "light"] as const) {
       .getByRole("button", { name: "Maximize terminal", exact: true })
       .click();
     await page.keyboard.press("Control+w");
+    await page
+      .getByRole("dialog", { name: "Close running processes?" })
+      .getByRole("button", { name: "Close anyway", exact: true })
+      .click();
     await expect(pane).toHaveCount(0);
     await expect(page.locator("[data-pane-id]")).toHaveCount(2);
     await expect(

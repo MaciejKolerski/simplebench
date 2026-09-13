@@ -421,7 +421,7 @@ test("panel motion leaves the workbench still, streams output and resizes each P
     motion.filter(({ pseudo }) =>
       pseudo?.startsWith("::view-transition-group("),
     ),
-  ).toHaveLength(3);
+  ).toHaveLength(4);
   expect(motion.every(({ duration }) => duration === 180)).toBe(true);
   await expect(page.locator("html")).toHaveClass(/moving-panes/);
   expect(

@@ -53,9 +53,6 @@ export function useTabDrag(props: Props) {
         clean();
         return;
       }
-      destination = undefined;
-      indicator.hidden = true;
-      indicator.textContent = "";
       ghost.textContent = tabTitle(tab);
       ghost.style.left = `${Math.max(0, Math.min(x + 12, innerWidth - ghost.offsetWidth))}px`;
       ghost.style.top = `${Math.max(0, Math.min(y + 12, innerHeight - ghost.offsetHeight))}px`;
@@ -80,6 +77,7 @@ export function useTabDrag(props: Props) {
           bounds.left;
         destination = { type: "move", beforeId: before?.dataset.tabId ?? null };
         indicator.className = "tab-drop-marker";
+        indicator.textContent = "";
         Object.assign(indicator.style, {
           left: `${Math.max(bounds.left, Math.min(bounds.right - 2, edge))}px`,
           top: `${bounds.top + 6}px`,
@@ -97,16 +95,21 @@ export function useTabDrag(props: Props) {
         !area ||
         !source ||
         !target ||
+        source.type === "commit" ||
+        target.type !== "terminal" ||
         source.id === target.id ||
         x < area.left ||
         x > area.right ||
         y < area.top ||
         y > area.bottom
-      )
+      ) {
+        destination = undefined;
+        indicator.hidden = true;
         return;
+      }
       const horizontal = (x - area.left) / area.width;
       const vertical = (y - area.top) / area.height;
-      const side: TabDropSide =
+      let side: TabDropSide =
         Math.min(horizontal, 1 - horizontal) <= Math.min(vertical, 1 - vertical)
           ? horizontal < 0.5
             ? "left"
@@ -114,10 +117,25 @@ export function useTabDrag(props: Props) {
           : vertical < 0.5
             ? "top"
             : "bottom";
+      const distances = {
+        left: horizontal,
+        right: 1 - horizontal,
+        top: vertical,
+        bottom: 1 - vertical,
+      };
+      // Match pane dragging's tolerance for small movements along zone boundaries.
+      if (
+        destination?.type === "merge" &&
+        destination.targetId === target.id &&
+        distances[destination.side] - distances[side] <
+          12 / Math.min(area.width, area.height)
+      )
+        side = destination.side;
       const allowed = canMergeTabs(source, target, side, area);
-      if (source.type === "commit" || target.type !== "terminal") return;
       const sourceLayout = source.type !== "terminal" ? source : source.layout;
-      if (allowed) destination = { type: "merge", targetId: target.id, side };
+      destination = allowed
+        ? { type: "merge", targetId: target.id, side }
+        : undefined;
       indicator.className = `tab-merge-preview${allowed ? "" : " is-blocked"}`;
       indicator.dataset.side = side;
       indicator.textContent = allowed
@@ -182,6 +200,7 @@ export function useTabDrag(props: Props) {
         ghost = document.createElement("div");
         ghost.className = "tab-drag-ghost";
         indicator = document.createElement("div");
+        indicator.hidden = true;
         document.body.append(indicator, ghost);
         document.body.classList.add("dragging-tab");
         button.closest(".tab")?.classList.add("is-dragging");

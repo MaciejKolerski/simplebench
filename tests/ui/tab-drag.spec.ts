@@ -39,6 +39,116 @@ async function savedTabs(page: Page) {
   );
 }
 
+for (const title of ["Browser", "README.md"]) {
+  test(`${title} preview interpolates, retargets smoothly and keeps drop-zone boundaries stable`, async ({
+    page,
+  }, testInfo) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await setup(page, 1);
+    if (title === "Browser") {
+      await page.getByRole("button", { name: /^New tab/ }).click();
+      await page.getByRole("menuitem", { name: "New browser" }).click();
+    } else {
+      await page.getByRole("button", { name: title, exact: true }).click();
+      await expect(page.locator(".cm-content")).toBeVisible();
+    }
+    await page.getByRole("tab", { name: "Terminal 1", exact: true }).click();
+    const area = (await page.locator(".terminal-layout").boundingBox())!;
+    await page.keyboard.down("Control");
+    await grab(page, page.getByRole("tab", { name: title, exact: true }));
+    await page.mouse.move(area.x + 20, area.y + area.height / 2);
+    const preview = page.locator(".tab-merge-preview");
+    await expect(preview).toHaveText(`Move ${title} here`);
+    await preview.evaluate((element) =>
+      Promise.all(
+        element.getAnimations().map((animation) => animation.finished),
+      ),
+    );
+    const before = (await preview.boundingBox())!;
+    await page.mouse.move(area.x + area.width / 2, area.y + 20);
+    const motion = await preview.evaluate((element) => {
+      const animations = element.getAnimations();
+      for (const animation of animations) {
+        animation.pause();
+        animation.currentTime = 80;
+      }
+      return {
+        count: animations.length,
+        width: parseFloat(element.style.width),
+        height: parseFloat(element.style.height),
+      };
+    });
+    expect(motion.count).toBeGreaterThan(0);
+    const midway = (await preview.boundingBox())!;
+    for (const dimension of ["width", "height"] as const) {
+      expect(midway[dimension]).toBeGreaterThan(
+        Math.min(before[dimension], motion[dimension]),
+      );
+      expect(midway[dimension]).toBeLessThan(
+        Math.max(before[dimension], motion[dimension]),
+      );
+    }
+    await page.mouse.move(area.x + area.width / 2 + 2, area.y + 20);
+    expect(await preview.boundingBox()).toEqual(midway);
+    await page.screenshot({
+      path: testInfo.outputPath("preview-midpoint.png"),
+    });
+    const next = { x: area.x + area.width - 20, y: area.y + area.height / 2 };
+    const retargeted = await preview.evaluate((element, next) => {
+      document.dispatchEvent(
+        new PointerEvent("pointermove", {
+          pointerId: 1,
+          clientX: next.x,
+          clientY: next.y,
+          ctrlKey: true,
+        }),
+      );
+      const rect = element.getBoundingClientRect();
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
+    }, next);
+    for (const dimension of ["x", "y", "width", "height"] as const)
+      expect(retargeted[dimension]).toBeCloseTo(midway[dimension], 0);
+    await page.mouse.move(next.x, next.y);
+    await expect(preview).toHaveAttribute("data-side", "right");
+    await page.mouse.move(
+      area.x + area.width * 0.2,
+      area.y + area.height * 0.25,
+    );
+    await expect(preview).toHaveAttribute("data-side", "left");
+    for (const offset of [-1, 1, -2, 2]) {
+      await page.mouse.move(
+        area.x + area.width * 0.25 + offset,
+        area.y + area.height * 0.25,
+      );
+      await expect(preview).toHaveAttribute("data-side", "left");
+    }
+    await page.mouse.move(10, 120);
+    await expect(preview).toBeHidden();
+    await page.mouse.move(next.x, next.y);
+    await expect(preview).toBeVisible();
+    await expect(preview).toHaveAttribute("data-side", "right");
+    const destination = await preview.evaluate((element) => ({
+      x: parseFloat(element.style.left),
+      y: parseFloat(element.style.top),
+      width: parseFloat(element.style.width),
+      height: parseFloat(element.style.height),
+    }));
+    await page.mouse.up();
+    await page.keyboard.up("Control");
+    await expect(preview).toHaveCount(0);
+    await expect(page.getByRole("tab")).toHaveCount(1);
+    const panel =
+      title === "Browser"
+        ? page.locator("[data-browser-pane-id]").locator("..")
+        : page.locator("[data-file-pane-id]");
+    await expect(async () => {
+      const actual = (await panel.boundingBox())!;
+      for (const dimension of ["x", "y", "width", "height"] as const)
+        expect(actual[dimension]).toBeCloseTo(destination[dimension], 0);
+    }).toPass();
+  });
+}
+
 test("reorders inactive tabs in both directions, preserves selection and restores the order", async ({
   page,
 }) => {
@@ -131,6 +241,13 @@ for (const side of ["left", "right", "top", "bottom"] as const) {
       "data-side",
       side,
     );
+    await page
+      .locator(".tab-merge-preview")
+      .evaluate((element) =>
+        Promise.all(
+          element.getAnimations().map((animation) => animation.finished),
+        ),
+      );
     const preview = (await page.locator(".tab-merge-preview").boundingBox())!;
     expect(preview.width).toBeCloseTo(
       side === "left" || side === "right" ? (area.width - 3) / 2 : area.width,
