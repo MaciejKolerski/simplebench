@@ -557,7 +557,9 @@ mod tests {
                             .write_all(b"echo DIRECTORY=\"%CD%\"\r\necho SMOKE_^OK\r\nexit\r\n")
                             .unwrap();
                     } else {
-                        writer.write_all(b"[Console]::WriteLine(('POLICY=' + (Get-ExecutionPolicy))); [Console]::WriteLine(('DIRECTORY=' + $PWD.ProviderPath)); [Console]::WriteLine(('SMOKE_' + 'OK')); exit\r").unwrap();
+                        // Console.WriteLine in Windows PowerShell uses the system code
+                        // page; use the shell's Unicode output to check the actual cwd.
+                        writer.write_all(b"Write-Output ('POLICY=' + (Get-ExecutionPolicy)); Write-Output ('DIRECTORY=' + $PWD.ProviderPath); Write-Output ('SMOKE_' + 'OK'); exit\r").unwrap();
                     }
                     sent = true;
                 }
