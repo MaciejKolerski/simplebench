@@ -158,18 +158,28 @@ cmd, and a basic `sh` fallback. Ctrl/Cmd+Shift+L opens environment selection for
 the active tab. Choosing another environment and pressing Restart terminals
 restarts that tab's terminals in the project folder.
 
-On Windows, installed WSL distributions appear alongside local shells. The app
-uses `wsl.exe`, translates Windows paths through `wslpath`, and starts each WSL
+On Windows, PowerShell 7, Windows PowerShell, and cmd take priority over Unix
+shells. WSL's legacy `bash.exe` launchers are excluded from local shell discovery;
+installed WSL distributions appear as separate environments. The app uses the
+system `wsl.exe`, translates Windows paths through `wslpath`, and starts each WSL
 tab in the selected distribution. Distribution discovery may start WSL to query
 its default shell and home directory. Windows and WSL code needs verification
 on a Windows host; the native development checks have been run on Linux.
 
-Shell integration is generated in the application data directory and loads the
-user's existing shell configuration without modifying it. Bash, zsh, and fish
-provide command boundaries and exit status. PowerShell/cmd use prompt hooks and
-Enter events, so completion status and multiline command boundaries are less
-precise. Custom prompt frameworks can also affect these hooks. The `sh` fallback
+Shell integration loads the user's existing shell configuration without modifying
+it. Bash, zsh, and fish hooks are generated in the application data directory.
+PowerShell receives its bundled prompt hook through `-Command`, so integration
+works with `Restricted` execution policy without changing the policy or registry.
+Bash, zsh, and fish provide command boundaries and exit status. PowerShell/cmd use
+prompt hooks and Enter events, so completion status and multiline command
+boundaries are less precise. Custom prompt frameworks can also affect these hooks. The `sh` fallback
 provides a terminal without command block integration.
+
+The [Windows shell checks](.github/workflows/windows-shells.yml) workflow tests
+local shell discovery and native ConPTY startup for PowerShell and cmd, including
+PowerShell's `Restricted` policy and project paths with spaces and Unicode.
+Run these checks locally with
+`cargo test --manifest-path src-tauri/Cargo.toml --locked shell::tests`.
 
 ### Terminal titles and maximized panels
 
