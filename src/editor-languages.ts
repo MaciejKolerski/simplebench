@@ -42,6 +42,11 @@ const definitions: Record<string, Language> = {
   py: language("Python", () =>
     import("@codemirror/lang-python").then((m) => m.python()),
   ),
+  lua: language("Lua", () =>
+    import("@codemirror/legacy-modes/mode/lua").then((m) =>
+      StreamLanguage.define(m.lua),
+    ),
+  ),
   go: language("Go", () => import("@codemirror/lang-go").then((m) => m.go())),
   c: cpp,
   h: cpp,

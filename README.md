@@ -309,7 +309,7 @@ Editor buffers and undo history stay outside React state and remain available
 while switching tabs, workspaces, or projects. Views of the same canonical file
 share one buffer. Only the visible editor mounts a CodeMirror view; its core and
 each language parser load on demand. Supported languages include Rust,
-JavaScript/TypeScript/JSX, Python, Go, C/C++, Java, HTML, CSS, JSON, Markdown, YAML,
+JavaScript/TypeScript/JSX, Python, Lua, Go, C/C++, Java, HTML, CSS, JSON, Markdown, YAML,
 SQL, XML, TOML, shell scripts, and Dockerfiles. Other text files use plain text.
 Completion is local and syntax based where supported by the language package;
 this milestone does not include language servers, AI, Vim, or media previews.

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
+import { newProject, newSession, openFileTab } from "../../src/model";
 import { chooseOption, mockDesktop } from "./desktop";
 
 const indentButton = (page: Page) =>
@@ -185,6 +186,96 @@ test("language selection changes the parser and keeps file identity, text and un
       ),
     ),
   ).toBe(false);
+});
+
+test("Lua files detect their language, highlight syntax, indent, comment, and save edits", async ({
+  page,
+}, testInfo) => {
+  const project = newProject("/project", "local:bash");
+  const session = openFileTab(
+    { ...newSession(), projects: [project], activeProjectId: project.id },
+    project.workspaces[0].id,
+    "/project",
+    "main.LUA",
+  );
+  const content = [
+    "-- Lua sample",
+    "local count = 42",
+    'local text = "Zażółć 🦀"',
+    "--[=[",
+    "block comment",
+    "]=]",
+    "local long = [=[",
+    "long string",
+    "]=]",
+    "if count > 0 then",
+    "    print(text)",
+    "end",
+  ].join("\n");
+  await mockDesktop(page, true, session, undefined, {
+    "/project/main.LUA": {
+      content,
+      revision: "initial",
+      encoding: "utf8",
+      readOnly: false,
+    },
+  });
+  await page.goto("/");
+  await expect(languageButton(page)).toHaveText("Lua");
+  const token = (text: string) =>
+    page.locator(".cm-line span[class]").getByText(text, { exact: true });
+  await expect(token("local").first()).toHaveCSS("font-weight", "600");
+  await expect(token("block comment")).toHaveCSS("font-style", "italic");
+  const color = (text: string) =>
+    token(text)
+      .first()
+      .evaluate((element) => getComputedStyle(element).color);
+  expect(
+    new Set(
+      await Promise.all([color("local"), color("42"), color('"Zażółć 🦀"')]),
+    ).size,
+  ).toBe(3);
+  expect(await color("long string")).toBe(await color('"Zażółć 🦀"'));
+  await page.screenshot({ path: testInfo.outputPath("lua-editor.png") });
+
+  await selectLanguage(page, "Plain text");
+  await expect(page.locator(".cm-line span[class]")).toHaveCount(0);
+  await selectLanguage(page, "Lua");
+  await expect(token("local").first()).toHaveCSS("font-weight", "600");
+  expect(await editorText(page)).toBe(content);
+  await replaceText(page, "if true then");
+  await selectSize(page, "Indent Using Spaces", 2);
+  await page.keyboard.press("Enter");
+  await page.keyboard.type('print("Lua")');
+  expect(await editorText(page)).toBe('if true then\n  print("Lua")');
+  await page.keyboard.press("Control+/");
+  expect(await editorText(page)).toBe('if true then\n  -- print("Lua")');
+  await page.keyboard.press("Control+/");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type("end");
+  const edited = 'if true then\n  print("Lua")\nend';
+  expect(await editorText(page)).toBe(edited);
+  await page.getByRole("tab", { name: "Terminal", exact: true }).click();
+  await page.getByRole("tab", { name: /main.LUA/ }).click();
+  await expect(languageButton(page)).toHaveText("Lua");
+  expect(await editorText(page)).toBe(edited);
+  await page.keyboard.press("Control+z");
+  expect(await editorText(page)).not.toBe(edited);
+  await page.keyboard.press("Control+Shift+Z");
+  expect(await editorText(page)).toBe(edited);
+  await page.keyboard.press("Control+s");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__nativeTest.editorFiles["/project/main.LUA"].content,
+      ),
+    )
+    .toBe(edited);
+  await page.reload();
+  await expect(languageButton(page)).toHaveText("Lua");
+  expect(await editorText(page)).toBe(edited);
+  await expect(token("if")).toHaveCSS("font-weight", "600");
 });
 
 test("menus support keyboard navigation, Escape, filtering, outside clicks, and the minimum window", async ({
