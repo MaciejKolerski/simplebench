@@ -149,9 +149,6 @@ requires more disk space. These settings use Cargo's standard
 
 ## Shells and environments
 
-For macOS window behavior, shell startup, and validation boundaries, see
-[macOS compatibility](MACOS.md).
-
 Installed local shells are discovered from `PATH`, preferring `$SHELL` on Unix.
 Supported profiles include bash, zsh, fish, PowerShell (`pwsh` or `powershell`),
 cmd, and a basic `sh` fallback. Ctrl/Cmd+Shift+L opens environment selection for
