@@ -324,6 +324,88 @@ pub fn quote(path: &str, shell: &str) -> Result<String, String> {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
+    #[test]
+    fn bash_prompt_keeps_input_after_prompt_when_widened() {
+        use std::io::{Read, Write};
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let directory = tempfile::tempdir().unwrap();
+        let integration = directory.path().join("integration");
+        fs::write(
+            directory.path().join(".bashrc"),
+            "PS1='[woro@woro-home simplebench]$ '\n",
+        )
+        .unwrap();
+        prepare(&integration).unwrap();
+        let profile = Profile {
+            id: "local:bash".into(),
+            name: "bash".into(),
+            kind: "bash".into(),
+            program: "bash".into(),
+            distro: None,
+            home: directory.path().to_string_lossy().into_owned(),
+        };
+        let (mut command, _) = build(&profile, &profile.home, &integration).unwrap();
+        command.env("HOME", directory.path());
+        command.env("INPUTRC", "/dev/null");
+        command.env("HISTFILE", "/dev/null");
+        command.env_remove("PROMPT_COMMAND");
+        let size = |cols| portable_pty::PtySize {
+            rows: 24,
+            cols,
+            pixel_width: 0,
+            pixel_height: 0,
+        };
+        let pair = portable_pty::native_pty_system().openpty(size(80)).unwrap();
+        let mut child = pair.slave.spawn_command(command).unwrap();
+        drop(pair.slave);
+        let mut reader = pair.master.try_clone_reader().unwrap();
+        let mut writer = pair.master.take_writer().unwrap();
+        let (send, receive) = mpsc::channel();
+        let reading = std::thread::spawn(move || {
+            let mut buffer = [0; 4096];
+            while let Ok(count) = reader.read(&mut buffer) {
+                if count == 0 || send.send(buffer[..count].to_vec()).is_err() {
+                    break;
+                }
+            }
+        });
+        let output = || {
+            let mut bytes = receive.recv_timeout(Duration::from_secs(5)).unwrap();
+            // A redraw can span reads; include cursor movement after the prompt marker.
+            while let Ok(chunk) = receive.recv_timeout(Duration::from_millis(100)) {
+                bytes.extend(chunk);
+            }
+            String::from_utf8_lossy(&bytes).into_owned()
+        };
+        let initial = output();
+        let mut redraws = Vec::new();
+        for cols in [24, 80, 18, 100, 29, 80] {
+            pair.master.resize(size(cols)).unwrap();
+            let redraw = output();
+            if cols >= 80 {
+                redraws.push(redraw);
+            }
+        }
+        writer
+            .write_all(b"printf 'INPUT_OK:%s\\n' 'hello'\r")
+            .unwrap();
+        let executed = output();
+        let _ = child.kill();
+        let _ = child.wait();
+        reading.join().unwrap();
+
+        assert!(initial.contains("\x1b]133;A\x07"), "{initial:?}");
+        for redraw in redraws {
+            // With no input to restore, the cursor must stay at the end marker.
+            assert!(redraw.ends_with("\x1b]133;B\x07"), "{redraw:?}");
+        }
+        assert!(executed.contains("INPUT_OK:hello\r\n"), "{executed:?}");
+        assert!(executed.contains("\x1b]133;D;0\x07"), "{executed:?}");
+    }
+
     #[cfg(target_os = "macos")]
     #[test]
     fn macos_zsh_loads_login_files_and_keeps_terminal_integration() {
