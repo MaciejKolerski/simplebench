@@ -1722,6 +1722,23 @@ svg {
   width: 12px;
   flex-shrink: 0;
 }
+.tree-create .tree-row:focus-within {
+  outline: var(--border-width) solid var(--color-primary);
+  outline-offset: calc(-1 * var(--border-width));
+}
+.tree-create svg {
+  flex-shrink: 0;
+}
+.tree-create input {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  outline: none;
+}
 .tree-action {
   flex-shrink: 0;
   display: grid;

@@ -59,6 +59,8 @@ export default function Explorer(props: Props) {
     repositoryRoot: props.gitStatus?.root,
     onSearch: search,
     onRefresh: refresh,
+    onExpand: (relative) =>
+      setExpanded((previous) => new Set(previous).add(relative)),
   });
   const rootEntry: FileEntry = {
     name: basename(props.root),
@@ -131,7 +133,11 @@ export default function Explorer(props: Props) {
               <Terminal size={14} />
             </IconButton>
           </div>
-          <div className="file-tree" aria-label="Project files">
+          <div
+            className="file-tree"
+            aria-label="Project files"
+            onContextMenu={(event) => actions.onContext(event, rootEntry, true)}
+          >
             <Directory
               {...props}
               relative=""
@@ -144,6 +150,7 @@ export default function Explorer(props: Props) {
               toggle={toggle}
               onContext={actions.onContext}
               onKey={actions.onKey}
+              creation={actions.creation}
             />
           </div>
           {actions.menu}
@@ -160,6 +167,7 @@ interface DirectoryProps extends Props {
   gitRevision: string | undefined;
   onContext: ReturnType<typeof useExplorerActions>["onContext"];
   onKey: ReturnType<typeof useExplorerActions>["onKey"];
+  creation: ReturnType<typeof useExplorerActions>["creation"];
   relative: string;
   depth: number;
   revision: number;
@@ -202,39 +210,40 @@ function Directory(props: DirectoryProps) {
       current = false;
     };
   }, [root, relative, revision, gitRevision]);
-  if (loading && !entries.length)
-    return (
-      <div
-        className="tree-message"
-        style={{
-          paddingLeft: `calc(${depth} * var(--tree-indent) + var(--space-16))`,
-        }}
-      >
-        Loading…
-      </div>
-    );
-  if (error)
-    return (
-      <div className="tree-message text-error" title={error}>
-        {error}
-      </div>
-    );
-  const visible = entries.filter(
-    (entry) => showHidden || !entry.name.startsWith("."),
-  );
-  if (!visible.length)
-    return (
-      <div
-        className="tree-message"
-        style={{
-          paddingLeft: `calc(${depth} * var(--tree-indent) + var(--space-16))`,
-        }}
-      >
-        Empty folder
-      </div>
-    );
+  const creation =
+    props.creation?.relative === relative ? props.creation : undefined;
+  const visible = error
+    ? []
+    : entries.filter((entry) => showHidden || !entry.name.startsWith("."));
+  const message =
+    error ||
+    (loading && !entries.length
+      ? "Loading…"
+      : !visible.length && !creation
+        ? "Empty folder"
+        : "");
   return (
     <>
+      {creation && (
+        <div
+          style={{
+            paddingLeft: `calc(${depth} * var(--tree-indent) + var(--space-10))`,
+          }}
+        >
+          {creation.node}
+        </div>
+      )}
+      {message && (
+        <div
+          className={`tree-message${error ? " text-error" : ""}`}
+          title={error || undefined}
+          style={{
+            paddingLeft: `calc(${depth} * var(--tree-indent) + var(--space-16))`,
+          }}
+        >
+          {message}
+        </div>
+      )}
       {visible.map((entry) => {
         const open = expanded.has(entry.relativePath);
         return (

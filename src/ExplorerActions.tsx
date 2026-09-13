@@ -1,5 +1,6 @@
-import { useRef, useState } from "react";
-import type { KeyboardEvent, MouseEvent } from "react";
+import { useId, useRef, useState } from "react";
+import type { FormEvent, KeyboardEvent, MouseEvent } from "react";
+import { File, Folder } from "lucide-react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { api, errorMessage } from "./api";
 import type { FileEntry, GitCommitSummary } from "./api";
@@ -20,6 +21,7 @@ interface Props {
   onOpenCommit: (commit: GitCommitSummary) => void;
   onOperation: (relative: string, operation: FileOperation) => Promise<boolean>;
   onRefresh: () => void;
+  onExpand: (relative: string) => void;
   onError: (message: string) => void;
 }
 
@@ -28,6 +30,7 @@ export function useExplorerActions(props: Props) {
     entry: FileEntry;
     x: number;
     y: number;
+    background: boolean;
   }>();
   const [prompt, setPrompt] = useState<{
     entry: FileEntry;
@@ -37,6 +40,7 @@ export function useExplorerActions(props: Props) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [history, setHistory] = useState<FileEntry>();
+  const errorId = useId();
   const trigger = useRef<HTMLElement>(null);
   const parent = (entry: FileEntry) =>
     entry.isDirectory ? entry.relativePath : parentPath(entry.relativePath);
@@ -50,20 +54,39 @@ export function useExplorerActions(props: Props) {
     element: HTMLElement,
     x?: number,
     y?: number,
+    background = false,
   ) => {
     trigger.current =
       element.querySelector<HTMLElement>(".tree-entry") ?? element;
     const bounds = element.getBoundingClientRect();
-    setContext({ entry, x: x || bounds.left, y: y || bounds.bottom });
+    setContext({
+      entry,
+      x: x || bounds.left,
+      y: y || bounds.bottom,
+      background,
+    });
   };
-  const onContext = (event: MouseEvent<HTMLElement>, entry: FileEntry) => {
+  const onContext = (
+    event: MouseEvent<HTMLElement>,
+    entry: FileEntry,
+    background = false,
+  ) => {
     event.preventDefault();
     event.stopPropagation();
-    if (!busy) open(entry, event.currentTarget, event.clientX, event.clientY);
+    if (!busy)
+      open(
+        entry,
+        event.currentTarget,
+        event.clientX,
+        event.clientY,
+        background,
+      );
   };
   const ask = (entry: FileEntry, kind: NonNullable<typeof prompt>["kind"]) => {
     setError("");
     setValue(kind === "rename" ? entry.name : "");
+    if (kind === "newFile" || kind === "newFolder")
+      props.onExpand(parent(entry));
     setPrompt({ entry, kind });
   };
   const run = (action: () => Promise<unknown>) => {
@@ -218,22 +241,31 @@ export function useExplorerActions(props: Props) {
           disabled: !props.repositoryRoot,
           run: () => setHistory(entry),
         },
-        null,
-        { label: "Rename…", shortcut: "F2", run: () => ask(entry, "rename") },
-        {
-          label: "Move to Trash…",
-          shortcut: "Delete",
-          run: () => ask(entry, "trash"),
-        },
-        {
-          label: "Delete Permanently…",
-          shortcut: "Ctrl+Delete",
-          danger: true,
-          run: () => ask(entry, "delete"),
-        },
+        ...(context.background
+          ? []
+          : [
+              null,
+              {
+                label: "Rename…",
+                shortcut: "F2",
+                run: () => ask(entry, "rename"),
+              },
+              {
+                label: "Move to Trash…",
+                shortcut: "Delete",
+                run: () => ask(entry, "trash"),
+              },
+              {
+                label: "Delete Permanently…",
+                shortcut: "Ctrl+Delete",
+                danger: true,
+                run: () => ask(entry, "delete"),
+              },
+            ]),
       ]}
     />
   );
+  const creating = prompt?.kind === "newFile" || prompt?.kind === "newFolder";
   const deleting = prompt?.kind === "delete" || prompt?.kind === "trash";
   const title =
     prompt?.kind === "rename"
@@ -245,42 +277,104 @@ export function useExplorerActions(props: Props) {
           : prompt?.kind === "trash"
             ? "Move to Trash"
             : "Delete Permanently";
-  const dialog = prompt && (
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (busy || !prompt) return;
+    if (creating && !value.trim()) {
+      setPrompt(undefined);
+      return;
+    }
+    setBusy(true);
+    setError("");
+    const { entry, kind } = prompt;
+    const relative = creating ? parent(entry) : entry.relativePath;
+    void operate(
+      relative,
+      kind === "trash" || kind === "delete" ? { kind } : { kind, name: value },
+    )
+      .then((completed) => {
+        if (completed) {
+          setPrompt(undefined);
+          if (kind === "newFile")
+            props.onOpenFile([relative, value].filter(Boolean).join("/"));
+        }
+      })
+      .catch((error) => setError(errorMessage(error)))
+      .finally(() => setBusy(false));
+  };
+  const creation =
+    prompt && creating
+      ? {
+          relative: parent(prompt.entry),
+          node: (
+            <form
+              className="tree-create"
+              onSubmit={submit}
+              onContextMenu={(event) => event.stopPropagation()}
+            >
+              <div className="tree-row">
+                <div className="tree-entry">
+                  <span className="tree-indent" />
+                  {prompt.kind === "newFolder" ? (
+                    <Folder size={14} />
+                  ) : (
+                    <File size={14} />
+                  )}
+                  <input
+                    aria-label={`${title} name`}
+                    aria-invalid={!!error}
+                    aria-describedby={error ? errorId : undefined}
+                    title="Enter to create, Escape to cancel"
+                    autoFocus
+                    autoComplete="off"
+                    spellCheck={false}
+                    value={value}
+                    readOnly={busy}
+                    onChange={(event) => setValue(event.target.value)}
+                    onBlur={() => {
+                      if (!busy) setPrompt(undefined);
+                    }}
+                    onKeyDown={(event) => {
+                      if (
+                        event.nativeEvent.isComposing ||
+                        event.nativeEvent.keyCode === 229
+                      ) {
+                        if (event.key === "Enter") event.preventDefault();
+                        return;
+                      }
+                      if (event.key === "Escape") {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (!busy) {
+                          setPrompt(undefined);
+                          dismiss();
+                        }
+                      }
+                    }}
+                  />
+                </div>
+              </div>
+              {error && (
+                <div
+                  id={errorId}
+                  className="tree-message text-error"
+                  role="alert"
+                >
+                  {error}
+                </div>
+              )}
+            </form>
+          ),
+        }
+      : undefined;
+  const dialog = prompt && !creating && (
     <Modal
       title={title}
       onClose={() => {
         if (!busy) setPrompt(undefined);
       }}
     >
-      <form
-        className="dialog-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (busy) return;
-          setBusy(true);
-          setError("");
-          const { entry, kind } = prompt;
-          const relative =
-            kind === "newFile" || kind === "newFolder"
-              ? parent(entry)
-              : entry.relativePath;
-          void operate(
-            relative,
-            kind === "trash" || kind === "delete"
-              ? { kind }
-              : { kind, name: value },
-          )
-            .then((completed) => {
-              if (completed) {
-                setPrompt(undefined);
-                if (kind === "newFile")
-                  props.onOpenFile([relative, value].filter(Boolean).join("/"));
-              }
-            })
-            .catch((error) => setError(errorMessage(error)))
-            .finally(() => setBusy(false));
-        }}
-      >
+      <form className="dialog-form" onSubmit={submit}>
         <div className="dialog-body">
           {deleting ? (
             <p>
@@ -351,5 +445,5 @@ export function useExplorerActions(props: Props) {
       />
     </Modal>
   );
-  return { onContext, onKey, menu, dialog, historyDialog, busy };
+  return { onContext, onKey, menu, dialog, historyDialog, busy, creation };
 }

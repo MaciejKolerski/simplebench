@@ -163,7 +163,7 @@ async function setup(
   }, initialEntries);
   await page.goto("/");
   await expect(
-    page.getByRole("button", { name: "README.md", exact: true }),
+    page.getByRole("button", { name: "Project folder project", exact: true }),
   ).toBeVisible();
 }
 async function menu(page: Page, name: string, item: string) {
@@ -433,6 +433,183 @@ test("deleting a dirty folder supports cancel and retains edits after a failed s
   ).toHaveCount(0);
 });
 
+for (const empty of [false, true]) {
+  test(`creates files and folders from blank Explorer space in an ${empty ? "empty" : "existing"} project`, async ({
+    page,
+  }) => {
+    await setup(page, false, empty ? [] : undefined);
+    await page.emulateMedia({ colorScheme: empty ? "light" : "dark" });
+    const tree = page.locator(".file-tree");
+    const entryActions = ["Rename…", "Move to Trash…", "Delete Permanently…"];
+    if (empty) await expect(tree).toContainText("Empty folder");
+    else
+      await expect(
+        tree.getByRole("button", { name: "README.md", exact: true }),
+      ).toBeVisible();
+
+    for (const [label, kind, name] of [
+      ["New Folder", "newFolder", "docs"],
+      ["New File", "newFile", "notes.txt"],
+    ]) {
+      const bounds = (await tree.boundingBox())!;
+      await tree.click({
+        button: "right",
+        position: { x: bounds.width / 2, y: bounds.height - 12 },
+      });
+      await expect(
+        page.getByRole("menu", { name: "project actions", exact: true }),
+      ).toBeVisible();
+      for (const name of entryActions)
+        await expect(
+          page.getByRole("menuitem", { name, exact: true }),
+        ).toHaveCount(0);
+      if (kind === "newFolder")
+        await page.screenshot({
+          path: test.info().outputPath("explorer-blank-menu.png"),
+        });
+      await page.getByRole("menuitem", { name: label, exact: true }).click();
+      const input = tree.getByRole("textbox", {
+        name: `${label} name`,
+        exact: true,
+      });
+      await expect(page.getByRole("dialog")).toHaveCount(0);
+      await expect(input).toBeFocused();
+      await expect(input).toHaveValue("");
+      await page.locator(".explorer-panel").screenshot({
+        path: test.info().outputPath(`explorer-inline-${kind}.png`),
+      });
+      await input.fill(name);
+      await input.press("Enter");
+      await expect(input).toHaveCount(0);
+      await expect(
+        tree.getByRole("button", { name, exact: true }),
+      ).toBeVisible();
+      expect(
+        await page.evaluate(() =>
+          (window as any).__nativeTest.calls
+            .filter((call: any) => call.command === "file_operation")
+            .at(-1),
+        ),
+      ).toMatchObject({
+        args: { root: "/project", relative: "", operation: { kind, name } },
+      });
+    }
+    await expect(page.locator(".editor-path")).toContainText("notes.txt");
+    for (const name of ["Project folder project", "docs", "notes.txt"]) {
+      await page
+        .getByRole("button", { name, exact: true })
+        .click({ button: "right" });
+      for (const action of entryActions)
+        await expect(
+          page.getByRole("menuitem", { name: action, exact: true }),
+        ).toBeEnabled();
+      await page.keyboard.press("Escape");
+    }
+  });
+}
+
+test("cancels unnamed or unconfirmed Explorer items without creating anything", async ({
+  page,
+}) => {
+  await setup(page, false);
+  for (const label of ["New File", "New Folder"]) {
+    for (const [name, finish] of [
+      ["", "Enter"],
+      ["   ", "Enter"],
+      ["", "blur"],
+      ["cancelled", "Escape"],
+      ["cancelled", "blur"],
+    ]) {
+      await menu(page, "Project folder project", label);
+      const input = page.getByRole("textbox", {
+        name: `${label} name`,
+        exact: true,
+      });
+      await expect(input).toBeFocused();
+      await input.fill(name);
+      if (finish === "blur")
+        await page
+          .getByRole("button", { name: "Project folder project", exact: true })
+          .click();
+      else await input.press(finish);
+      await expect(input).toHaveCount(0);
+    }
+  }
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.calls.filter(
+        (call: any) => call.command === "file_operation",
+      ),
+    ),
+  ).toHaveLength(0);
+});
+
+test("creates inline in nested folders and retains the name after errors and IME confirmation", async ({
+  page,
+}) => {
+  await setup(page);
+  const src = page.getByRole("button", { name: "src", exact: true });
+  await expect(src).toHaveAttribute("aria-expanded", "false");
+  await menu(page, "src", "New Folder");
+  await expect(src).toHaveAttribute("aria-expanded", "true");
+  const folder = page.getByRole("textbox", {
+    name: "New Folder name",
+    exact: true,
+  });
+  await expect(folder).toBeFocused();
+  await folder.fill("main.ts");
+  await folder.press("Enter");
+  await expect(page.getByRole("alert")).toContainText("already exists");
+  await expect(folder).toHaveValue("main.ts");
+  await expect(folder).toBeFocused();
+  await folder.fill("docs");
+  await folder.press("Enter");
+  await expect(folder).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "docs", exact: true }),
+  ).toHaveAttribute("title", "/project/src/docs");
+
+  await menu(page, "docs", "New File");
+  const file = page.getByRole("textbox", {
+    name: "New File name",
+    exact: true,
+  });
+  await expect(file).toBeFocused();
+  await file.fill("草稿.txt");
+  for (const key of ["Enter", "Escape"])
+    expect(
+      await file.evaluate(
+        (element, key) =>
+          element.dispatchEvent(
+            new KeyboardEvent("keydown", {
+              key,
+              isComposing: true,
+              bubbles: true,
+              cancelable: true,
+            }),
+          ),
+        key,
+      ),
+    ).toBe(key !== "Enter");
+  await expect(file).toHaveValue("草稿.txt");
+  await expect(file).toBeFocused();
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.calls.filter(
+        (call: any) => call.command === "file_operation",
+      ),
+    ),
+  ).toHaveLength(2);
+  await file.press("Enter");
+  await expect(file).toHaveCount(0);
+  await expect(page.locator(".editor-path")).toContainText("src/docs/草稿.txt");
+
+  await menu(page, "main.ts", "New File");
+  await file.fill("sibling.ts");
+  await file.press("Enter");
+  await expect(page.locator(".editor-path")).toContainText("src/sibling.ts");
+});
+
 test("creates and copies items and exposes scoped Git history", async ({
   page,
 }) => {
@@ -444,11 +621,12 @@ test("creates and copies items and exposes scoped Git history", async ({
     page.getByRole("button", { name: "README.md", exact: true }),
   ).toHaveCount(2);
   await menu(page, "Project folder project", "New Folder");
-  await page.getByRole("textbox", { name: "Name", exact: true }).fill("docs");
-  await page
-    .getByRole("dialog")
-    .getByRole("button", { name: "New Folder", exact: true })
-    .click();
+  const input = page.getByRole("textbox", {
+    name: "New Folder name",
+    exact: true,
+  });
+  await input.fill("docs");
+  await input.press("Enter");
   await expect(
     page.getByRole("button", { name: "docs", exact: true }),
   ).toBeVisible();
