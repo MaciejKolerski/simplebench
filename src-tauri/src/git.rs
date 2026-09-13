@@ -104,7 +104,7 @@ pub fn status(path: &str) -> Result<Option<GitStatus>, String> {
     };
     let changes = parse_status(&checked(
         root_path,
-        &["status", "--porcelain=v1", "-z", "--untracked-files=normal"],
+        &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
     )?);
     Ok(Some(GitStatus {
         root,
@@ -386,6 +386,29 @@ mod tests {
         assert_eq!(changes[1].path, "a\nfile");
         assert_eq!(changes[2].worktree, 'M');
     }
+    #[test]
+    fn lists_individual_untracked_files_and_excludes_ignored_files() {
+        let root = tempfile::tempdir().unwrap();
+        checked(root.path(), &["init", "-b", "main"]).unwrap();
+        std::fs::create_dir_all(root.path().join("new/nested")).unwrap();
+        std::fs::write(root.path().join(".git/info/exclude"), "*.log\n").unwrap();
+        std::fs::write(root.path().join("new/nested/file.ts"), "new").unwrap();
+        std::fs::write(root.path().join("new/nested/ignored.log"), "ignored").unwrap();
+        let changes = status(root.path().join("new").to_str().unwrap())
+            .unwrap()
+            .unwrap()
+            .changes;
+        assert_eq!(
+            changes,
+            vec![Change {
+                path: "new/nested/file.ts".into(),
+                original_path: None,
+                index: '?',
+                worktree: '?',
+            }]
+        );
+    }
+
     #[test]
     fn detects_repositories_and_unstages_unborn_commits_without_deleting_files() {
         let root = tempfile::tempdir().unwrap();

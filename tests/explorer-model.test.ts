@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyFileChange, containsPath } from "../src/explorer-model.ts";
+import {
+  applyFileChange,
+  containsPath,
+  explorerGitStatuses,
+  gitFilePath,
+} from "../src/explorer-model.ts";
 import {
   fileTabs,
   filesInTab,
@@ -11,6 +16,113 @@ import {
   panes,
   splitPane,
 } from "../src/model.ts";
+
+test("Explorer matches repository paths and combines staged and working statuses", () => {
+  const cases = [
+    ["??", "?"],
+    ["A ", "A"],
+    ["AM", "A"],
+    [" M", "M"],
+    ["M ", "M"],
+    ["AD", "D"],
+    [" D", "D"],
+    ["D ", "D"],
+    ["R ", "R"],
+    ["RM", "M"],
+    ["C ", "C"],
+    [" T", "T"],
+    ["AA", "U"],
+    ["DD", "U"],
+    ["AU", "U"],
+    ["UD", "U"],
+    ["UA", "U"],
+    ["DU", "U"],
+    ["UU", "U"],
+    ["  ", undefined],
+    ["!!", undefined],
+  ] as const;
+  const statuses = explorerGitStatuses({
+    root: "/repo/",
+    branch: "main",
+    changes: cases.map(([pair], i) => ({
+      path: `project/src/file-${i}.ts`,
+      originalPath: null,
+      index: pair[0],
+      worktree: pair[1],
+    })),
+  });
+  cases.forEach(([, code], i) =>
+    assert.equal(statuses.get(`/repo/project/src/file-${i}.ts`), code),
+  );
+  assert.equal(statuses.get("/repo/project-other/src/file-0.ts"), undefined);
+  assert.equal(explorerGitStatuses(null).size, 0);
+  assert.equal(
+    gitFilePath("\\\\?\\C:\\repo\\src\\file.ts"),
+    "C:/repo/src/file.ts",
+  );
+  assert.equal(
+    gitFilePath("\\\\?\\UNC\\server\\repo\\file.ts"),
+    "//server/repo/file.ts",
+  );
+});
+
+test("Explorer propagates changes to ancestors with stable priority and respects repository boundaries", () => {
+  const changes = [
+    ["project/src/new.ts", "??", null],
+    ["project/src/nested/changed.ts", " M", null],
+    ["project/src/conflict.ts", "UU", null],
+    ["project/new/deep/file.ts", "A ", null],
+    ["project/deleted/file.ts", " D", null],
+    ["project/moved/file.ts", "R ", "project/old/file.ts"],
+    ["project/copied/file.ts", "C ", "project/unchanged/file.ts"],
+    ["project/ignored/file.ts", "!!", null],
+    ["project/type", " D", null],
+    ["project/type/new.ts", "??", null],
+  ].map(([path, pair, originalPath]) => ({
+    path: path!,
+    index: pair![0],
+    worktree: pair![1],
+    originalPath,
+  }));
+  for (const ordered of [changes, [...changes].reverse()]) {
+    const statuses = explorerGitStatuses({
+      root: "/repo",
+      branch: "main",
+      changes: ordered,
+    });
+    for (const [relative, code] of [
+      ["", "U"],
+      ["project", "U"],
+      ["project/src", "U"],
+      ["project/src/nested", "M"],
+      ["project/new", "A"],
+      ["project/new/deep", "A"],
+      ["project/deleted", "M"],
+      ["project/moved", "M"],
+      ["project/old", "M"],
+      ["project/copied", "M"],
+      ["project/type", "A"],
+      ["project/unchanged", undefined],
+      ["project/ignored", undefined],
+      ["project/sr", undefined],
+    ])
+      assert.equal(
+        statuses.get(`/repo${relative ? `/${relative}` : ""}`),
+        code,
+      );
+    assert.equal(statuses.has(""), false);
+  }
+  const modified = explorerGitStatuses({
+    root: "/repo",
+    branch: "main",
+    changes: changes.filter((change) => change.worktree !== "U"),
+  });
+  assert.equal(modified.get("/repo/project/src"), "M");
+  assert.equal(
+    explorerGitStatuses({ root: "/repo", branch: "main", changes: [] }).size,
+    0,
+  );
+});
 
 test("folder renames preserve file IDs and positions in every workspace and split", () => {
   const project = newProject("/project", "bash");

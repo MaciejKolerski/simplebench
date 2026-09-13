@@ -1437,7 +1437,8 @@ export default function Workbench() {
                   onOpenFile={(relative, match) =>
                     void openFile(relative, project.path, match)
                   }
-                  repositoryRoot={git.status?.root}
+                  gitStatus={git.status}
+                  onRefreshGit={git.refresh}
                   onOpenCommit={openHistoryCommit}
                   onOperation={operateFile}
                   onError={setError}

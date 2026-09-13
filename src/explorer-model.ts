@@ -1,5 +1,6 @@
 import { basename, layoutPanes, newTab } from "./model.ts";
 import type { FileTab, Layout, Project, Session, Tab } from "./model.ts";
+import type { GitStatus } from "./api.ts";
 
 export interface FileChange {
   oldPath: string | null;
@@ -20,6 +21,49 @@ export const containsPath = (parent: string, path: string) => {
 };
 export const parentPath = (path: string) =>
   normalizePath(path).split("/").slice(0, -1).join("/");
+
+export const gitFilePath = (path: string) =>
+  normalizePath(path)
+    .replace(/^\/\/\?\/UNC\//, "//")
+    .replace(/^\/\/\?\//, "");
+
+export function explorerGitStatuses(status: GitStatus | null) {
+  const files = new Map<string, string>();
+  if (!status) return files;
+  const folders = new Map<string, string>();
+  const priority: Record<string, number> = { A: 1, M: 2, U: 3 };
+  const root = gitFilePath(status.root);
+  for (const change of status.changes) {
+    const { index, worktree } = change;
+    let code = worktree === " " ? index : worktree;
+    if (index === "A" && worktree !== "D") code = "A";
+    if (
+      index === "U" ||
+      worktree === "U" ||
+      ["AA", "DD"].includes(index + worktree)
+    )
+      code = "U";
+    if (!["?", "A", "M", "D", "R", "C", "T", "U"].includes(code)) continue;
+    files.set(gitFilePath(`${root}/${change.path}`), code);
+    const folderCode =
+      code === "U" ? "U" : ["?", "A"].includes(code) ? "A" : "M";
+    const paths = [change.path];
+    if (change.originalPath && (index === "R" || worktree === "R"))
+      paths.push(change.originalPath);
+    for (const relative of paths) {
+      for (
+        let parent = parentPath(gitFilePath(`${root}/${relative}`));
+        containsPath(root, parent);
+        parent = parentPath(parent)
+      ) {
+        if (priority[folderCode] > (priority[folders.get(parent) ?? ""] ?? 0))
+          folders.set(parent, folderCode);
+        if (parent === root) break;
+      }
+    }
+  }
+  return new Map([...files, ...folders]);
+}
 
 export function applyFileChange(
   session: Session,

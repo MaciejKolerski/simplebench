@@ -2,7 +2,15 @@ import { expect, test } from "@playwright/test";
 import type { Page } from "@playwright/test";
 import { mockDesktop } from "./desktop";
 
-async function setup(page: Page, git = true) {
+async function setup(
+  page: Page,
+  git = true,
+  initialEntries = [
+    { relative: "src", directory: true },
+    { relative: "src/main.ts", directory: false },
+    { relative: "README.md", directory: false },
+  ],
+) {
   await mockDesktop(page, git, undefined, undefined, {
     "/project/src/main.ts": {
       content: "first\n🦀 needle here\nneedle again\n",
@@ -17,15 +25,11 @@ async function setup(page: Page, git = true) {
       readOnly: false,
     },
   });
-  await page.addInitScript(() => {
+  await page.addInitScript((initialEntries) => {
     const native = (window as any).__nativeTest;
     native.operationError = "";
     native.searchDelays = {};
-    let entries = [
-      { relative: "src", directory: true },
-      { relative: "src/main.ts", directory: false },
-      { relative: "README.md", directory: false },
-    ];
+    let entries = initialEntries;
     const bridge = (window as any).__TAURI_INTERNALS__;
     const invoke = bridge.invoke;
     bridge.invoke = async (command: string, args: any = {}) => {
@@ -156,7 +160,7 @@ async function setup(page: Page, git = true) {
       }
       return { oldPath: moving ? oldPath : null, newPath: `${root}/${target}` };
     };
-  });
+  }, initialEntries);
   await page.goto("/");
   await expect(
     page.getByRole("button", { name: "README.md", exact: true }),
@@ -168,6 +172,153 @@ async function menu(page: Page, name: string, item: string) {
     .click({ button: "right" });
   await page.getByRole("menuitem", { name: item, exact: true }).click();
 }
+
+test("Explorer colors files and ancestor folders and refreshes new files and clean states", async ({
+  page,
+}, testInfo) => {
+  await setup(page, true, [
+    { relative: "src", directory: true },
+    { relative: "src/nested", directory: true },
+    { relative: "src/nested/deep", directory: true },
+    { relative: ".new", directory: true },
+    { relative: "src-other", directory: true },
+    ...[
+      "README.md",
+      ".env",
+      "clean.txt",
+      "src/main.ts",
+      "src/new.ts",
+      "src/ignored.log",
+      "src/conflict.ts",
+      "src/nested/deep/changed.ts",
+      ".new/file.ts",
+    ].map((relative) => ({ relative, directory: false })),
+  ]);
+  await page.evaluate(() => {
+    const desktop = window as any;
+    desktop.__explorerGitStatus = {
+      root: "/",
+      branch: "main",
+      changes: [
+        { path: "project/README.md", index: "M", worktree: " " },
+        { path: "project/.env", index: " ", worktree: "M" },
+        { path: "project/src/main.ts", index: "A", worktree: "M" },
+        { path: "project/src/new.ts", index: "?", worktree: "?" },
+        { path: "project/src/conflict.ts", index: "A", worktree: "A" },
+        {
+          path: "project/src/nested/deep/changed.ts",
+          index: " ",
+          worktree: "M",
+        },
+        { path: "project/.new/file.ts", index: "?", worktree: "?" },
+        { path: "other/clean.txt", index: " ", worktree: "M" },
+      ].map((change) => ({ ...change, originalPath: null })),
+    };
+    const invoke = desktop.__TAURI_INTERNALS__.invoke;
+    desktop.__TAURI_INTERNALS__.invoke = (command: string, args: unknown) =>
+      command === "git_status"
+        ? Promise.resolve(structuredClone(desktop.__explorerGitStatus))
+        : invoke(command, args);
+    window.dispatchEvent(new Event("focus"));
+  });
+  const tree = page.locator(".file-tree");
+  const source = tree.getByRole("button", { name: "src", exact: true });
+  await expect(source).toHaveAttribute("data-git-status", "U");
+  await expect(source).toHaveAttribute("aria-expanded", "false");
+  await source.click();
+  await tree.getByRole("button", { name: "nested", exact: true }).click();
+  for (const mode of ["dark", "light"] as const) {
+    await page.emulateMedia({ colorScheme: mode });
+    await expect(page.locator("html")).toHaveAttribute("data-appearance", mode);
+    const colors =
+      mode === "dark"
+        ? {
+            added: "rgb(122, 143, 166)",
+            modified: "rgb(201, 162, 39)",
+            conflict: "rgb(199, 92, 92)",
+          }
+        : {
+            added: "rgb(58, 90, 120)",
+            modified: "rgb(163, 107, 0)",
+            conflict: "rgb(179, 38, 30)",
+          };
+    for (const [name, color] of [
+      ["README.md", colors.modified],
+      [".env", colors.modified],
+      ["main.ts", colors.added],
+      ["new.ts", colors.added],
+      ["conflict.ts", colors.conflict],
+      ["src", colors.conflict],
+      ["nested", colors.modified],
+      ["deep", colors.modified],
+      [".new", colors.added],
+    ]) {
+      const file = tree.getByRole("button", { name, exact: true });
+      await expect(file.locator("span").last()).toHaveCSS("color", color);
+      await expect(file.locator("svg").last()).toHaveCSS("color", color);
+    }
+    const neutral = await tree
+      .getByRole("button", { name: "clean.txt", exact: true })
+      .evaluate((element) => getComputedStyle(element).color);
+    await expect(
+      tree.getByRole("button", { name: "ignored.log", exact: true }),
+    ).toHaveCSS("color", neutral);
+    await expect(
+      tree.getByRole("button", { name: "src-other", exact: true }),
+    ).toHaveCSS("color", neutral);
+    await expect(page.locator(".project-tree-heading")).toHaveCSS(
+      "color",
+      colors.conflict,
+    );
+    await page
+      .locator(".explorer-panel")
+      .screenshot({ path: testInfo.outputPath(`explorer-git-${mode}.png`) });
+  }
+  await tree.getByRole("button", { name: "README.md", exact: true }).focus();
+  await page.evaluate(async () => {
+    const desktop = window as any;
+    await desktop.__TAURI_INTERNALS__.invoke("file_operation", {
+      root: "/project",
+      relative: "src",
+      operation: { kind: "newFile", name: "created.ts" },
+    });
+    desktop.__explorerGitStatus.changes.push({
+      path: "project/src/created.ts",
+      originalPath: null,
+      index: "?",
+      worktree: "?",
+    });
+    desktop.__explorerGitStatus.changes =
+      desktop.__explorerGitStatus.changes.filter(
+        (change: { path: string }) => change.path !== "project/src/conflict.ts",
+      );
+  });
+  await expect(
+    tree.getByRole("button", { name: "created.ts", exact: true }),
+  ).toHaveCSS("color", "rgb(58, 90, 120)", { timeout: 10000 });
+  await expect(source).toHaveCSS("color", "rgb(163, 107, 0)");
+  await expect(
+    tree.getByRole("button", { name: "README.md", exact: true }),
+  ).toBeFocused();
+  await page.evaluate(() => {
+    (window as any).__explorerGitStatus.changes = [];
+  });
+  await page
+    .getByRole("button", { name: "Refresh explorer", exact: true })
+    .click();
+  await expect(tree.locator("[data-git-status]")).toHaveCount(0);
+  await expect(
+    page.locator(".project-tree-heading[data-git-status]"),
+  ).toHaveCount(0);
+  await page.evaluate(() => {
+    (window as any).__explorerGitStatus = null;
+    window.dispatchEvent(new Event("focus"));
+  });
+  await expect(
+    page.getByRole("button", { name: /Toggle source control/ }),
+  ).toHaveCount(0);
+  await expect(tree.locator("[data-git-status]")).toHaveCount(0);
+});
 
 test("searches the project or a folder and opens the matching editor selection", async ({
   page,

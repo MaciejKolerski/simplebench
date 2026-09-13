@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ChevronDown,
   ChevronRight,
@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { api, errorMessage } from "./api";
-import type { FileEntry, GitCommitSummary } from "./api";
+import type { FileEntry, GitCommitSummary, GitStatus } from "./api";
 import { basename } from "./model";
 import { beginFileDrag } from "./file-drag";
 import { IconButton } from "./ui";
@@ -23,19 +23,26 @@ import { IconButton } from "./ui";
 import ProjectSearch from "./ProjectSearch";
 import type { SearchMatch } from "./ProjectSearch";
 import type { FileOperation } from "./explorer-model";
+import { explorerGitStatuses, gitFilePath } from "./explorer-model";
 import { useExplorerActions } from "./ExplorerActions";
 
 interface Props {
   root: string;
   onTerminal: (path: string) => void;
   onOpenFile: (relative: string, match?: SearchMatch) => void;
-  repositoryRoot?: string;
+  gitStatus: GitStatus | null;
+  onRefreshGit: () => void;
   onOpenCommit: (commit: GitCommitSummary) => void;
   onOperation: (relative: string, operation: FileOperation) => Promise<boolean>;
   onError: (message: string) => void;
 }
 
 export default function Explorer(props: Props) {
+  const gitStatuses = useMemo(
+    () => explorerGitStatuses(props.gitStatus),
+    [props.gitStatus],
+  );
+  const gitRevision = JSON.stringify(props.gitStatus?.changes);
   const [revision, setRevision] = useState(0);
   const [searchScope, setSearchScope] = useState<string>();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -43,9 +50,13 @@ export default function Explorer(props: Props) {
     setSearchScope(relative);
     setSearchOpen(true);
   };
-  const refresh = () => setRevision((revision) => revision + 1);
+  const refresh = () => {
+    setRevision((revision) => revision + 1);
+    props.onRefreshGit();
+  };
   const actions = useExplorerActions({
     ...props,
+    repositoryRoot: props.gitStatus?.root,
     onSearch: search,
     onRefresh: refresh,
   });
@@ -97,16 +108,14 @@ export default function Explorer(props: Props) {
               >
                 <ChevronsDownUp size={14} />
               </IconButton>
-              <IconButton
-                title="Refresh explorer"
-                onClick={() => setRevision(revision + 1)}
-              >
+              <IconButton title="Refresh explorer" onClick={refresh}>
                 <RefreshCw size={14} />
               </IconButton>
             </div>
           </header>
           <div
             className="project-tree-heading"
+            data-git-status={gitStatuses.get(gitFilePath(props.root))}
             tabIndex={0}
             role="button"
             aria-label={`Project folder ${rootEntry.name}`}
@@ -128,6 +137,8 @@ export default function Explorer(props: Props) {
               relative=""
               depth={0}
               revision={revision}
+              gitStatuses={gitStatuses}
+              gitRevision={gitRevision}
               showHidden={showHidden}
               expanded={expanded}
               toggle={toggle}
@@ -145,6 +156,8 @@ export default function Explorer(props: Props) {
 }
 
 interface DirectoryProps extends Props {
+  gitStatuses: Map<string, string>;
+  gitRevision: string | undefined;
   onContext: ReturnType<typeof useExplorerActions>["onContext"];
   onKey: ReturnType<typeof useExplorerActions>["onKey"];
   relative: string;
@@ -160,6 +173,7 @@ function Directory(props: DirectoryProps) {
     relative,
     depth,
     revision,
+    gitRevision,
     showHidden,
     expanded,
     toggle,
@@ -187,8 +201,8 @@ function Directory(props: DirectoryProps) {
     return () => {
       current = false;
     };
-  }, [root, relative, revision]);
-  if (loading)
+  }, [root, relative, revision, gitRevision]);
+  if (loading && !entries.length)
     return (
       <div
         className="tree-message"
@@ -238,6 +252,7 @@ function Directory(props: DirectoryProps) {
             >
               <button
                 className="tree-entry"
+                data-git-status={props.gitStatuses.get(gitFilePath(entry.path))}
                 title={entry.path}
                 aria-expanded={entry.isDirectory ? open : undefined}
                 onClick={() =>

@@ -1744,6 +1744,23 @@ svg {
 .symlink-mark {
   color: var(--color-surface-variant-text);
 }
+.explorer-panel [data-git-status="M"],
+.explorer-panel [data-git-status="T"] {
+  color: var(--color-warning);
+}
+.explorer-panel [data-git-status="?"],
+.explorer-panel [data-git-status="A"],
+.explorer-panel [data-git-status="R"],
+.explorer-panel [data-git-status="C"] {
+  color: var(--color-info);
+}
+.explorer-panel [data-git-status="D"],
+.explorer-panel [data-git-status="U"] {
+  color: var(--color-error);
+}
+.tree-entry[data-git-status] :is(svg, .dotfile) {
+  color: inherit;
+}
 .tree-message {
   color: var(--color-muted-text);
   padding: var(--space-8) var(--space-14);
