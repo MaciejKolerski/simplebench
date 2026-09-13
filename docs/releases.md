@@ -19,23 +19,92 @@ tag-triggered `publish-tauri` matrix:
    `tauri-apps/tauri-action@v0` through `pnpm tauri`, using the locked Rust
    dependencies. Tauri's frontend build includes TypeScript checking.
 4. Sign and notarize the macOS apps using the Apple secrets. Build the native
-   installers for each platform and upload them directly to the published
-   `vX.Y.Z` GitHub release.
-5. After all four builds succeed, publish `simplebench` and `simplebench-bin`
+   installers, sign updater artifacts with the dedicated Tauri key, and upload
+   them with `latest.json` to a draft `vX.Y.Z` GitHub release. Use
+   `releases/vX.Y.Z.md` for the release description and updater notes when present.
+5. After all four builds succeed, validate `latest.json` with
+   `scripts/check-updater.mjs` and publish the complete release. Then publish `simplebench` and `simplebench-bin`
    to AUR. Retry temporary AUR failures up to three times; the **publish AUR**
    workflow can also be started independently for an existing release.
 6. Notify Flathub only when `FLATHUB_TOKEN` is configured.
 
-As in Simple Voice, the release becomes visible as platforms finish uploading;
-it can be incomplete while other builds are running. This workflow does not
+The release stays a draft if a platform fails or updater metadata is incomplete.
+The previous stable release remains the updater endpoint until publication. This workflow does not
 run Playwright, model tests, Clippy, or Rust tests. Run the relevant checks before
 tagging, as described in the [development guide](../README.md#validation-and-builds).
 
 SimpleBench selects Xcode 26.3 to compile its Icon Composer source and uses its
 own pnpm version. It does not need Simple Voice's audio, Vulkan, or ONNX build
-dependencies. Windows installers are not Authenticode-signed. SimpleBench has
-no in-app updater, so it does not create `latest.json` or require a Tauri updater
-key. macOS app archives are still published as downloads.
+dependencies. Windows installers are not Authenticode-signed. Tauri updater
+signatures verify downloaded updates independently of Apple signing and Windows
+Authenticode. macOS app archives are still published as downloads.
+
+## In-app updates
+
+Like Simple Voice, SimpleBench checks for updates three seconds after the
+workspace initializes. **Settings → About → Check for updates** requests a
+manual check in the main window. Automatic network errors stay quiet; manual
+checks report errors or confirm that the installed version is current. Checks
+use a 15-second timeout and Tauri's semantic version comparison, without downgrades.
+Versions shipped before this updater was added need one manual installation of
+an updater-enabled release before they can receive automatic update checks.
+
+Windows and macOS show the version and release notes, then download and verify
+the signed package when the user chooses **Update now**. Downloads show progress
+(indeterminate when the server omits a length). Before installation, the existing
+close guard checks running processes and offers save/discard/cancel for dirty
+editors. Failed saves or cancellation prevent installation. The session is saved
+before PTYs are stopped and installation starts. Windows' installer relaunches
+the application; macOS requests a restart after replacing the app bundle.
+Terminals restart as fresh shells, with no command or output replay.
+
+Linux always shows external update instructions, including for AppImages:
+
+- Flatpak: `flatpak update` (detected at runtime, before checking the host distro).
+- Arch and derivatives: `yay -Syu simplebench-bin`, or `yay -Syu simplebench`
+  when the source package is installed. Users of another AUR helper can use its
+  equivalent command; pacman alone does not build AUR packages.
+- Other distributions: download the latest package from GitHub Releases and
+  reinstall it with the distribution's package manager, or replace the AppImage.
+
+The dialog can copy the instructions or open GitHub Releases. It never runs
+package-manager commands. Flatpak detection does not imply a published Flathub
+package; the Flathub prerequisites below still apply. Installation permissions
+exist only for the main application webview on Windows and macOS. Settings can
+request a check but cannot download/install updates, and embedded browser pages
+have no updater access.
+
+## Updater signing key
+
+The public key is stored in `src-tauri/tauri.conf.json`. Keep the corresponding
+private key and password outside the repository and back them up securely.
+Losing or replacing this key prevents existing installations from accepting
+future updates. The implementation's initial key files are in
+`~/.config/simplebench/updater/` (`simplebench.key`, `simplebench.key.pub`, and
+`simplebench.password`), with access restricted to the local user.
+
+Configure these repository Actions secrets, passing file contents via stdin:
+
+```sh
+gh secret set TAURI_SIGNING_PRIVATE_KEY --repo MaciejKolerski/simplebench < ~/.config/simplebench/updater/simplebench.key
+gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --repo MaciejKolerski/simplebench < ~/.config/simplebench/updater/simplebench.password
+```
+
+For a new installation of this release infrastructure only, generate a key using
+`pnpm tauri signer generate -w /safe/path/simplebench.key` and put its public key
+contents in `plugins.updater.pubkey`. Do not regenerate a deployed updater key.
+For local bundle builds, set `TAURI_SIGNING_PRIVATE_KEY` to the key path and
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` to its password in the build environment.
+Development runs and `--no-bundle` builds do not need signing secrets.
+
+The workflow enables `bundle.createUpdaterArtifacts` and
+`includeUpdaterJson`, producing signed macOS app archives, Windows installers
+(NSIS preferred in updater metadata), and the Linux AppImage metadata used for
+version notifications. The endpoint is the public GitHub release asset:
+`https://github.com/MaciejKolerski/simplebench/releases/latest/download/latest.json`.
+No GitHub token is embedded in the app. See the
+[Tauri updater documentation](https://v2.tauri.app/plugin/updater/) and
+[tauri-action v0 inputs](https://github.com/tauri-apps/tauri-action/blob/v0/action.yml).
 
 ## Apple Developer configuration
 
@@ -91,11 +160,9 @@ Both AUR recipes declare the same license.
    finish. Download and smoke-test the installers on the supported systems;
    successful CI builds do not establish native behavior on every operating
    system.
-6. To replace the default release description with the prepared notes, run:
-
-   ```sh
-   gh release edit vX.Y.Z --notes-file releases/vX.Y.Z.md
-   ```
+6. Release notes prepared before tagging are included in both the GitHub
+   description and `latest.json`. Editing the GitHub description after publication
+   does not automatically change the notes already stored in `latest.json`.
 
 Retry failed jobs when the failure was an external service or credential issue.
 For a source change after publication, use a new version. Never move a tag already

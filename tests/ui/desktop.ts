@@ -71,6 +71,16 @@ export async function mockDesktop(
       const desktop = window as any;
       desktop.isTauri = true;
       desktop.__nativeTest = {
+        update: null,
+        updateInstruction:
+          platform === "linux" ? "yay -Syu simplebench-bin" : null,
+        updateCheckError: "",
+        updateDownloadError: "",
+        updateInstallError: "",
+        updateRestartError: "",
+        updateCheckDelay: 0,
+        updateDownloadDelay: 0,
+        updateContentLength: 100,
         localWebServers: [] as string[],
         localWebServersError: "",
         localWebServersDelay: 0,
@@ -122,6 +132,11 @@ export async function mockDesktop(
         },
       };
       window.addEventListener("storage", (event) => {
+        if (
+          event.key === "test-update-check" &&
+          !location.search.includes("settings")
+        )
+          void emitEvent("check-for-updates");
         if (event.key === "test-terminal-preferences")
           void emitEvent("terminal-preferences-changed");
         if (event.key === "test-editor-preferences")
@@ -157,6 +172,46 @@ export async function mockDesktop(
         },
         async invoke(command: string, args: Record<string, any> = {}) {
           calls.push({ command, args: JSON.parse(JSON.stringify(args)) });
+          if (command === "update_environment")
+            return { linuxInstruction: desktop.__nativeTest.updateInstruction };
+          if (command === "request_update_check") {
+            localStorage.setItem("test-update-check", String(Date.now()));
+            return;
+          }
+          if (command === "plugin:updater|check") {
+            await new Promise((resolve) =>
+              setTimeout(resolve, desktop.__nativeTest.updateCheckDelay),
+            );
+            if (desktop.__nativeTest.updateCheckError)
+              throw new Error(desktop.__nativeTest.updateCheckError);
+            return desktop.__nativeTest.update;
+          }
+          if (command === "plugin:updater|download") {
+            const send = (index: number, message: unknown) =>
+              callbacks.get(args.onEvent.id)?.({ index, message });
+            send(0, {
+              event: "Started",
+              data: { contentLength: desktop.__nativeTest.updateContentLength },
+            });
+            send(1, { event: "Progress", data: { chunkLength: 50 } });
+            await new Promise((resolve) =>
+              setTimeout(resolve, desktop.__nativeTest.updateDownloadDelay),
+            );
+            if (desktop.__nativeTest.updateDownloadError)
+              throw new Error(desktop.__nativeTest.updateDownloadError);
+            send(2, { event: "Finished" });
+            return 902;
+          }
+          if (command === "plugin:updater|install") {
+            if (desktop.__nativeTest.updateInstallError)
+              throw new Error(desktop.__nativeTest.updateInstallError);
+            return;
+          }
+          if (command === "restart_after_update") {
+            if (desktop.__nativeTest.updateRestartError)
+              throw new Error(desktop.__nativeTest.updateRestartError);
+            return;
+          }
           if (command === "local_web_servers") {
             const result = [...desktop.__nativeTest.localWebServers];
             let index = 0;

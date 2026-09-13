@@ -12,6 +12,7 @@ mod shell;
 mod terminal;
 mod terminal_preferences;
 mod themes;
+mod updater;
 
 use tauri::{Manager, State, Window};
 
@@ -107,6 +108,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(browser::Browsers::default())
         .manage(terminal::Terminals::default())
         .manage(cli_titles::CliTitleConfig::default())
@@ -153,6 +155,9 @@ pub fn run() {
                 browser::browser_action,
                 browser::servers::local_web_servers,
                 app_info,
+                updater::update_environment,
+                updater::request_update_check,
+                updater::restart_after_update,
                 show_ready_window,
                 finish_window_startup,
                 settings_window::open_settings,

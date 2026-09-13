@@ -5,6 +5,8 @@
   "webviews": ["main"],
   "permissions": [
     "core:event:default",
+    "core:resources:allow-close",
+    "updater:allow-check",
     "core:webview:allow-set-webview-zoom",
     "core:window:allow-start-dragging",
     "core:window:allow-minimize",

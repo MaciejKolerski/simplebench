@@ -2940,6 +2940,44 @@ svg {
 .dialog-form {
   padding: var(--modal-content-padding);
 }
+.updater-dialog .modal-surface {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 70px);
+}
+.updater-dialog .dialog-form {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.updater-dialog .modal-surface > header,
+.updater-dialog .dialog-actions {
+  flex-shrink: 0;
+}
+.update-content {
+  overflow-y: auto;
+}
+.update-notes,
+.update-instruction {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: var(--font-size-12);
+  line-height: 1.6;
+  padding: var(--space-12);
+  background: var(--color-background);
+  border: var(--border-width) solid var(--color-outline);
+  border-radius: var(--radius-control);
+}
+.update-notes {
+  max-height: 180px;
+  overflow-y: auto;
+}
+.updater-dialog progress {
+  display: block;
+  width: 100%;
+  margin-top: var(--space-12);
+  accent-color: var(--color-primary);
+}
 .cli-title-dialog .modal-surface,
 .cli-title-dialog .dialog-form {
   display: flex;

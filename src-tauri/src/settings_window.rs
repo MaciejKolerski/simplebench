@@ -84,10 +84,12 @@ pub async fn open_settings(
     page: Option<String>,
 ) -> Result<(), String> {
     crate::files::main_window(&window)?;
-    if page
-        .as_deref()
-        .is_some_and(|page| !matches!(page, "keybinds" | "themes" | "editor" | "terminal"))
-    {
+    if page.as_deref().is_some_and(|page| {
+        !matches!(
+            page,
+            "keybinds" | "themes" | "editor" | "terminal" | "about"
+        )
+    }) {
         return Err("Unknown settings page.".into());
     }
     prepare(&app).await?;

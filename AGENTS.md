@@ -105,6 +105,13 @@ or acronym.
   `src-tauri/src/git/history.rs` provides paginated history and commit details.
   History and commit tabs are read-only; merge diffs use the first parent.
 - pnpm manages frontend dependencies; Cargo manages Rust dependencies.
+- `src/Updater.tsx` checks signed GitHub release metadata after startup and on
+  requests from Settings → About. `src-tauri/src/updater.rs` detects Linux update
+  instructions and routes manual checks to the main view. Windows/macOS install
+  only after the close guard and session save succeed; Linux only shows external
+  update instructions. Keep updater installation permissions scoped to the main
+  webview on Windows/macOS, preserve Tauri's restart exit code on macOS, and never
+  commit the updater private key. Publish complete signed releases with `latest.json`.
 - `src-tauri/tauri.conf.json` connects Vite to Tauri and configures the window.
 - `src-tauri/capabilities/` defines the native commands available to the frontend.
 - `src-tauri/src/main.rs` contains a startup workaround for WebKitGTK's Wayland

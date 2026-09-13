@@ -1,12 +1,21 @@
 import { useEffect, useRef, useState } from "react";
-import { Code, Keyboard, Palette, Terminal, RotateCcw, X } from "lucide-react";
+import {
+  Code,
+  Info,
+  Keyboard,
+  Palette,
+  Terminal,
+  RotateCcw,
+  X,
+} from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import ThemesPage from "./ThemesPage";
 import TerminalSettingsPage from "./TerminalSettingsPage";
 import EditorSettingsPage from "./EditorSettingsPage";
 import { IconButton, WindowControls } from "./ui";
-import { errorMessage, macOS, native } from "./api";
+import { api, errorMessage, macOS, native } from "./api";
+import { version } from "../package.json";
 import {
   actions,
   bindingConflict,
@@ -23,7 +32,8 @@ export default function SettingsWindow() {
     const requested = new URLSearchParams(window.location.search).get("page");
     return requested === "editor" ||
       requested === "themes" ||
-      requested === "terminal"
+      requested === "terminal" ||
+      requested === "about"
       ? requested
       : "keybinds";
   });
@@ -42,7 +52,7 @@ export default function SettingsWindow() {
     const unlisten = listen<string>("settings-page-changed", ({ payload }) => {
       if (
         current &&
-        ["keybinds", "editor", "themes", "terminal"].includes(payload)
+        ["keybinds", "editor", "themes", "terminal", "about"].includes(payload)
       ) {
         setRecording(null);
         setPage(payload);
@@ -167,8 +177,46 @@ export default function SettingsWindow() {
             <Palette size={16} />
             Themes
           </button>
+          <button
+            className="settings-nav-item"
+            aria-current={page === "about" ? "page" : undefined}
+            onClick={() => setPage("about")}
+          >
+            <Info size={16} />
+            About
+          </button>
         </nav>
-        {page === "terminal" ? (
+        {page === "about" ? (
+          <main className="keybindings-page">
+            <header className="settings-page-heading">
+              <div>
+                <h1>SimpleBench</h1>
+                <p>Version {version}</p>
+              </div>
+              <button
+                className="button"
+                disabled={!native}
+                onClick={() => {
+                  setError("");
+                  void api("request_update_check").catch((error) =>
+                    setError(errorMessage(error)),
+                  );
+                }}
+              >
+                Check for updates
+              </button>
+            </header>
+            <p className="settings-help">
+              SimpleBench checks GitHub Releases for updates after startup.
+              Update details open in the workspace window.
+            </p>
+            {error && (
+              <p className="keybindings-error" role="alert">
+                {error}
+              </p>
+            )}
+          </main>
+        ) : page === "terminal" ? (
           <TerminalSettingsPage />
         ) : page === "themes" ? (
           <ThemesPage />

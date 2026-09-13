@@ -84,7 +84,7 @@ pub fn handle_run_event(app: &AppHandle, event: &RunEvent) {
     match event {
         #[cfg(dev)]
         RunEvent::Ready => use_development_bundle_icon(),
-        RunEvent::ExitRequested { api, .. } => {
+        RunEvent::ExitRequested { api, code, .. } if *code != Some(tauri::RESTART_EXIT_CODE) => {
             if let Some(window) = app.get_window("main") {
                 // Quit from the menu or Dock must use the editor/session close guard.
                 api.prevent_exit();

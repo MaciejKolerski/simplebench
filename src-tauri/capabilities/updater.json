@@ -1,0 +1,8 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "updater",
+  "description": "Install verified updates from the main application view on Windows and macOS.",
+  "webviews": ["main"],
+  "platforms": ["windows", "macOS"],
+  "permissions": ["updater:allow-download", "updater:allow-install"]
+}

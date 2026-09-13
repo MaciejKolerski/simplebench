@@ -118,6 +118,7 @@ import {
   subscribeEditorSaves,
 } from "./editor-service";
 import { useCloseGuard } from "./CloseGuard";
+import { useUpdater } from "./Updater";
 import { useCliTitleSetup } from "./CliTitleSetup";
 import {
   absoluteFilePath,
@@ -288,6 +289,15 @@ export default function Workbench() {
     terminalLayout,
   );
   const savingEnabled = useRef(false);
+  const closing = useRef(false);
+  const updater = useUpdater(!!info, async () => {
+    if (closing.current || fileOperationBusy.current) return false;
+    if (!(await closeGuard.confirm())) return false;
+    if (currentSession.current && savingEnabled.current) {
+      await saveSession(captureEditorPositions(currentSession.current));
+    }
+    return true;
+  });
   const git = useGit(selected?.project.path ?? "");
   const closeProjectMenu = useCallback(() => setProjectMenuOpen(false), []);
 
@@ -388,14 +398,13 @@ export default function Workbench() {
   useEffect(() => {
     if (!info) return;
     let current = true;
-    let closing = false;
     const unlisten = getCurrentWindow().onCloseRequested(async (event) => {
       event.preventDefault();
-      if (closing) return;
-      closing = true;
+      if (closing.current || updater.busy.current) return;
+      closing.current = true;
       try {
         if (!(await closeGuard.confirm())) {
-          closing = false;
+          closing.current = false;
           return;
         }
         if (currentSession.current && savingEnabled.current) {
@@ -403,7 +412,7 @@ export default function Workbench() {
         }
         await getCurrentWindow().destroy();
       } catch (error) {
-        closing = false;
+        closing.current = false;
         setError(`Could not close the window: ${errorMessage(error)}`);
       }
     });
@@ -1006,6 +1015,7 @@ export default function Workbench() {
         {dialog && (
           <AppDialog dialog={dialog} onClose={() => setDialog(null)} />
         )}
+        {updater.dialog}
         {closeGuard.dialog}
         {cliTitles.dialog}
       </div>
@@ -1699,6 +1709,7 @@ export default function Workbench() {
         )}
       </footer>
       {dialog && <AppDialog dialog={dialog} onClose={() => setDialog(null)} />}
+      {updater.dialog}
       {closeGuard.dialog}
       {cliTitles.dialog}
     </div>
