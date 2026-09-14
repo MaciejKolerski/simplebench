@@ -5,7 +5,7 @@ settings:
   excludeLinksFromLockfile: false
 
 patchedDependencies:
-  '@xterm/addon-webgl@0.19.0': a5955c94207485f0806016e8903f88cb00eed688afbf9c3cdbd51e935ad41ca1
+  '@xterm/addon-webgl@0.19.0': faad8efc9e20d2cf51050e9f69d4d1cb417f886006fa71856abd60c81f41a22f
 
 importers:
 
@@ -100,7 +100,7 @@ importers:
         version: 0.12.0
       '@xterm/addon-webgl':
         specifier: ^0.19.0
-        version: 0.19.0(patch_hash=a5955c94207485f0806016e8903f88cb00eed688afbf9c3cdbd51e935ad41ca1)
+        version: 0.19.0(patch_hash=faad8efc9e20d2cf51050e9f69d4d1cb417f886006fa71856abd60c81f41a22f)
       '@xterm/xterm':
         specifier: ^6.0.0
         version: 6.0.0
@@ -1620,7 +1620,7 @@ snapshots:
 
   '@xterm/addon-web-links@0.12.0': {}
 
-  '@xterm/addon-webgl@0.19.0(patch_hash=a5955c94207485f0806016e8903f88cb00eed688afbf9c3cdbd51e935ad41ca1)': {}
+  '@xterm/addon-webgl@0.19.0(patch_hash=faad8efc9e20d2cf51050e9f69d4d1cb417f886006fa71856abd60c81f41a22f)': {}
 
   '@xterm/xterm@6.0.0': {}
 

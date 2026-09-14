@@ -49,6 +49,20 @@ fn executable(program: &str) -> Option<PathBuf> {
             return Some(path.with_extension("exe"));
         }
     }
+    #[cfg(windows)]
+    {
+        // GUI launches may omit the built-in shells from PATH.
+        let path = match program {
+            "cmd" => Some(windows_system_program("cmd.exe")),
+            "powershell" => Some(windows_system_program(
+                r"WindowsPowerShell\v1.0\powershell.exe",
+            )),
+            _ => None,
+        };
+        if let Some(path) = path.filter(|path| is_local_shell(path)) {
+            return Some(path);
+        }
+    }
     None
 }
 

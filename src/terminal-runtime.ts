@@ -7,7 +7,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { SearchAddon } from "@xterm/addon-search";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import type { WebglAddon } from "@xterm/addon-webgl";
-import { api, errorMessage } from "./api";
+import { api, errorMessage, windows } from "./api";
 import { newId } from "./model";
 import type { Pane, ShellProfile } from "./model";
 import { inputChunks } from "./terminal-utils";
@@ -84,6 +84,8 @@ export class TerminalRuntime {
   private disposed = false;
   private startPromise?: Promise<void>;
   private input = Promise.resolve();
+  private pendingResize?: { cols: number; rows: number };
+  private resizing = false;
   private unacknowledged = 0;
   private ackTimer: ReturnType<typeof setTimeout> | undefined;
   private listeners = new Set<() => void>();
@@ -153,7 +155,22 @@ export class TerminalRuntime {
         event.type !== "keydown" ||
         event.defaultPrevented ||
         event.isComposing ||
-        event.keyCode === 229 ||
+        event.keyCode === 229
+      )
+        return true;
+      if (
+        windows &&
+        !event.altKey &&
+        !event.metaKey &&
+        ((event.ctrlKey && !event.shiftKey && event.code === "KeyV") ||
+          (event.shiftKey && !event.ctrlKey && event.code === "Insert"))
+      ) {
+        // xterm encodes Ctrl+V as SYN and cancels the browser's native paste.
+        event.preventDefault();
+        if (!event.repeat) void this.pasteClipboard();
+        return false;
+      }
+      if (
         event.key !== "Enter" ||
         !event.shiftKey ||
         event.ctrlKey ||
@@ -235,8 +252,28 @@ export class TerminalRuntime {
   };
   readonly getSnapshot = () => this.snapshot;
   async prepareCloseCheck() {
-    await this.startPromise;
-    await this.input;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        (async () => {
+          await this.startPromise;
+          await this.input;
+        })(),
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(
+            () =>
+              reject(
+                new Error(
+                  "Terminal input is still pending. The shell may be busy.",
+                ),
+              ),
+            500,
+          );
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
   observeForegroundProgram(value: string | null) {
     const foregroundProgram = this.atPrompt
@@ -413,14 +450,34 @@ export class TerminalRuntime {
       this.snapshot.status === "running" &&
       before !== `${this.terminal.cols}:${this.terminal.rows}`
     ) {
-      void api("resize_terminal", {
-        id: this.sessionId,
+      this.pendingResize = {
         cols: this.terminal.cols,
         rows: this.terminal.rows,
-      }).catch((error) => {
-        if (!this.disposed && this.snapshot.status === "running")
-          reportError(errorMessage(error));
-      });
+      };
+      void this.resize();
+    }
+  }
+
+  private async resize() {
+    if (this.resizing) return;
+    this.resizing = true;
+    try {
+      while (
+        this.pendingResize &&
+        !this.disposed &&
+        this.snapshot.status === "running"
+      ) {
+        const size = this.pendingResize;
+        this.pendingResize = undefined;
+        try {
+          await api("resize_terminal", { id: this.sessionId, ...size });
+        } catch (error) {
+          if (!this.disposed && this.snapshot.status === "running")
+            reportError(errorMessage(error));
+        }
+      }
+    } finally {
+      this.resizing = false;
     }
   }
 
@@ -522,6 +579,7 @@ export class TerminalRuntime {
         await this.startPromise;
         if (this.disposed) return;
         for (const chunk of inputChunks(data)) {
+          if (this.disposed) return;
           await api("write_terminal", { id: this.sessionId, data: chunk });
         }
       })
@@ -565,6 +623,7 @@ export class TerminalRuntime {
   async pasteClipboard() {
     try {
       const text = await readText();
+      if (this.disposed) return;
       if (text.length > 1_048_576) {
         reportError("Clipboard text exceeds the 1 MiB paste limit.");
         return;

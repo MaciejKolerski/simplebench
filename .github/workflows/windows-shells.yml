@@ -25,3 +25,5 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Check PowerShell, WSL discovery, and path handling
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked shell::tests -- --nocapture
+      - name: Check terminal process snapshots and dimensions
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked terminal::tests -- --nocapture

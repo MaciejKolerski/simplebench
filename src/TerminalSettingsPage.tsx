@@ -4,7 +4,7 @@ import { RotateCcw } from "lucide-react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import { errorMessage } from "./api";
+import { errorMessage, windows } from "./api";
 import { useTerminalPreferences } from "./TerminalPreferencesProvider";
 import {
   defaultTerminalPreferences,
@@ -22,6 +22,9 @@ import {
 } from "./theme-runtime";
 
 const labels: Record<string, string> = {
+  windowsShell: "Default shell",
+  powershell: "PowerShell",
+  cmd: "CMD",
   fontFamily: "Font family",
   fontSize: "Font size",
   fontWeight: "Font weight",
@@ -62,6 +65,8 @@ const labels: Record<string, string> = {
   wordSeparator: "Word separators",
 };
 const help: Record<string, string> = {
+  windowsShell:
+    "Used for new terminal tabs and workspaces. Existing terminals keep their shell, including when split or restored. PowerShell uses version 7 when installed, otherwise Windows PowerShell.",
   fontFamily:
     "Use an installed font or a comma-separated fallback list. JetBrains Mono is bundled.",
   fontSize: "6–72 px.",
@@ -399,7 +404,7 @@ export default function TerminalSettingsPage() {
         </button>
       </header>
       <p className="settings-help">
-        Changes save automatically when you leave a field and apply to open
+        Changes save automatically. Appearance and behavior apply to open
         terminals. Appearance follows your theme until you override a setting.
         Reset restores theme defaults.
       </p>
@@ -422,6 +427,32 @@ export default function TerminalSettingsPage() {
       <div className="keybindings-status" role="status">
         {!preferences.ready ? "Loading terminal settings…" : status}
       </div>
+      {windows && (
+        <section className="keybindings-group" aria-label="Shell">
+          <h2>Shell</h2>
+          <Setting
+            name="windowsShell"
+            value={preferences.value.windowsShell}
+            choices={["powershell", "cmd"]}
+            disabled={disabled}
+            change={(value) =>
+              void persist({
+                ...preferences.value,
+                windowsShell: value as TerminalPreferences["windowsShell"],
+              })
+            }
+            reset={
+              preferences.value.windowsShell === "powershell"
+                ? undefined
+                : () =>
+                    void persist({
+                      ...preferences.value,
+                      windowsShell: "powershell",
+                    })
+            }
+          />
+        </section>
+      )}
       {preferences.ready && <TerminalPreview />}
       <datalist id="terminal-font-families">
         <option value='"JetBrains Mono", monospace' />

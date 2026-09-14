@@ -100,6 +100,8 @@ import { useWindowZoom } from "./useWindowZoom";
 import TabBar from "./TabBar";
 import FileEditorStatus from "./FileEditorStatus";
 import { useKeybindings } from "./KeybindingsProvider";
+import { useTerminalPreferences } from "./TerminalPreferencesProvider";
+import { defaultTerminalProfile } from "./terminal-preferences";
 import {
   actionForEvent,
   isTextInput,
@@ -226,8 +228,12 @@ export default function Workbench() {
   const fileOpenRequest = useRef(0);
   const fileOperationBusy = useRef(false);
   const preferences = useKeybindings();
+  const terminalPreferences = useTerminalPreferences();
   const { bindings } = preferences;
   const [info, setInfo] = useState<AppInfo>();
+  const defaultProfileId = info
+    ? defaultTerminalProfile(info, terminalPreferences.value.windowsShell)
+    : "";
   const [session, renderSession] = useState<Session>();
   const currentSession = useRef<Session>(undefined);
   const terminalLayout = useRef<HTMLDivElement>(null);
@@ -477,7 +483,9 @@ export default function Workbench() {
       const { project, workspace, tab } = selection;
       const added = newTab(
         cwd ?? project.path,
-        tab.type === "terminal" ? tab.profileId : (info?.profiles[0]?.id ?? ""),
+        info?.platform !== "windows" && tab.type === "terminal"
+          ? tab.profileId
+          : defaultProfileId,
         `Terminal ${workspace.tabs.length + 1}`,
       );
       return updateWorkspace(state, workspace.id, (workspace) => ({
@@ -539,9 +547,9 @@ export default function Workbench() {
           workspace,
           ids,
           project.path,
-          tab.type === "terminal"
+          info?.platform !== "windows" && tab.type === "terminal"
             ? tab.profileId
-            : (info?.profiles[0]?.id ?? ""),
+            : defaultProfileId,
         ),
       ),
     );
@@ -551,7 +559,8 @@ export default function Workbench() {
     void api("open_settings").catch((error) => setError(errorMessage(error)));
   };
   useEffect(() => {
-    if (!session || !info || !preferences.ready) return;
+    if (!session || !info || !preferences.ready || !terminalPreferences.ready)
+      return;
     const keyboard = (event: KeyboardEvent) => {
       const selected = currentSession.current && active(currentSession.current);
       const panel = selected && activePanel(selected.tab);
@@ -730,7 +739,7 @@ export default function Workbench() {
         </main>
       </div>
     );
-  if (!session || !info || !preferences.ready)
+  if (!session || !info || !preferences.ready || !terminalPreferences.ready)
     return (
       <div className="app-shell">
         <main className="empty-message">
@@ -794,8 +803,7 @@ export default function Workbench() {
             ),
           };
         }
-        const added =
-          found ?? newProject(normalized, info.profiles[0]?.id ?? "");
+        const added = found ?? newProject(normalized, defaultProfileId);
         const next = {
           ...state,
           projects: [
@@ -848,7 +856,7 @@ export default function Workbench() {
           initial: `${basename(normalized)}${count ? ` ${count + 1}` : ""}`,
           submit: (name) =>
             change((state) =>
-              addWorkspace(state, normalized, info.profiles[0]?.id ?? "", name),
+              addWorkspace(state, normalized, defaultProfileId, name),
             ),
         });
       } else await selectProject(path, { createFile: intent === "file" });
@@ -1278,7 +1286,7 @@ export default function Workbench() {
         expectedPath,
       });
       change((state) => {
-        const next = applyFileChange(state, result, info.profiles[0]?.id ?? "");
+        const next = applyFileChange(state, result, defaultProfileId);
         relocateEditorFiles(state, next);
         const kept = new Set(next.projects.map((project) => project.id));
         closeTerminals(

@@ -400,6 +400,16 @@ export async function mockDesktop(
               home: "/home/test",
               platform,
               profiles: [
+                ...(platform === "windows"
+                  ? ["pwsh", "powershell", "cmd"].map((kind) => ({
+                      id: `local:${kind}`,
+                      name: kind,
+                      kind,
+                      program: `${kind}.exe`,
+                      distro: null,
+                      home: "/home/test",
+                    }))
+                  : []),
                 {
                   id: "local:bash",
                   name: "bash",

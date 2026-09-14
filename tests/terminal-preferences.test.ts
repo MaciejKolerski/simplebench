@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   defaultTerminalPreferences,
+  defaultTerminalProfile,
   restoreTerminalPreferences,
 } from "../src/terminal-preferences.ts";
+import type { AppInfo } from "../src/model.ts";
 
 test("terminal defaults inherit appearance and validate bounded, independent overrides", () => {
   const defaults = restoreTerminalPreferences(null);
@@ -23,6 +25,7 @@ test("terminal defaults inherit appearance and validate bounded, independent ove
   assert.deepEqual(restoreTerminalPreferences(saved), {
     appearance: saved.appearance,
     behavior: saved.behavior,
+    windowsShell: "powershell",
   });
   for (const invalid of [
     undefined,
@@ -30,6 +33,8 @@ test("terminal defaults inherit appearance and validate bounded, independent ove
     {},
     { ...saved, version: 2 },
     { ...saved, future: true },
+    { ...saved, windowsShell: "bash" },
+    { ...saved, windowsShell: null },
     ...[
       { fontSize: 0 },
       { fontFamily: "" },
@@ -51,4 +56,42 @@ test("terminal defaults inherit appearance and validate bounded, independent ove
     ].map((patch) => ({ ...saved, behavior: { ...saved.behavior, ...patch } })),
   ])
     assert.throws(() => restoreTerminalPreferences(invalid), /left intact/);
+});
+
+test("Windows defaults migrate old settings and select installed local shells only", () => {
+  const legacy = {
+    version: 1,
+    appearance: {},
+    behavior: defaultTerminalPreferences.behavior,
+  };
+  assert.equal(restoreTerminalPreferences(legacy).windowsShell, "powershell");
+  assert.equal(
+    restoreTerminalPreferences({ ...legacy, windowsShell: "cmd" }).windowsShell,
+    "cmd",
+  );
+  const info: AppInfo = {
+    directory: "/project",
+    home: "/home/test",
+    platform: "windows",
+    profiles: ["bash", "powershell", "cmd", "pwsh"].map((kind) => ({
+      id: `local:${kind}`,
+      name: kind,
+      kind,
+      program: `${kind}.exe`,
+      distro: null,
+      home: "/home/test",
+    })),
+  };
+  assert.equal(defaultTerminalProfile(info, "powershell"), "local:pwsh");
+  assert.equal(defaultTerminalProfile(info, "cmd"), "local:cmd");
+  info.profiles.pop();
+  assert.equal(defaultTerminalProfile(info, "powershell"), "local:powershell");
+  for (const platform of ["linux", "macos"])
+    assert.equal(
+      defaultTerminalProfile({ ...info, platform }, "cmd"),
+      "local:bash",
+    );
+  info.profiles = [info.profiles[0]];
+  assert.equal(defaultTerminalProfile(info, "cmd"), "local:bash");
+  assert.equal(defaultTerminalProfile({ ...info, profiles: [] }, "cmd"), "");
 });

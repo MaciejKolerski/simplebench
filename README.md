@@ -429,6 +429,10 @@ A terminal preview shows the applied appearance. Use an installed font or the
 bundled JetBrains Mono; unavailable fonts fall back to the browser's fonts.
 Colors accept `#RRGGBB` and `#RRGGBBAA` (including opacity).
 
+On Windows, Default shell selects PowerShell or CMD for new tabs and workspaces.
+PowerShell uses version 7 when installed, otherwise Windows PowerShell. Existing
+and restored terminals keep their environment; splits inherit it.
+
 Advanced settings control scrollback, scrolling speed and animation, tab stops,
 mouse selection, macOS Option behavior, screen readers, glyph rendering, and
 minimum text contrast. Reducing scrollback permanently drops older output.

@@ -261,6 +261,7 @@ impl Terminals {
         {
             let mut sessions = self.sessions.lock().map_err(|error| error.to_string())?;
             if sessions.contains_key(&request.id) {
+                drop(sessions);
                 session.stop();
                 let _ = child.wait();
                 return Err("A terminal with this identifier already exists.".into());
@@ -339,18 +340,11 @@ impl Terminals {
     }
 }
 
+#[cfg(unix)]
 fn process_parents() -> Result<HashSet<u32>, String> {
-    #[cfg(unix)]
     let output = shell::quiet_command("/bin/ps")
         .args(["-A", "-o", "ppid=,stat="])
         .env("LC_ALL", "C")
-        .output();
-    #[cfg(windows)]
-    let output = shell::quiet_command("powershell.exe")
-        .args([
-            "-NoLogo", "-NoProfile", "-NonInteractive", "-Command",
-            "$ErrorActionPreference = 'Stop'; Get-CimInstance Win32_Process -Property ParentProcessId,Name | Where-Object { $_.Name -notin @('conhost.exe', 'OpenConsole.exe') } | ForEach-Object { '{0} S' -f $_.ParentProcessId }",
-        ])
         .output();
     let output = output.map_err(|error| format!("Cannot check terminal processes: {error}"))?;
     if !output.status.success() {
@@ -364,6 +358,53 @@ fn process_parents() -> Result<HashSet<u32>, String> {
             (!fields.next()?.starts_with('Z')).then_some(parent)
         })
         .collect())
+}
+
+#[cfg(windows)]
+fn process_parents() -> Result<HashSet<u32>, String> {
+    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+    use windows_sys::Win32::{
+        Foundation::{ERROR_NO_MORE_FILES, INVALID_HANDLE_VALUE},
+        System::Diagnostics::ToolHelp::{
+            CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W,
+            TH32CS_SNAPPROCESS,
+        },
+    };
+
+    // A native snapshot avoids starting PowerShell and WMI for every close check.
+    let snapshot = unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+    if snapshot == INVALID_HANDLE_VALUE {
+        return Err(format!(
+            "Cannot check terminal processes: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+    let snapshot = unsafe { OwnedHandle::from_raw_handle(snapshot) };
+    let mut entry = PROCESSENTRY32W {
+        dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+        ..Default::default()
+    };
+    let mut parents = HashSet::new();
+    let mut found = unsafe { Process32FirstW(snapshot.as_raw_handle(), &mut entry) };
+    while found != 0 {
+        let length = entry
+            .szExeFile
+            .iter()
+            .position(|&character| character == 0)
+            .unwrap_or(entry.szExeFile.len());
+        let name = String::from_utf16_lossy(&entry.szExeFile[..length]);
+        if !name.eq_ignore_ascii_case("conhost.exe")
+            && !name.eq_ignore_ascii_case("OpenConsole.exe")
+        {
+            parents.insert(entry.th32ParentProcessID);
+        }
+        found = unsafe { Process32NextW(snapshot.as_raw_handle(), &mut entry) };
+    }
+    let error = std::io::Error::last_os_error();
+    if error.raw_os_error() != Some(ERROR_NO_MORE_FILES as i32) {
+        return Err(format!("Cannot check terminal processes: {error}"));
+    }
+    Ok(parents)
 }
 
 #[tauri::command]
@@ -423,7 +464,7 @@ pub fn acknowledge_terminal(
 }
 
 #[tauri::command]
-pub fn resize_terminal(
+pub async fn resize_terminal(
     window: Window,
     state: State<'_, Terminals>,
     id: String,
@@ -432,13 +473,18 @@ pub fn resize_terminal(
 ) -> Result<(), String> {
     main_window(&window)?;
     let session = state.get(&id)?;
-    let result = session
-        .master
-        .lock()
-        .map_err(|error| error.to_string())?
-        .resize(size(cols, rows)?)
-        .map_err(|error| error.to_string());
-    result
+    let size = size(cols, rows)?;
+    // ConPTY resize is synchronous and must not block the native event loop.
+    tauri::async_runtime::spawn_blocking(move || {
+        session
+            .master
+            .lock()
+            .map_err(|error| error.to_string())?
+            .resize(size)
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -541,6 +587,23 @@ mod tests {
         assert!(size(80, 1001).is_err());
         assert!(size(80, 24).is_ok());
     }
+    #[cfg(windows)]
+    #[test]
+    fn process_snapshot_detects_child_without_powershell() {
+        use std::process::Stdio;
+
+        let mut child = shell::quiet_command("cmd.exe")
+            .args(["/D", "/Q"])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap();
+        let parents = process_parents();
+        child.kill().unwrap();
+        child.wait().unwrap();
+        assert!(parents.unwrap().contains(&std::process::id()));
+    }
     #[cfg(unix)]
     #[test]
     fn pty_streams_utf8_resizes_and_exits() {
@@ -640,7 +703,9 @@ mod tests {
                 let executable = shell::quote(&executable_path.to_string_lossy(), "bash").unwrap();
                 for command in [
                     format!("{executable} 30\r"),
-                    format!("sh -c '\"$1\" 30 & wait' sh {executable}\r"),
+                    format!(
+                        "sh -c 'trap \"kill \\$! 2>/dev/null; exit\" INT TERM; \"$1\" 30 & wait' sh {executable}\r"
+                    ),
                 ] {
                     manager.write("test", &command).unwrap();
                     let deadline = Instant::now() + Duration::from_secs(5);
@@ -697,16 +762,19 @@ mod tests {
         }
         let deadline = Instant::now() + Duration::from_secs(10);
         let mut bytes = Vec::new();
+        let mut eof = false;
         while Instant::now() < deadline {
             if let Ok(chunk) = receive.recv_timeout(Duration::from_millis(100)) {
                 if chunk.is_empty() {
                     assert!(exit_receive.try_recv().is_ok());
+                    eof = true;
                     break;
                 }
                 bytes.extend(chunk);
             }
         }
         manager.stop_all();
+        assert!(eof, "The terminal did not send its ordered EOF marker.");
         let text = String::from_utf8_lossy(&bytes);
         assert!(text.contains("UTF8: zażółć"), "{text}");
         assert!(text.contains("31 101"), "{text}");

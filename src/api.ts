@@ -3,6 +3,7 @@ import type { AppInfo, Session } from "./model";
 
 export const native = isTauri();
 export const macOS = navigator.platform.startsWith("Mac");
+export const windows = navigator.platform.startsWith("Win");
 export const api = invoke;
 export const errorMessage = (error: unknown) =>
   error &&

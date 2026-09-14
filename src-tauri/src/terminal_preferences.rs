@@ -12,8 +12,19 @@ type TerminalPreferences = Value;
 fn validate(data: &Value) -> Result<(), String> {
     let valid = || -> Option<()> {
         let data = data.as_object()?;
-        if data.len() != 3 || data.get("version")?.as_u64()? != 1 {
+        if data.keys().any(|key| {
+            !matches!(
+                key.as_str(),
+                "version" | "appearance" | "behavior" | "windowsShell"
+            )
+        }) || data.get("version")?.as_u64()? != 1
+        {
             return None;
+        }
+        if let Some(shell) = data.get("windowsShell") {
+            if !matches!(shell.as_str()?, "powershell" | "cmd") {
+                return None;
+            }
         }
         let appearance = data.get("appearance")?.as_object()?;
         for (key, value) in appearance {
@@ -259,6 +270,9 @@ mod tests {
             ("/behavior/scrollSensitivity", json!(0)),
             ("/behavior/wordSeparator", json!("\n")),
             ("/behavior/altClickMovesCursor", json!("true")),
+            ("/windowsShell", json!("bash")),
+            ("/windowsShell", Value::Null),
+            ("/unknown", json!(true)),
         ] {
             let mut invalid = data.clone();
             let (parent, key) = pointer.rsplit_once('/').unwrap();
@@ -267,6 +281,12 @@ mod tests {
             assert_eq!(fs::read(&path).unwrap(), original);
         }
         assert!(!path.with_extension("json.tmp").exists());
+        for shell in ["powershell", "cmd"] {
+            let mut updated = data.clone();
+            updated["windowsShell"] = json!(shell);
+            save(&path, &updated).unwrap();
+            assert_eq!(read(&path).unwrap().unwrap(), updated);
+        }
     }
 
     #[test]

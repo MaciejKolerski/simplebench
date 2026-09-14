@@ -1,5 +1,6 @@
 import { parseTheme } from "./themes.ts";
 import type { ThemeTerminal } from "./themes.ts";
+import type { AppInfo } from "./model.ts";
 
 export const terminalBehaviorDefaults = {
   scrollback: 10_000,
@@ -28,18 +29,38 @@ export const terminalBehaviorNumbers = {
 export interface TerminalPreferences {
   appearance: ThemeTerminal;
   behavior: typeof terminalBehaviorDefaults;
+  windowsShell: "powershell" | "cmd";
 }
 export const defaultTerminalPreferences: TerminalPreferences = {
   appearance: {},
   behavior: { ...terminalBehaviorDefaults },
+  windowsShell: "powershell",
 };
 export const terminalColorPattern = /^#[\da-f]{6}([\da-f]{2})?$/i;
+
+export function defaultTerminalProfile(
+  info: AppInfo,
+  windowsShell: TerminalPreferences["windowsShell"],
+): string {
+  const candidates =
+    info.platform !== "windows"
+      ? []
+      : windowsShell === "cmd"
+        ? ["local:cmd"]
+        : ["local:pwsh", "local:powershell"];
+  return (
+    candidates.find((id) =>
+      info.profiles.some((profile) => profile.id === id),
+    ) ??
+    info.profiles[0]?.id ??
+    ""
+  );
+}
 
 export function restoreTerminalPreferences(
   value: unknown,
 ): TerminalPreferences {
-  if (value === null)
-    return { appearance: {}, behavior: { ...terminalBehaviorDefaults } };
+  if (value === null) return structuredClone(defaultTerminalPreferences);
   try {
     if (!value || typeof value !== "object" || Array.isArray(value))
       throw new Error("Expected an object.");
@@ -47,10 +68,17 @@ export function restoreTerminalPreferences(
     if (
       data.version !== 1 ||
       Object.keys(data).some(
-        (key) => !["version", "appearance", "behavior"].includes(key),
+        (key) =>
+          !["version", "appearance", "behavior", "windowsShell"].includes(key),
       )
     )
       throw new Error("Unsupported format.");
+    if (
+      data.windowsShell !== undefined &&
+      data.windowsShell !== "powershell" &&
+      data.windowsShell !== "cmd"
+    )
+      throw new Error("Invalid Windows shell.");
     if (
       !data.appearance ||
       !data.behavior ||
@@ -105,6 +133,7 @@ export function restoreTerminalPreferences(
     return {
       appearance: structuredClone(appearance),
       behavior: { ...behavior } as TerminalPreferences["behavior"],
+      windowsShell: data.windowsShell ?? "powershell",
     };
   } catch (error) {
     throw new Error(
