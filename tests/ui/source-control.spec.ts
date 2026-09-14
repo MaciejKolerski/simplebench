@@ -17,6 +17,10 @@ async function openSourceControl(page: Page, changes: GitChange[]) {
       failCommit: false,
       failDiscard: false,
       failDiff: false,
+      remoteError: "",
+      holdRemote: false,
+      releaseRemote: undefined as (() => void) | undefined,
+      pulledContent: null as string | null,
       diffs: {} as Record<string, GitFileDiff>,
       diffDelays: {} as Record<string, number>,
     };
@@ -30,6 +34,20 @@ async function openSourceControl(page: Page, changes: GitChange[]) {
       state.calls.push({ command, args });
       if (command === "git_status")
         return { root: args.root, branch: "main", changes: state.changes };
+      if (command === "git_fetch" || command === "git_pull") {
+        if (state.holdRemote)
+          await new Promise<void>((resolve) => {
+            state.releaseRemote = resolve;
+          });
+        if (state.remoteError) throw new Error(state.remoteError);
+        if (command === "git_pull" && state.pulledContent !== null) {
+          const file =
+            desktop.__nativeTest.editorFiles[`${args.root}/README.md`];
+          file.content = state.pulledContent;
+          file.revision += "+pulled";
+        }
+        return;
+      }
       if (command === "git_diff") {
         if (state.diffDelays[args.path])
           await new Promise((resolve) =>
@@ -110,6 +128,133 @@ const changed = (
   index,
   worktree,
   originalPath,
+});
+
+test("fetch and pull run explicitly, report progress and errors, and refresh history", async ({
+  page,
+}) => {
+  await openSourceControl(page, [changed("README.md", "M", " ")]);
+  const fetch = page.getByRole("button", { name: "Fetch", exact: true });
+  const pull = page.getByRole("button", { name: "Pull", exact: true });
+  const remoteStatus = page.locator(".git-remote-status");
+  const draft = page.getByRole("textbox", {
+    name: "Commit message",
+    exact: true,
+  });
+  await draft.fill("Keep this commit draft");
+  expect(
+    await page.evaluate(() =>
+      (window as any).__sourceControlTest.calls.filter((call: any) =>
+        ["git_fetch", "git_pull"].includes(call.command),
+      ),
+    ),
+  ).toEqual([]);
+  await page.evaluate(() => {
+    (window as any).__sourceControlTest.holdRemote = true;
+  });
+  await fetch.click();
+  await expect(remoteStatus).toHaveText("Fetching…");
+  await expect(fetch).toBeDisabled();
+  await expect(pull).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "Commit staged changes", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("checkbox", { name: "Unstage README.md", exact: true }),
+  ).toBeDisabled();
+  await page.getByRole("tab", { name: "History", exact: true }).click();
+  await expect(
+    page.getByText("No commits yet.", { exact: true }),
+  ).toBeVisible();
+  const historyRequests = await page.evaluate(
+    () =>
+      (window as any).__sourceControlTest.calls.filter(
+        (call: any) => call.command === "git_history",
+      ).length,
+  );
+  await page.evaluate(() => {
+    (window as any).__sourceControlTest.releaseRemote();
+  });
+  await expect(remoteStatus).toHaveText("Fetch complete.");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__sourceControlTest.calls.filter(
+            (call: any) => call.command === "git_history",
+          ).length,
+      ),
+    )
+    .toBeGreaterThan(historyRequests);
+
+  await pull.click();
+  await expect(remoteStatus).toHaveText("Pulling…");
+  await expect(fetch).toBeDisabled();
+  await expect(pull).toBeDisabled();
+  await page.evaluate(() => {
+    const state = (window as any).__sourceControlTest;
+    state.remoteError = "Cannot fast-forward: branches have diverged.";
+    state.releaseRemote();
+  });
+  await expect(page.getByRole("alert")).toContainText("Cannot fast-forward");
+  await expect(pull).toBeEnabled();
+  await expect(page.getByText("Pull complete.", { exact: true })).toHaveCount(
+    0,
+  );
+  await page.getByRole("tab", { name: /^Changes/ }).click();
+  await expect(draft).toHaveValue("Keep this commit draft");
+  await page
+    .getByRole("button", { name: "Dismiss message", exact: true })
+    .click();
+  await page.evaluate(() => {
+    const state = (window as any).__sourceControlTest;
+    state.holdRemote = false;
+    state.remoteError = "";
+  });
+  await pull.click();
+  await expect(remoteStatus).toHaveText("Pull complete.");
+  await expect(draft).toHaveValue("Keep this commit draft");
+  expect(
+    await page.evaluate(() =>
+      (window as any).__sourceControlTest.calls.filter((call: any) =>
+        ["git_fetch", "git_pull"].includes(call.command),
+      ),
+    ),
+  ).toEqual([
+    { command: "git_fetch", args: { root: "/project" } },
+    { command: "git_pull", args: { root: "/project" } },
+    { command: "git_pull", args: { root: "/project" } },
+  ]);
+});
+
+test("pull reloads clean editors and preserves unsaved edits when files change", async ({
+  page,
+}) => {
+  await openSourceControl(page, [changed("README.md")]);
+  await page
+    .getByRole("button", { name: "View diff for README.md", exact: true })
+    .click({ button: "right" });
+  await page.getByRole("menuitem", { name: "View File", exact: true }).click();
+  const editor = page.locator(".cm-content");
+  await expect(editor).toContainText("Project");
+  await page.evaluate(() => {
+    (window as any).__sourceControlTest.pulledContent = "First remote update";
+  });
+  await page.getByRole("button", { name: "Pull", exact: true }).click();
+  await expect(editor).toHaveText("First remote update");
+  await editor.fill("Keep my unsaved edits");
+  await page.evaluate(() => {
+    (window as any).__sourceControlTest.pulledContent = "Second remote update";
+  });
+  await page.getByRole("button", { name: "Pull", exact: true }).click();
+  await expect(
+    page.getByText("This file changed on disk. Your edits are preserved.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(editor).toHaveText("Keep my unsaved edits");
+  await editor.press("Control+z");
+  await expect(editor).toHaveText("First remote update");
 });
 
 test("file changes open full read-only tabs, preserve dirty editors and restore without starting shells", async ({
@@ -766,6 +911,16 @@ test("source control keeps its commit form visible while a long list scrolls at 
   await divider.focus();
   for (let count = 0; count < 8; count++) await resize("ArrowLeft");
   await expect(divider).toHaveAttribute("aria-valuenow", "180");
+  await expect(
+    page.getByRole("button", { name: "Fetch", exact: true }),
+  ).toBeInViewport();
+  await expect(
+    page.getByRole("button", { name: "Pull", exact: true }),
+  ).toBeInViewport();
+  await page.getByRole("button", { name: "Fetch", exact: true }).click();
+  await expect(page.locator(".git-remote-status")).toHaveText(
+    "Fetch complete.",
+  );
   const form = page.locator(".commit-form");
   const before = (await form.boundingBox())!;
   const list = page.locator(".git-groups");

@@ -1457,6 +1457,23 @@ export default function Workbench() {
                   status={git.status}
                   loading={git.loading}
                   onRefresh={git.refresh}
+                  onPull={async () => {
+                    const root = git.status!.root;
+                    if (fileOperationBusy.current)
+                      throw new Error(
+                        "Wait for the current file operation to finish.",
+                      );
+                    fileOperationBusy.current = true;
+                    let resume: (() => void) | undefined;
+                    try {
+                      resume = await pauseEditorFileOperations();
+                      await api("git_pull", { root });
+                    } finally {
+                      resume?.();
+                      fileOperationBusy.current = false;
+                      setDiffRevision((value) => value + 1);
+                    }
+                  }}
                   onDiff={diff}
                   onOpenCommit={openHistoryCommit}
                   onOpenFile={(path) => void openFile(path, git.status!.root)}

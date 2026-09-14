@@ -3,8 +3,10 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Download,
   FileDiff,
   GitBranch,
+  GitPullRequestArrow,
   RefreshCw,
   SquareArrowRight,
   SquareDot,
@@ -21,6 +23,7 @@ export default function SourceControl({
   status,
   loading = false,
   onRefresh,
+  onPull,
   onDiff,
   onOpenCommit,
   onOpenFile,
@@ -30,6 +33,7 @@ export default function SourceControl({
   status: GitStatus | null;
   loading?: boolean;
   onRefresh: () => void;
+  onPull: () => Promise<void>;
   onDiff: (path: string, staged: boolean) => void;
   onOpenCommit: (commit: GitCommitSummary) => void;
   onOpenFile: (path: string) => void;
@@ -38,20 +42,24 @@ export default function SourceControl({
 }) {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  const [remoteStatus, setRemoteStatus] = useState("");
   const [page, setPage] = useState<"changes" | "history">("changes");
   const [historyRevision, setHistoryRevision] = useState(0);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const groupId = useId();
-  const run = async (action: () => Promise<void>) => {
+  const run = async (action: () => Promise<void>, progress = "") => {
     if (busy) return;
     setBusy(true);
+    setRemoteStatus(progress);
     try {
       await action();
-      onRefresh();
     } catch (error) {
+      setRemoteStatus("");
       onError(errorMessage(error));
     } finally {
       setBusy(false);
+      onRefresh();
+      setHistoryRevision((value) => value + 1);
     }
   };
   const stage = (changes: GitChange[], stage: boolean) =>
@@ -273,6 +281,41 @@ export default function SourceControl({
           <RefreshCw size={14} />
         </IconButton>
       </header>
+      <div className="git-remote-actions">
+        <button
+          type="button"
+          className="button"
+          title="Fetch updates from all remotes without changing files"
+          disabled={busy}
+          onClick={() =>
+            void run(async () => {
+              await api("git_fetch", { root: status.root });
+              setRemoteStatus("Fetch complete.");
+            }, "Fetching…")
+          }
+        >
+          <Download size={13} /> Fetch
+        </button>
+        <button
+          type="button"
+          className="button"
+          title="Pull the current branch from its upstream (fast-forward only)"
+          disabled={busy}
+          onClick={() =>
+            void run(async () => {
+              await onPull();
+              setRemoteStatus("Pull complete.");
+            }, "Pulling…")
+          }
+        >
+          <GitPullRequestArrow size={13} /> Pull
+        </button>
+      </div>
+      {remoteStatus && (
+        <div className="git-remote-status" role="status">
+          {remoteStatus}
+        </div>
+      )}
       {page === "history" ? (
         <div
           className="source-page"

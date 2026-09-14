@@ -2215,6 +2215,24 @@ svg {
   width: 24px;
   height: 24px;
 }
+.git-remote-actions {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--space-6);
+  padding: var(--space-6) var(--space-8);
+  border-bottom: var(--border-width) solid var(--color-surface-variant);
+}
+.git-remote-actions > button {
+  flex: 1;
+  padding: var(--space-4) var(--space-7);
+  font-size: var(--font-size-11);
+}
+.git-remote-status {
+  flex-shrink: 0;
+  padding: var(--space-4) var(--space-8);
+  color: var(--color-surface-variant-text);
+  font-size: var(--font-size-11);
+}
 .git-count {
   color: var(--color-surface-variant-text);
   font-size: var(--font-size-10);

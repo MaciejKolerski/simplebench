@@ -323,6 +323,22 @@ pub async fn open_project_item(
 }
 
 #[tauri::command]
+pub async fn git_pull(window: Window, root: String) -> Result<(), String> {
+    main_window(&window)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = window.state::<super::editor::EditorFiles>();
+        // ponytail: reuse the write lock through pull; split fetch from integration if network waits block saves.
+        let _lock = state
+            .writes
+            .lock()
+            .map_err(|_| "File writes are unavailable.")?;
+        crate::git::pull(&root)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
 pub async fn git_discard(
     window: Window,
     root: String,

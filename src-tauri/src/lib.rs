@@ -195,6 +195,8 @@ pub fn run() {
                 themes::create_theme,
                 themes::sync_theme_window,
                 git::git_status,
+                git::git_fetch,
+                files::operations::git_pull,
                 git::git_stage,
                 files::operations::git_discard,
                 git::git_diff,
