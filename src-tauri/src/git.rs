@@ -122,32 +122,91 @@ pub async fn git_status(window: Window, root: String) -> Result<Option<GitStatus
         .map_err(|error| error.to_string())?
 }
 
-fn fetch(root: &str) -> Result<(), String> {
-    let root = repository(root)?;
-    if checked(&root, &["remote"])?.is_empty() {
-        return Err(
-            "No Git remote is configured. Add a remote in a terminal, then try again.".into(),
-        );
+fn remotes(root: &Path) -> Result<Vec<String>, String> {
+    Ok(String::from_utf8_lossy(&checked(root, &["remote"])?)
+        .lines()
+        .map(str::to_owned)
+        .collect())
+}
+
+fn validate_remote(root: &Path, remote: &str) -> Result<(), String> {
+    if !remotes(root)?.iter().any(|name| name == remote) {
+        return Err("This Git remote is no longer configured. Choose a remote again.".into());
     }
-    checked(&root, &["fetch", "--all"])?;
     Ok(())
 }
 
 #[tauri::command]
-pub async fn git_fetch(window: Window, root: String) -> Result<(), String> {
+pub async fn git_remotes(window: Window, root: String) -> Result<Vec<String>, String> {
     main_window(&window)?;
-    tauri::async_runtime::spawn_blocking(move || fetch(&root))
+    tauri::async_runtime::spawn_blocking(move || remotes(&repository(&root)?))
         .await
         .map_err(|error| error.to_string())?
 }
 
-pub(crate) fn pull(root: &str) -> Result<(), String> {
+fn fetch(root: &str, remote: Option<&str>) -> Result<(), String> {
+    let root = repository(root)?;
+    if let Some(remote) = remote {
+        validate_remote(&root, remote)?;
+        checked(&root, &["fetch", "--", remote])?;
+    } else if remotes(&root)?.is_empty() {
+        return Err(
+            "No Git remote is configured. Add a remote in a terminal, then try again.".into(),
+        );
+    } else {
+        checked(&root, &["fetch", "--all"])?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn git_fetch(window: Window, root: String, remote: Option<String>) -> Result<(), String> {
+    main_window(&window)?;
+    tauri::async_runtime::spawn_blocking(move || fetch(&root, remote.as_deref()))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+pub(crate) fn pull(root: &str, rebase: bool) -> Result<(), String> {
     let root = repository(root)?;
     checked(
         &root,
-        &["pull", "--ff-only", "--no-rebase", "--no-autostash"],
+        if rebase {
+            &["pull", "--rebase", "--ff", "--no-autostash"]
+        } else {
+            &["pull", "--ff-only", "--no-rebase", "--no-autostash"]
+        },
     )?;
     Ok(())
+}
+
+fn push(root: &str, remote: Option<&str>, force: bool) -> Result<(), String> {
+    let root = repository(root)?;
+    checked(&root, &["symbolic-ref", "--quiet", "HEAD"])
+        .map_err(|_| "Check out a branch before pushing.".to_string())?;
+    let mut args = vec!["push"];
+    if force {
+        args.push("--force-with-lease");
+    }
+    if let Some(remote) = remote {
+        validate_remote(&root, remote)?;
+        args.extend(["--", remote, "HEAD"]);
+    }
+    checked(&root, &args)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn git_push(
+    window: Window,
+    root: String,
+    remote: Option<String>,
+    force: bool,
+) -> Result<(), String> {
+    main_window(&window)?;
+    tauri::async_runtime::spawn_blocking(move || push(&root, remote.as_deref(), force))
+        .await
+        .map_err(|error| error.to_string())?
 }
 
 fn repository(root: &str) -> Result<std::path::PathBuf, String> {
@@ -291,23 +350,26 @@ pub async fn git_commit(window: Window, root: String, message: String) -> Result
 mod tests {
     use super::*;
 
+    fn test_repository() -> tempfile::TempDir {
+        let root = tempfile::tempdir().unwrap();
+        checked(root.path(), &["init", "-b", "main"]).unwrap();
+        for (key, value) in [
+            ("user.name", "Git Test"),
+            ("user.email", "git@example.test"),
+            ("commit.gpgsign", "false"),
+            ("core.hooksPath", ".git/disabled-hooks"),
+            ("core.autocrlf", "false"),
+        ] {
+            checked(root.path(), &["config", key, value]).unwrap();
+        }
+        root
+    }
+
     #[test]
     fn fetch_and_pull_update_remotes_and_preserve_local_work() {
-        let remote = tempfile::tempdir().unwrap();
-        let local = tempfile::tempdir().unwrap();
+        let remote = test_repository();
+        let local = test_repository();
         let path = local.path().to_str().unwrap();
-        for root in [remote.path(), local.path()] {
-            checked(root, &["init", "-b", "main"]).unwrap();
-            for (key, value) in [
-                ("user.name", "Git Test"),
-                ("user.email", "git@example.test"),
-                ("commit.gpgsign", "false"),
-                ("core.hooksPath", ".git/disabled-hooks"),
-                ("core.autocrlf", "false"),
-            ] {
-                checked(root, &["config", key, value]).unwrap();
-            }
-        }
         let commit_remote = |content: &str| {
             std::fs::write(remote.path().join("file.txt"), content).unwrap();
             checked(remote.path(), &["add", "file.txt"]).unwrap();
@@ -315,13 +377,13 @@ mod tests {
             checked(remote.path(), &["rev-parse", "HEAD"]).unwrap()
         };
         let initial = commit_remote("initial");
-        assert!(fetch(path).unwrap_err().contains("No Git remote"));
+        assert!(fetch(path, None).unwrap_err().contains("No Git remote"));
         checked(
             local.path(),
             &["remote", "add", "origin", remote.path().to_str().unwrap()],
         )
         .unwrap();
-        fetch(path).unwrap();
+        fetch(path, None).unwrap();
         checked(
             local.path(),
             &["checkout", "-b", "main", "--track", "origin/main"],
@@ -336,7 +398,7 @@ mod tests {
             checked(local.path(), &["config", key, value]).unwrap();
         }
         let updated = commit_remote("remote update");
-        fetch(path).unwrap();
+        fetch(path, None).unwrap();
         assert_eq!(
             checked(local.path(), &["rev-parse", "HEAD"]).unwrap(),
             initial
@@ -349,7 +411,7 @@ mod tests {
             std::fs::read_to_string(local.path().join("file.txt")).unwrap(),
             "initial"
         );
-        pull(path).unwrap();
+        pull(path, false).unwrap();
         assert_eq!(
             checked(local.path(), &["rev-parse", "HEAD"]).unwrap(),
             updated
@@ -363,7 +425,7 @@ mod tests {
         checked(local.path(), &["add", "file.txt"]).unwrap();
         std::fs::write(local.path().join("file.txt"), "unstaged local edits").unwrap();
         commit_remote("another remote update");
-        assert!(pull(path).is_err());
+        assert!(pull(path, false).is_err());
         assert_eq!(
             checked(local.path(), &["rev-parse", "HEAD"]).unwrap(),
             updated
@@ -383,7 +445,7 @@ mod tests {
         checked(local.path(), &["add", "file.txt"]).unwrap();
         checked(local.path(), &["commit", "-m", "local commit"]).unwrap();
         let diverged = checked(local.path(), &["rev-parse", "HEAD"]).unwrap();
-        assert!(pull(path).unwrap_err().contains("fast-forward"));
+        assert!(pull(path, false).unwrap_err().contains("fast-forward"));
         assert_eq!(
             checked(local.path(), &["rev-parse", "HEAD"]).unwrap(),
             diverged
@@ -392,9 +454,11 @@ mod tests {
         assert!(!local.path().join(".git/rebase-merge").exists());
 
         checked(local.path(), &["checkout", "-b", "without-upstream"]).unwrap();
-        assert!(pull(path).unwrap_err().contains("tracking information"));
+        assert!(pull(path, false)
+            .unwrap_err()
+            .contains("tracking information"));
         checked(local.path(), &["checkout", "--detach"]).unwrap();
-        assert!(pull(path).is_err());
+        assert!(pull(path, false).is_err());
         checked(
             local.path(),
             &[
@@ -405,7 +469,101 @@ mod tests {
             ],
         )
         .unwrap();
-        assert!(fetch(path).is_err());
+        assert!(fetch(path, None).is_err());
+    }
+
+    #[test]
+    fn selected_remotes_rebase_and_force_push_preserve_unseen_remote_commits() {
+        let origin = tempfile::tempdir().unwrap();
+        let backup = tempfile::tempdir().unwrap();
+        let local = test_repository();
+        let other = test_repository();
+        let path = local.path().to_str().unwrap();
+        let other_path = other.path().to_str().unwrap();
+        for (name, remote) in [("origin", &origin), ("backup", &backup)] {
+            checked(remote.path(), &["init", "--bare", "-b", "main"]).unwrap();
+            checked(
+                local.path(),
+                &["remote", "add", name, remote.path().to_str().unwrap()],
+            )
+            .unwrap();
+        }
+        let commit = |root: &Path, name: &str| {
+            std::fs::write(root.join(name), name).unwrap();
+            checked(root, &["add", name]).unwrap();
+            checked(root, &["commit", "-m", name]).unwrap();
+        };
+        commit(local.path(), "initial.txt");
+        assert_eq!(remotes(local.path()).unwrap(), ["backup", "origin"]);
+        push(path, Some("origin"), false).unwrap();
+        push(path, Some("backup"), false).unwrap();
+        checked(local.path(), &["branch", "--set-upstream-to=origin/main"]).unwrap();
+        checked(
+            other.path(),
+            &["remote", "add", "origin", origin.path().to_str().unwrap()],
+        )
+        .unwrap();
+        fetch(other_path, Some("origin")).unwrap();
+        checked(
+            other.path(),
+            &["checkout", "-b", "main", "--track", "origin/main"],
+        )
+        .unwrap();
+        commit(other.path(), "remote.txt");
+        push(other_path, None, false).unwrap();
+        let remote_head = checked(origin.path(), &["rev-parse", "main"]).unwrap();
+        commit(local.path(), "local.txt");
+        checked(local.path(), &["config", "pull.ff", "only"]).unwrap();
+        checked(local.path(), &["config", "pull.rebase", "false"]).unwrap();
+        pull(path, true).unwrap();
+        assert_eq!(
+            checked(local.path(), &["rev-parse", "HEAD^"]).unwrap(),
+            remote_head
+        );
+        assert!(local.path().join("local.txt").exists());
+        assert!(local.path().join("remote.txt").exists());
+        push(path, None, false).unwrap();
+
+        checked(
+            local.path(),
+            &["commit", "--amend", "-m", "rewrite local commit"],
+        )
+        .unwrap();
+        assert!(push(path, None, false).is_err());
+        push(path, None, true).unwrap();
+        let pushed = checked(local.path(), &["rev-parse", "HEAD"]).unwrap();
+        assert_eq!(
+            checked(origin.path(), &["rev-parse", "main"]).unwrap(),
+            pushed
+        );
+
+        fetch(other_path, Some("origin")).unwrap();
+        checked(other.path(), &["reset", "--hard", "origin/main"]).unwrap();
+        commit(other.path(), "unseen.txt");
+        push(other_path, None, false).unwrap();
+        let unseen = checked(origin.path(), &["rev-parse", "main"]).unwrap();
+        checked(local.path(), &["commit", "--amend", "-m", "rewrite again"]).unwrap();
+        assert!(push(path, None, true).is_err());
+        assert_eq!(
+            checked(origin.path(), &["rev-parse", "main"]).unwrap(),
+            unseen
+        );
+        fetch(path, Some("backup")).unwrap();
+        assert_eq!(
+            checked(local.path(), &["rev-parse", "origin/main"]).unwrap(),
+            pushed
+        );
+        fetch(path, Some("origin")).unwrap();
+        assert_eq!(
+            checked(local.path(), &["rev-parse", "origin/main"]).unwrap(),
+            unseen
+        );
+        for remote in ["missing", "--upload-pack=unexpected"] {
+            assert!(fetch(path, Some(remote)).is_err());
+            assert!(push(path, Some(remote), false).is_err());
+        }
+        checked(local.path(), &["checkout", "--detach"]).unwrap();
+        assert!(push(path, Some("origin"), false).is_err());
     }
 
     #[test]

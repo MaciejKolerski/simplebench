@@ -1,12 +1,10 @@
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import {
   Check,
   ChevronDown,
   ChevronRight,
-  Download,
   FileDiff,
   GitBranch,
-  GitPullRequestArrow,
   RefreshCw,
   SquareArrowRight,
   SquareDot,
@@ -16,8 +14,9 @@ import {
 import { api, errorMessage } from "./api";
 import type { GitChange, GitCommitSummary, GitStatus } from "./api";
 import GitHistory from "./GitHistory";
+import ContextMenu from "./ContextMenu";
 import { useGitFileActions } from "./GitFileActions";
-import { IconButton } from "./ui";
+import { IconButton, Modal } from "./ui";
 
 export default function SourceControl({
   status,
@@ -33,7 +32,7 @@ export default function SourceControl({
   status: GitStatus | null;
   loading?: boolean;
   onRefresh: () => void;
-  onPull: () => Promise<void>;
+  onPull: (rebase: boolean) => Promise<void>;
   onDiff: (path: string, staged: boolean) => void;
   onOpenCommit: (commit: GitCommitSummary) => void;
   onOpenFile: (path: string) => void;
@@ -43,6 +42,22 @@ export default function SourceControl({
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [remoteStatus, setRemoteStatus] = useState("");
+  const [remoteMenu, setRemoteMenu] = useState<{
+    x: number;
+    y: number;
+    choice?: { action: "fetch" | "push"; remotes: string[] };
+  }>();
+  const [forcePush, setForcePush] = useState(false);
+  const remoteTrigger = useRef<HTMLButtonElement>(null);
+  const openRemoteMenu = () => {
+    if (busy) return;
+    const bounds = remoteTrigger.current!.getBoundingClientRect();
+    setRemoteMenu({ x: bounds.left, y: bounds.bottom + 4 });
+  };
+  const closeRemoteMenu = () => {
+    setRemoteMenu(undefined);
+    remoteTrigger.current?.focus({ preventScroll: true });
+  };
   const [page, setPage] = useState<"changes" | "history">("changes");
   const [historyRevision, setHistoryRevision] = useState(0);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
@@ -62,6 +77,38 @@ export default function SourceControl({
       setHistoryRevision((value) => value + 1);
     }
   };
+  const fetch = (remote?: string) =>
+    run(async () => {
+      await api("git_fetch", { root: status!.root, remote });
+      setRemoteStatus("Fetch complete.");
+    }, "Fetching…");
+  const pull = (rebase = false) =>
+    run(
+      async () => {
+        await onPull(rebase);
+        setRemoteStatus(
+          rebase ? "Pull with rebase complete." : "Pull complete.",
+        );
+      },
+      rebase ? "Pulling with rebase…" : "Pulling…",
+    );
+  const push = (remote?: string, force = false) =>
+    run(async () => {
+      await api("git_push", { root: status!.root, remote, force });
+      setRemoteStatus("Push complete.");
+    }, "Pushing…");
+  const chooseRemote = (action: "fetch" | "push") =>
+    run(async () => {
+      const remotes = await api<string[]>("git_remotes", {
+        root: status!.root,
+      });
+      if (!remotes.length)
+        throw new Error(
+          "No Git remote is configured. Add a remote in a terminal, then try again.",
+        );
+      setRemoteMenu({ ...remoteMenu!, choice: { action, remotes } });
+      setRemoteStatus("");
+    }, "Loading remotes…");
   const stage = (changes: GitChange[], stage: boolean) =>
     run(() =>
       api("git_stage", {
@@ -283,34 +330,117 @@ export default function SourceControl({
       </header>
       <div className="git-remote-actions">
         <button
+          ref={remoteTrigger}
           type="button"
-          className="button"
-          title="Fetch updates from all remotes without changing files"
+          className="button git-remote-trigger"
+          title="Git remote actions"
+          aria-haspopup="menu"
+          aria-expanded={!!remoteMenu}
           disabled={busy}
-          onClick={() =>
-            void run(async () => {
-              await api("git_fetch", { root: status.root });
-              setRemoteStatus("Fetch complete.");
-            }, "Fetching…")
-          }
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={() => (remoteMenu ? closeRemoteMenu() : openRemoteMenu())}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              openRemoteMenu();
+            }
+          }}
         >
-          <Download size={13} /> Fetch
-        </button>
-        <button
-          type="button"
-          className="button"
-          title="Pull the current branch from its upstream (fast-forward only)"
-          disabled={busy}
-          onClick={() =>
-            void run(async () => {
-              await onPull();
-              setRemoteStatus("Pull complete.");
-            }, "Pulling…")
-          }
-        >
-          <GitPullRequestArrow size={13} /> Pull
+          <span>
+            <RefreshCw size={12} /> Fetch
+          </span>
+          <span className="git-remote-chevron">
+            <ChevronDown size={12} />
+          </span>
         </button>
       </div>
+      {remoteMenu && (
+        <ContextMenu
+          key={remoteMenu.choice?.action ?? "actions"}
+          {...remoteMenu}
+          label={
+            remoteMenu.choice
+              ? remoteMenu.choice.action === "fetch"
+                ? "Fetch From"
+                : "Push To"
+              : "Git remote actions"
+          }
+          onClose={closeRemoteMenu}
+          actions={
+            remoteMenu.choice
+              ? remoteMenu.choice.remotes.map((remote) => ({
+                  label: remote,
+                  run: () =>
+                    void (remoteMenu.choice!.action === "fetch"
+                      ? fetch(remote)
+                      : push(remote)),
+                }))
+              : [
+                  {
+                    label: "Fetch",
+                    run: () => void fetch(),
+                  },
+                  {
+                    label: "Fetch From",
+                    run: () => void chooseRemote("fetch"),
+                  },
+                  {
+                    label: "Pull",
+                    run: () => void pull(),
+                  },
+                  {
+                    label: "Pull (Rebase)",
+                    run: () => void pull(true),
+                  },
+                  null,
+                  {
+                    label: "Push",
+                    run: () => void push(),
+                  },
+                  {
+                    label: "Push To",
+                    run: () => void chooseRemote("push"),
+                  },
+                  {
+                    label: "Force Push",
+                    danger: true,
+                    run: () => setForcePush(true),
+                  },
+                ]
+          }
+        />
+      )}
+      {forcePush && (
+        <Modal title="Force Push" onClose={() => setForcePush(false)}>
+          <div className="dialog-body">
+            <p>
+              Replace the remote branch history with your local commits? The
+              push is rejected if the remote branch changed since your last
+              fetch.
+            </p>
+          </div>
+          <div className="dialog-actions">
+            <button
+              type="button"
+              className="button"
+              onClick={() => setForcePush(false)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="button text-error"
+              disabled={busy}
+              onClick={() => {
+                setForcePush(false);
+                void push(undefined, true);
+              }}
+            >
+              Force Push
+            </button>
+          </div>
+        </Modal>
+      )}
       {remoteStatus && (
         <div className="git-remote-status" role="status">
           {remoteStatus}

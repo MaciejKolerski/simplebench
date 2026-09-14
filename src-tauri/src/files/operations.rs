@@ -323,7 +323,7 @@ pub async fn open_project_item(
 }
 
 #[tauri::command]
-pub async fn git_pull(window: Window, root: String) -> Result<(), String> {
+pub async fn git_pull(window: Window, root: String, rebase: bool) -> Result<(), String> {
     main_window(&window)?;
     tauri::async_runtime::spawn_blocking(move || {
         let state = window.state::<super::editor::EditorFiles>();
@@ -332,7 +332,7 @@ pub async fn git_pull(window: Window, root: String) -> Result<(), String> {
             .writes
             .lock()
             .map_err(|_| "File writes are unavailable.")?;
-        crate::git::pull(&root)
+        crate::git::pull(&root, rebase)
     })
     .await
     .map_err(|error| error.to_string())?

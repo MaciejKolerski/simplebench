@@ -196,6 +196,8 @@ pub fn run() {
                 themes::sync_theme_window,
                 git::git_status,
                 git::git_fetch,
+                git::git_remotes,
+                git::git_push,
                 files::operations::git_pull,
                 git::git_stage,
                 files::operations::git_discard,

@@ -1457,7 +1457,7 @@ export default function Workbench() {
                   status={git.status}
                   loading={git.loading}
                   onRefresh={git.refresh}
-                  onPull={async () => {
+                  onPull={async (rebase) => {
                     const root = git.status!.root;
                     if (fileOperationBusy.current)
                       throw new Error(
@@ -1467,7 +1467,7 @@ export default function Workbench() {
                     let resume: (() => void) | undefined;
                     try {
                       resume = await pauseEditorFileOperations();
-                      await api("git_pull", { root });
+                      await api("git_pull", { root, rebase });
                     } finally {
                       resume?.();
                       fileOperationBusy.current = false;
