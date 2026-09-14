@@ -148,6 +148,24 @@ export class TerminalRuntime {
       }),
     );
     this.terminal.onData((data) => this.send(data));
+    this.terminal.attachCustomKeyEventHandler((event) => {
+      if (
+        event.type !== "keydown" ||
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.keyCode === 229 ||
+        event.key !== "Enter" ||
+        !event.shiftKey ||
+        event.ctrlKey ||
+        event.altKey ||
+        event.metaKey
+      )
+        return true;
+      // xterm encodes Shift+Enter as CR; CSI u preserves Shift for CLI input.
+      event.preventDefault();
+      this.terminal.input("\x1b[13;2u");
+      return false;
+    });
     this.terminal.parser.registerOscHandler(7, (value) => {
       try {
         const url = new URL(value);

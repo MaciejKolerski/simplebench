@@ -31,6 +31,82 @@ async function input(page: Page) {
     .join("");
 }
 
+test("Shift+Enter reaches the CLI as a distinct key without submitting", async ({
+  page,
+}) => {
+  await openTerminal(page);
+  await page.keyboard.type("first line");
+  await page.keyboard.press("Shift+Enter");
+  await page.keyboard.type("second line");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() => input(page))
+    .toBe("first line\x1b[13;2usecond line\r");
+
+  await page.keyboard.press("Shift+NumpadEnter");
+  await page.keyboard.press("Control+Enter");
+  await page.keyboard.press("Alt+Enter");
+  await page.keyboard.press("Control+Shift+Enter");
+  await page.keyboard.press("Alt+Shift+Enter");
+  await page.keyboard.down("Shift");
+  await page.keyboard.down("Enter");
+  await page.keyboard.down("Enter");
+  await page.keyboard.up("Enter");
+  await page.keyboard.up("Shift");
+  const expected =
+    "first line\x1b[13;2usecond line\r" +
+    "\x1b[13;2u\r\x1b\r\r\x1b\r\x1b[13;2u\x1b[13;2u";
+  await expect.poll(() => input(page)).toBe(expected);
+
+  await page.locator(".xterm-helper-textarea").evaluate((textarea) => {
+    textarea.dispatchEvent(new CompositionEvent("compositionstart"));
+    for (const isComposing of [true, false]) {
+      textarea.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Enter",
+          code: "Enter",
+          shiftKey: true,
+          keyCode: 229,
+          isComposing,
+          bubbles: true,
+          cancelable: true,
+        }),
+      );
+    }
+    textarea.dispatchEvent(new CompositionEvent("compositionend"));
+  });
+  await page.keyboard.type("after composition");
+  await expect.poll(() => input(page)).toBe(expected + "after composition");
+});
+
+test("Shift+Enter preserves form editing and modified Enter shortcuts", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "test-keybindings",
+      JSON.stringify({
+        version: 1,
+        bindings: { newTerminal: "Ctrl+Shift+Enter" },
+      }),
+    );
+  });
+  await openTerminal(page);
+  await page.keyboard.press("Control+Shift+i");
+  const composer = page.getByRole("textbox", { name: "Command input" });
+  await composer.fill("first line");
+  await composer.press("Shift+Enter");
+  await composer.pressSequentially("second line");
+  await expect(composer).toHaveValue("first line\nsecond line");
+  expect(await input(page)).toBe("");
+  await page.getByRole("button", { name: "Close command input" }).click();
+
+  await page.locator(".xterm-helper-textarea").focus();
+  await page.keyboard.press("Control+Shift+Enter");
+  await expect(page.locator("[data-pane-id]")).toHaveCount(2);
+  expect(await input(page)).toBe("");
+});
+
 test("panel shortcuts capture control keys before xterm and keep the current tab", async ({
   page,
 }) => {
