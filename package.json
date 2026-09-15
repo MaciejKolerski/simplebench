@@ -13,6 +13,7 @@
     "check": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
     "test:ui": "pnpm --filter simplebench-plugin-fixture build && playwright test",
+    "test:ui:webkit": "pnpm test:ui --config=playwright.webkit.config.ts",
     "format": "prettier --write src tests *.ts *.json *.md .github/*.md .github/workflows/*.yml scripts/*.mjs docs/*.md releases/*.md packages themes vendor",
     "format:check": "prettier --check src tests *.ts *.json *.md .github/*.md .github/workflows/*.yml scripts/*.mjs docs/*.md releases/*.md packages themes vendor",
     "build": "pnpm check && vite build",

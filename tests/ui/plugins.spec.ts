@@ -582,9 +582,8 @@ test("sidebar contributions retain placement, instance state and focused context
     .poll(() =>
       page.evaluate(
         () =>
-          JSON.parse(localStorage.getItem("test-session")!).sidebarSides[
-            "simplebench.context.view"
-          ],
+          JSON.parse(localStorage.getItem("test-session") ?? "null")
+            ?.sidebarSides["simplebench.context.view"],
       ),
     )
     .toBe("right");

@@ -235,7 +235,11 @@ export async function mockDesktop(
                   index: index++,
                   message: url,
                 });
-              if (desktop.__nativeTest.localWebServersDelay)
+              if (desktop.__nativeTest.holdLocalWebServers)
+                await new Promise((resolve) => {
+                  desktop.__nativeTest.finishLocalWebServers = resolve;
+                });
+              else if (desktop.__nativeTest.localWebServersDelay)
                 await new Promise((resolve) =>
                   setTimeout(
                     resolve,
@@ -453,7 +457,9 @@ export async function mockDesktop(
               (entry: any) => entry.themeIds?.includes(id),
             )?.id;
           const themeBundle = async (id: string, manifest: any) => {
-            const { migrateTheme } = await import("/src/theme/format.ts");
+            const { migrateTheme } = await import(
+              location.origin + "/src/theme/format.ts"
+            );
             const modern =
               manifest.version === 1
                 ? migrateTheme(manifest).manifest
@@ -558,7 +564,9 @@ export async function mockDesktop(
             const manifests = JSON.parse(
               localStorage.getItem("test-theme-manifests") ?? "{}",
             );
-            const { builtinTheme } = await import("/src/theme/format.ts");
+            const { builtinTheme } = await import(
+              location.origin + "/src/theme/format.ts"
+            );
             manifests.copy = args.id ? manifests[args.id] : builtinTheme;
             localStorage.setItem(
               "test-theme-manifests",
@@ -648,7 +656,9 @@ export async function mockDesktop(
               throw new Error(
                 "This theme changed on disk. Reopen the editor before saving; your draft is still available.",
               );
-            const { readThemeDraft } = await import("/src/theme/format.ts");
+            const { readThemeDraft } = await import(
+              location.origin + "/src/theme/format.ts"
+            );
             manifests[args.id] = readThemeDraft(args.raw);
             localStorage.setItem(
               "test-theme-raw",

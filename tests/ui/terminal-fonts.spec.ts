@@ -5,6 +5,28 @@ for (const renderer of ["WebGL", "DOM"] as const) {
   test(`${renderer} waits for all terminal font faces before fitting and starting the shell`, async ({
     page,
   }, testInfo) => {
+    await page.addInitScript(() => {
+      const load = FontFaceSet.prototype.load;
+      (window as any).__terminalFontLoads = [];
+      FontFaceSet.prototype.load = async function (...args) {
+        const faces = await load.apply(this, args);
+        if (
+          !(window as any).__nativeTest?.calls.some(
+            (call: any) => call.command === "start_terminal",
+          )
+        ) {
+          (window as any).__terminalFontLoads.push(
+            ...faces.map((face) => ({
+              family: face.family.replace(/^(["'])(.*)\1$/, "$2"),
+              style: face.style,
+              weight: face.weight,
+              status: face.status,
+            })),
+          );
+        }
+        return faces;
+      };
+    });
     if (renderer === "DOM")
       await page.addInitScript(() => {
         const getContext = HTMLCanvasElement.prototype.getContext;
@@ -82,7 +104,16 @@ for (const renderer of ["WebGL", "DOM"] as const) {
       );
       return {
         renderer: runtime.getSnapshot().renderer,
-        fonts: [...document.fonts].map((face) => face.status),
+        // WebKit recreates CSS FontFace objects after xterm injects its styles.
+        // Check the completed loads before PTY startup, not replacement objects.
+        fonts: [
+          ...new Map(
+            (window as any).__terminalFontLoads.map((face: any) => [
+              `${face.family}/${face.style}/${face.weight}`,
+              face.status,
+            ]),
+          ).values(),
+        ],
         initial: { cols: start.cols, rows: start.rows },
         current: { cols: runtime.terminal.cols, rows: runtime.terminal.rows },
         fitted: runtime.fitAddon.proposeDimensions(),

@@ -542,6 +542,12 @@ export async function prepareTheme(
         document.head.insertBefore(style, links[0]);
         for (const link of links) {
           link.dataset.themeLayer = "css";
+          // WebKit may defer @import until a staged sheet's media becomes active.
+          // Re-read the final cascade when those imports finish, including in hidden views.
+          link.onload = () => {
+            if (link.isConnected && link.media === "all")
+              refreshTerminalAppearance();
+          };
           link.media = "all";
         }
       } else document.head.append(style);

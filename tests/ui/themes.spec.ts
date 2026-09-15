@@ -319,7 +319,9 @@ test("a theme updates both windows and hidden terminals without replacing PTYs",
   expect(await calls(page, "close_terminal")).toHaveLength(0);
   expect((await terminal(page, second)).theme?.background).toBe("#10101000");
   expect((await terminal(page, second)).cursor).toBe("underline");
-  expect((await terminal(page, second)).fontFamily).toContain("ThemeFace");
+  await expect
+    .poll(async () => (await terminal(page, second)).fontFamily)
+    .toContain("ThemeFace");
   expect((await terminal(page, second)).letterSpacing).toBe(1);
   expect((await terminal(page, second)).blink).toBe(false);
   await expect(page.locator(".statusbar")).toHaveCSS("height", "34px");

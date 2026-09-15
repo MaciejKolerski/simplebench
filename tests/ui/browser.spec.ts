@@ -258,7 +258,7 @@ test("server results stream before scan completion and stay cached across browse
     const native = (window as any).__nativeTest;
     native.localWebServers = ["http://localhost:3000", "http://localhost:5173"];
     native.localWebServersProgress = ["http://localhost:3000"];
-    native.localWebServersDelay = 5000;
+    native.holdLocalWebServers = true;
   });
   await page.getByRole("button", { name: /^New tab/ }).click();
   await page.getByRole("menuitem", { name: "New browser" }).click();
@@ -287,6 +287,11 @@ test("server results stream before scan completion and stay cached across browse
     ),
   ).toBe(1);
   await page.screenshot({ path: "test-results/browser-streamed-servers.png" });
+  await page.evaluate(() => {
+    const native = (window as any).__nativeTest;
+    native.holdLocalWebServers = false;
+    native.finishLocalWebServers();
+  });
   await expect(list.getByRole("option")).toHaveText(
     ["http://localhost:3000", "http://localhost:5173"],
     { timeout: 7000 },

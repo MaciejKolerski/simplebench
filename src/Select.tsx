@@ -130,6 +130,11 @@ export default function Select({
           open && active >= 0 ? `${listId}-${active}` : undefined
         }
         popoverTarget={listId}
+        onPointerDown={(event) => {
+          // Safari blurs an already focused button on mouse down, before its toggle.
+          event.preventDefault();
+          trigger.current?.focus({ preventScroll: true });
+        }}
         onClick={() => {
           trigger.current?.focus({ preventScroll: true });
           query.current = { text: "", time: 0 };

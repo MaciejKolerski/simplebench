@@ -192,6 +192,14 @@ pnpm exec playwright install chromium
 pnpm test:ui
 ```
 
+Run the same interface suite in WebKit to cover the browser engine family used
+on macOS:
+
+```sh
+pnpm exec playwright install webkit
+pnpm test:ui:webkit
+```
+
 Playwright tests mock native commands. Changes to PTYs, webviews, and native
 windows also need verification in the desktop application.
 

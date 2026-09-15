@@ -27,7 +27,10 @@ export default function Welcome({
             aria-labelledby="welcome-open-folder"
             aria-describedby="welcome-open-folder-description"
             aria-disabled={busy}
-            onClick={onOpenFolder}
+            onClick={(event) => {
+              event.currentTarget.focus({ preventScroll: true });
+              onOpenFolder();
+            }}
           >
             <FolderOpen size={22} aria-hidden="true" />
             <span className="welcome-action-copy">
@@ -46,7 +49,10 @@ export default function Welcome({
             aria-labelledby="welcome-new-file"
             aria-describedby="welcome-new-file-description"
             aria-disabled={busy}
-            onClick={onNewFile}
+            onClick={(event) => {
+              event.currentTarget.focus({ preventScroll: true });
+              onNewFile();
+            }}
           >
             <FilePlus2 size={22} aria-hidden="true" />
             <span className="welcome-action-copy">

@@ -5,6 +5,7 @@ import { mockDesktop } from "./desktop";
 for (const colorScheme of ["dark", "light"] as const) {
   test(`welcome opens a repository and fits the minimum window in ${colorScheme} mode`, async ({
     page,
+    browserName,
   }, testInfo) => {
     await page.emulateMedia({ colorScheme });
     await mockDesktop(page, true, null);
@@ -30,11 +31,16 @@ for (const colorScheme of ["dark", "light"] as const) {
     ).toBe(true);
     await page.screenshot({ path: testInfo.outputPath("welcome-minimum.png") });
     await openFolder.focus();
-    await page.keyboard.press("Tab");
+    // macOS WebKit uses Option+Tab when full keyboard access is disabled.
+    const tab =
+      browserName === "webkit" && process.platform === "darwin"
+        ? "Alt+Tab"
+        : "Tab";
+    await page.keyboard.press(tab);
     await expect(
       welcome.getByRole("button", { name: "Create a new file", exact: true }),
     ).toBeFocused();
-    await page.keyboard.press("Shift+Tab");
+    await page.keyboard.press(`Shift+${tab}`);
     await page.keyboard.press("Enter");
     await expect(welcome).toHaveCount(0);
     await expect(page.locator(".project-switcher")).toHaveText("chosen folder");

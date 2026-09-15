@@ -40,7 +40,7 @@ test("new tab menu opens independent drafts without touching disk and supports k
   await expect(page.locator(".cm-content")).toHaveText("First draft 🦀");
   await page.keyboard.press("Control+z");
   await expect(page.locator(".cm-content")).toBeEmpty();
-  await page.keyboard.press("Control+Shift+z");
+  await page.keyboard.press("Control+y");
   await page.screenshot({ path: "test-results/new-file-editor.png" });
   expect(
     await page.evaluate(() =>
@@ -103,7 +103,8 @@ test("first save supports cancellation, failure, outside paths, queued edits and
   await expect(
     page.getByRole("button", { name: "Saving…", exact: true }),
   ).toBeVisible();
-  await page.keyboard.insertText("\nconst second = 2;");
+  await page.keyboard.press("Enter");
+  await page.keyboard.insertText("const second = 2;");
   await page.keyboard.press("Control+s");
   await expect(page.getByRole("tab", { selected: true })).toHaveText("note.ts");
   await expect(page.getByRole("tab", { selected: true })).toHaveAttribute(
@@ -129,7 +130,7 @@ test("first save supports cancellation, failure, outside paths, queued edits and
   }
   await expect(page.locator(".cm-content")).toBeEmpty();
   for (let index = 0; index < undos; ++index)
-    await page.keyboard.press("Control+Shift+z");
+    await page.keyboard.press("Control+y");
   await expect(page.locator(".cm-content")).toHaveText(
     "const first = 1;const second = 2;",
   );

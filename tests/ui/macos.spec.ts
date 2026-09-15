@@ -1,6 +1,45 @@
 import { expect, test } from "@playwright/test";
 import { mockDesktop } from "./desktop";
 
+test("macOS editor preserves multiline paste, Cmd+Z, Cmd+Shift+Z and save", async ({
+  page,
+}) => {
+  await mockDesktop(page, true, undefined, undefined, {}, "macos");
+  await page.goto("/");
+  await page.getByRole("button", { name: "README.md", exact: true }).click();
+  const editor = page.locator(".cm-content");
+  const before = await editor.textContent();
+  const text = "First line — zażółć 🦀\nSecond line\n";
+  await editor.focus();
+  await page.keyboard.press("Meta+a");
+  await editor.evaluate((element, text) => {
+    const clipboardData = new DataTransfer();
+    clipboardData.setData("text/plain", text);
+    element.dispatchEvent(
+      new ClipboardEvent("paste", {
+        clipboardData,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+  }, text);
+  await expect(editor).toHaveText(text.replaceAll("\n", ""));
+  await page.keyboard.press("Meta+z");
+  await expect(editor).toHaveText(before!);
+  await page.keyboard.press("Meta+Shift+z");
+  await expect(editor).toHaveText(text.replaceAll("\n", ""));
+  await page.keyboard.press("Meta+s");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as any).__nativeTest.editorFiles["/project/README.md"]
+            .content,
+      ),
+    )
+    .toBe(text);
+});
+
 test("hidden settings cancel shortcut recording before being reused", async ({
   page,
 }) => {

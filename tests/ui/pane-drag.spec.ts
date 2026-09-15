@@ -590,7 +590,8 @@ test("Ctrl is required; Escape, releasing Ctrl, lost capture, blur and outside d
   await page
     .locator(`[data-pane-id="${source}"]`)
     .getByRole("button", { name: "Maximize terminal", exact: true })
-    .click();
+    // Keyboard activation keeps Control held without macOS turning the click into a context menu.
+    .press("Space");
   await page.keyboard.up("Control");
   await expect(page.locator("[data-pane-id]")).toHaveCount(1);
   await expect(page.locator(".pane-drag-ghost")).toHaveCount(0);

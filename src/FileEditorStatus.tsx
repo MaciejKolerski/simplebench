@@ -45,6 +45,10 @@ export default function FileEditorStatus({
         aria-label="Change indentation settings"
         aria-haspopup="dialog"
         aria-expanded={menu?.kind === "indentation"}
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.currentTarget.focus({ preventScroll: true });
+        }}
         onClick={(event) =>
           setMenu(
             menu?.kind === "indentation"
@@ -62,6 +66,10 @@ export default function FileEditorStatus({
         aria-label="Change language mode"
         aria-haspopup="dialog"
         aria-expanded={menu?.kind === "language"}
+        onPointerDown={(event) => {
+          event.preventDefault();
+          event.currentTarget.focus({ preventScroll: true });
+        }}
         onClick={(event) =>
           setMenu(
             menu?.kind === "language"
