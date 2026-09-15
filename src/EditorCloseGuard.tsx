@@ -1,13 +1,19 @@
 import { useCallback, useId, useRef, useState } from "react";
 import { CircleAlert, FileText, Save } from "lucide-react";
 import { closingEditorDocuments } from "./editor-service";
-import type { EditorDocument } from "./editor-runtime";
+import { pluginHost } from "./plugins/runtime";
+interface CloseDocument {
+  path: string;
+  readonly dirty: boolean;
+  save: () => Promise<boolean>;
+  discard?: () => void;
+}
 import { errorMessage } from "./api";
 import { basename } from "./model";
 import { Modal } from "./ui";
 
 interface Request {
-  documents: EditorDocument[];
+  documents: CloseDocument[];
   finish: (close: boolean) => void;
 }
 
@@ -20,7 +26,23 @@ export function useEditorCloseGuard() {
   const saveButton = useRef<HTMLButtonElement>(null);
   const confirm = useCallback((ids?: ReadonlySet<string>): Promise<boolean> => {
     if (current.current) return Promise.resolve(false);
-    const documents = closingEditorDocuments(ids);
+    const documents: CloseDocument[] = [
+      ...closingEditorDocuments(ids),
+      ...[...pluginHost.dirtyViews]
+        .filter(([id]) => !ids || ids.has(id))
+        .map(([id, { view }]): CloseDocument => ({
+          path: view.title || id,
+          get dirty() {
+            return pluginHost.isDirty(id);
+          },
+          save: async () => {
+            await view.save();
+            return !view.isDirty();
+          },
+          discard: () => view.discard(),
+        }))
+        .filter((view) => view.dirty),
+    ];
     if (!documents.length) return Promise.resolve(true);
     return new Promise((finish) => {
       const request = { documents, finish };
@@ -106,7 +128,14 @@ export function useEditorCloseGuard() {
             type="button"
             className="button"
             disabled={busy}
-            onClick={() => finish(true)}
+            onClick={() => {
+              try {
+                for (const document of request.documents) document.discard?.();
+                finish(true);
+              } catch (error) {
+                setError(errorMessage(error));
+              }
+            }}
           >
             Discard changes
           </button>

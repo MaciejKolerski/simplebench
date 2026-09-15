@@ -11,7 +11,7 @@
       "maxLength": 2000
     },
     "version": {
-      "const": 1
+      "const": 2
     },
     "name": {
       "type": "string",
@@ -29,1358 +29,1742 @@
       "maxLength": 2000
     },
     "appearance": {
-      "enum": ["dark", "light"],
-      "description": "Pin the theme to a light or dark base palette. Omit to follow the application's System, Light, or Dark color mode."
+      "enum": ["adaptive", "light", "dark"]
     },
-    "tokens": {
-      "type": "object",
-      "propertyNames": {
-        "pattern": "^--[a-z][a-z0-9-]*$"
-      },
-      "additionalProperties": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 4000
-      },
-      "properties": {
-        "--color-background": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "#101010"
-        },
-        "--color-background-text": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "#e0e0e0"
-        },
-        "--color-surface": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "#161616"
-        },
-        "--color-surface-text": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "#dcdcdc"
-        },
-        "--color-surface-variant": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "#222222"
-        },
-        "--color-surface-variant-text": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "#a8a8a8"
-        },
-        "--color-outline": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "#3a3a3a"
-        },
-        "--color-surface-container": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "#1c1c1c"
-        },
-        "--color-surface-container-high": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "#262626"
-        },
-        "--color-surface-container-highest": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "#303030"
-        },
-        "--color-primary": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "#9a9a9a"
-        },
-        "--color-primary-text": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "#0d0d0d"
-        },
-        "--color-primary-container": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "#6e6e6e"
-        },
-        "--color-secondary": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "#787878"
-        },
-        "--color-surface-tint": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "#9a9a9a"
-        },
-        "--color-error": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "#c75c5c"
-        },
-        "--color-warning": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "#c9a227"
-        },
-        "--color-info": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "#7a8fa6"
-        },
-        "--font-size": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "13px"
-        },
-        "--density": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "1"
-        },
-        "--border-width": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "1px"
-        },
-        "--focus-width": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "1px"
-        },
-        "--icon-stroke-width": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "1.6"
-        },
-        "--radius-xs": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "2px"
-        },
-        "--radius-sm": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "3px"
-        },
-        "--radius-md": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "4px"
-        },
-        "--radius-control": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "5px"
-        },
-        "--radius-tab": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "6px"
-        },
-        "--radius-menu": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "7px"
-        },
-        "--radius-modal": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "9px"
-        },
-        "--radius-window": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "0px"
-        },
-        "--radius-pane": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "0px"
-        },
-        "--opacity-disabled": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "0.4"
-        },
-        "--opacity-window": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "1"
-        },
-        "--shadow-menu": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "0 12px 35px\n    color-mix(in srgb, var(--color-background) 70%, transparent)"
-        },
-        "--shadow-modal": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "0 20px 70px\n    color-mix(in srgb, var(--color-background) 80%, transparent)"
-        },
-        "--color-backdrop": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "color-mix(\n    in srgb,\n    var(--color-background) 70%,\n    transparent\n  )"
-        },
-        "--color-drop-overlay": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "color-mix(\n    in srgb,\n    var(--color-surface-container-high) 85%,\n    transparent\n  )"
-        },
-        "--titlebar-height": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "44px"
-        },
-        "--statusbar-height": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "28px"
-        },
-        "--tab-height": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "32px"
-        },
-        "--tab-min-width": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "128px"
-        },
-        "--tab-max-width": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "164px"
-        },
-        "--titlebar-background": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-surface)"
-        },
-        "--sidebar-background": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-surface)"
-        },
-        "--statusbar-background": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-surface)"
-        },
-        "--settings-background": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-background)"
-        },
-        "--menu-background": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-surface-container)"
-        },
-        "--modal-background": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-surface-container)"
-        },
-        "--input-background": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-background)"
-        },
-        "--button-background": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-surface-container-high)"
-        },
-        "--tab-background-active": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-surface-container-high)"
-        },
-        "--sidebar-min-width": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "180px"
-        },
-        "--settings-nav-width": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "150px"
-        },
-        "--settings-page-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "28px"
-        },
-        "--tree-row-height": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "27px"
-        },
-        "--tree-indent": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "14px"
-        },
-        "--icon-button-size": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "28px"
-        },
-        "--scrollbar-width": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "8px"
-        },
-        "--scrollbar-height": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "5px"
-        },
-        "--terminal-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "8px 4px 4px 10px"
-        },
-        "--terminal-font-family": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--font-family-mono)"
-        },
-        "--terminal-font-size": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "13px"
-        },
-        "--terminal-line-height": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "1.25"
-        },
-        "--terminal-letter-spacing": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "0px"
-        },
-        "--terminal-font-weight": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "normal"
-        },
-        "--terminal-font-weight-bold": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "bold"
-        },
-        "--terminal-cursor-style": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "bar"
-        },
-        "--terminal-cursor-inactive-style": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "outline"
-        },
-        "--terminal-cursor-blink": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "1"
-        },
-        "--terminal-cursor-width": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "1"
-        },
-        "--terminal-minimum-contrast-ratio": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "1"
-        },
-        "--terminal-draw-bold-text-in-bright-colors": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "1"
-        },
-        "--terminal-selection-foreground": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "none"
-        },
-        "--terminal-background": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-background)"
-        },
-        "--terminal-foreground": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-surface-text)"
-        },
-        "--terminal-cursor": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-primary)"
-        },
-        "--terminal-cursor-accent": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-primary-text)"
-        },
-        "--terminal-selection-background": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-surface-container-highest)"
-        },
-        "--terminal-selection-inactive-background": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-surface-container-high)"
-        },
-        "--terminal-black": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-background)"
-        },
-        "--terminal-red": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-error)"
-        },
-        "--terminal-green": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-primary)"
-        },
-        "--terminal-yellow": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-warning)"
-        },
-        "--terminal-blue": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-info)"
-        },
-        "--terminal-magenta": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-primary-container)"
-        },
-        "--terminal-cyan": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-info)"
-        },
-        "--terminal-white": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-surface-text)"
-        },
-        "--terminal-bright-black": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-secondary)"
-        },
-        "--terminal-bright-red": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-error)"
-        },
-        "--terminal-bright-green": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-background-text)"
-        },
-        "--terminal-bright-yellow": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-warning)"
-        },
-        "--terminal-bright-blue": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-info)"
-        },
-        "--terminal-bright-magenta": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-primary)"
-        },
-        "--terminal-bright-cyan": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-info)"
-        },
-        "--terminal-bright-white": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-background-text)"
-        },
-        "--terminal-search-match-background": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-surface-container-highest)"
-        },
-        "--terminal-search-active-match-background": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-primary-container)"
-        },
-        "--terminal-search-match-border": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-secondary)"
-        },
-        "--terminal-search-active-match-border": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "var(--color-primary)"
-        },
-        "--font-size-9": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(var(--font-size) * 0.692308)"
-        },
-        "--font-size-10": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(var(--font-size) * 0.769231)"
-        },
-        "--font-size-11": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(var(--font-size) * 0.846154)"
-        },
-        "--font-size-12": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(var(--font-size) * 0.923077)"
-        },
-        "--font-size-13": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(var(--font-size) * 1)"
-        },
-        "--font-size-14": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(var(--font-size) * 1.076923)"
-        },
-        "--font-size-15": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(var(--font-size) * 1.153846)"
-        },
-        "--font-size-17": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(var(--font-size) * 1.307692)"
-        },
-        "--font-size-18": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(var(--font-size) * 1.384615)"
-        },
-        "--font-size-22": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(var(--font-size) * 1.692308)"
-        },
-        "--space-1": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(1px * var(--density))"
-        },
-        "--space-2": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(2px * var(--density))"
-        },
-        "--space-3": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(3px * var(--density))"
-        },
-        "--space-4": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(4px * var(--density))"
-        },
-        "--space-5": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(5px * var(--density))"
-        },
-        "--space-6": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(6px * var(--density))"
-        },
-        "--space-7": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(7px * var(--density))"
-        },
-        "--space-8": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(8px * var(--density))"
-        },
-        "--space-9": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(9px * var(--density))"
-        },
-        "--space-10": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(10px * var(--density))"
-        },
-        "--space-11": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(11px * var(--density))"
-        },
-        "--space-12": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(12px * var(--density))"
-        },
-        "--space-14": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(14px * var(--density))"
-        },
-        "--space-16": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(16px * var(--density))"
-        },
-        "--space-18": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(18px * var(--density))"
-        },
-        "--space-20": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(20px * var(--density))"
-        },
-        "--space-22": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(22px * var(--density))"
-        },
-        "--space-24": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(24px * var(--density))"
-        },
-        "--space-28": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(28px * var(--density))"
-        },
-        "--space-30": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(30px * var(--density))"
-        },
-        "--space-32": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(32px * var(--density))"
-        },
-        "--space-70": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000,
-          "default": "calc(70px * var(--density))"
-        },
-        "--app-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "0px"
-        },
-        "--app-gap": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "0px"
-        },
-        "--work-area-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "0px"
-        },
-        "--work-area-gap": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "0px"
-        },
-        "--stage-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "0px"
-        },
-        "--pane-spacing": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "0px"
-        },
-        "--sidebar-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "0px"
-        },
-        "--radius-sidebar": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "0px"
-        },
-        "--sidebar-section-gap": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "0px"
-        },
-        "--radius-editor": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--radius-pane)"
-        },
-        "--git-section-margin": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "0px"
-        },
-        "--settings-gap": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "0px"
-        },
-        "--settings-layout-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "0px"
-        },
-        "--titlebar-padding-left": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-8)"
-        },
-        "--titlebar-gap": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-3)"
-        },
-        "--tab-bar-gap": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-6)"
-        },
-        "--tab-gap": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-4)"
-        },
-        "--tab-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "0 var(--space-5) 0 var(--space-9)"
-        },
-        "--sidebar-heading-height": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "38px"
-        },
-        "--sidebar-heading-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-5) var(--space-10) var(--space-5) var(--space-16)"
-        },
-        "--tree-heading-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-3) var(--space-10) var(--space-3) var(--space-14)"
-        },
-        "--tree-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-4) 0 var(--space-16)"
-        },
-        "--tree-entry-gap": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-6)"
-        },
-        "--terminal-heading-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-4) var(--space-8) 0"
-        },
-        "--terminal-heading-align": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "center"
-        },
-        "--terminal-title-gap": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-8)"
-        },
-        "--editor-heading-gap": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-12)"
-        },
-        "--editor-heading-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-4) var(--space-12)"
-        },
-        "--editor-heading-height": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "38px"
-        },
-        "--editor-font-family": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--font-family-mono)"
-        },
-        "--editor-font-size": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--font-size-13)"
-        },
-        "--editor-line-height": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "1.6"
-        },
-        "--editor-content-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-12) 0"
-        },
-        "--editor-line-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "0 var(--space-12)"
-        },
-        "--markdown-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-24) clamp(16px, 4%, 48px) 72px"
-        },
-        "--markdown-max-width": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "80ch"
-        },
-        "--markdown-line-height": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "1.7"
-        },
-        "--button-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-7) var(--space-12)"
-        },
-        "--button-gap": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-7)"
-        },
-        "--menu-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-7)"
-        },
-        "--menu-item-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-8)"
-        },
-        "--menu-item-gap": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-8)"
-        },
-        "--statusbar-gap": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-10)"
-        },
-        "--statusbar-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "0 var(--space-12) 0 var(--space-6)"
-        },
-        "--settings-nav-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-18) var(--space-10)"
-        },
-        "--settings-nav-item-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-9) var(--space-12)"
-        },
-        "--settings-nav-item-gap": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-9)"
-        },
-        "--settings-heading-margin": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-22)"
-        },
-        "--settings-row-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-14) 0"
-        },
-        "--editor-setting-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-18) 0"
-        },
-        "--theme-library-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-18)"
-        },
-        "--theme-card-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-16)"
-        },
-        "--theme-list-gap": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-10)"
-        },
-        "--git-toolbar-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-5) var(--space-8)"
-        },
-        "--git-repository-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-5) var(--space-10)"
-        },
-        "--git-commit-flex": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "0 0 clamp(112px, 21vh, 184px)"
-        },
-        "--git-commit-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-10)"
-        },
-        "--git-file-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "0 var(--space-5) 0 var(--space-8)"
-        },
-        "--git-file-gap": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-4)"
-        },
-        "--commit-file-list-flex": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "0 0 26%"
-        },
-        "--modal-heading-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-10) var(--space-12) var(--space-10) var(--space-18)"
-        },
-        "--modal-content-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-18)"
-        },
-        "--titlebar-border-width": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--border-width)"
-        },
-        "--statusbar-border-width": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--border-width)"
-        },
-        "--tab-border-width": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--border-width)"
-        },
-        "--control-border-width": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--border-width)"
-        },
-        "--menu-border-width": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--border-width)"
-        },
-        "--modal-border-width": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--border-width)"
-        },
-        "--editor-heading-border-width": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--border-width)"
-        },
-        "--pane-border": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "0px solid var(--color-outline)"
-        },
-        "--pane-shadow": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "none"
-        },
-        "--editor-border": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--pane-border)"
-        },
-        "--editor-shadow": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--pane-shadow)"
-        },
-        "--editor-overflow": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "hidden"
-        },
-        "--input-padding": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "var(--space-8) var(--space-10)"
-        },
-        "--sidebar-max-width": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000,
-          "default": "520px"
-        }
-      }
+    "common": {
+      "$ref": "#/$defs/surface"
     },
-    "assets": {
-      "type": "object",
-      "propertyNames": {
-        "pattern": "^[a-z][a-z0-9-]*$"
-      },
-      "additionalProperties": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 1024,
-        "pattern": "^(?![./\\\\])(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*[\\\\:?#])(?!.*//).+$",
-        "description": "A path relative to this theme folder. Keep the referenced file inside the folder."
-      },
-      "description": "Named resources exposed as --asset-NAME CSS url() variables."
+    "light": {
+      "$ref": "#/$defs/surface"
     },
-    "styles": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "object",
-        "propertyNames": {
-          "pattern": "^(--)?[a-z][a-z0-9-]*$"
-        },
-        "additionalProperties": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 4000
-        }
-      },
-      "description": "CSS selectors mapped to CSS declarations. Use kebab-case property names."
+    "dark": {
+      "$ref": "#/$defs/surface"
     },
-    "backgrounds": {
+    "resources": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "app": {
+        "assets": {
           "type": "object",
-          "additionalProperties": false,
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9-]*$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "pattern": "^(?![./\\\\])(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*[\\\\:?#])(?!.*//).+$",
+            "description": "A path relative to this theme folder. Keep the referenced file inside the folder."
+          },
+          "description": "Named resources exposed as --asset-NAME CSS url() variables."
+        },
+        "stylesheets": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "pattern": "\\.css$"
+          },
+          "description": "Local CSS files relative to the theme folder, loaded automatically in this order after JSON styles. Omit or use an empty array for JSON-only themes."
+        }
+      }
+    }
+  },
+  "not": {
+    "required": ["stylesheet", "stylesheets"]
+  },
+  "$defs": {
+    "surface": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tokens": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^--[a-z][a-z0-9-]*$"
+          },
+          "additionalProperties": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
           "properties": {
-            "image": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 1024,
-              "pattern": "^(?![./\\\\])(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*[\\\\:?#])(?!.*//).+$",
-              "description": "A path relative to this theme folder. Keep the referenced file inside the folder."
-            },
-            "opacity": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 1
-            },
-            "size": {
+            "--color-background": {
               "type": "string",
               "minLength": 1,
               "maxLength": 2000,
-              "default": "cover"
+              "default": "#101010"
             },
-            "position": {
+            "--color-background-text": {
               "type": "string",
               "minLength": 1,
               "maxLength": 2000,
-              "default": "center"
+              "default": "#e0e0e0"
             },
-            "repeat": {
-              "enum": [
-                "no-repeat",
-                "repeat",
-                "repeat-x",
-                "repeat-y",
-                "space",
-                "round"
-              ],
-              "default": "no-repeat"
-            },
-            "blur": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 100
-            },
-            "overlay": {
+            "--color-surface": {
               "type": "string",
               "minLength": 1,
               "maxLength": 2000,
-              "description": "A CSS color painted over the image."
+              "default": "#161616"
             },
-            "blendMode": {
+            "--color-surface-text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "#dcdcdc"
+            },
+            "--color-surface-variant": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "#222222"
+            },
+            "--color-surface-variant-text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "#a8a8a8"
+            },
+            "--color-outline": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "#3a3a3a"
+            },
+            "--color-surface-container": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "#1c1c1c"
+            },
+            "--color-surface-container-high": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "#262626"
+            },
+            "--color-surface-container-highest": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "#303030"
+            },
+            "--color-primary": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "#9a9a9a"
+            },
+            "--color-primary-text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "#0d0d0d"
+            },
+            "--color-primary-container": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "#6e6e6e"
+            },
+            "--color-secondary": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "#787878"
+            },
+            "--color-surface-tint": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "#9a9a9a"
+            },
+            "--color-error": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "#c75c5c"
+            },
+            "--color-warning": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "#c9a227"
+            },
+            "--color-info": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "#7a8fa6"
+            },
+            "--font-size": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "13px"
+            },
+            "--density": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "1"
+            },
+            "--border-width": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "1px"
+            },
+            "--focus-width": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "1px"
+            },
+            "--icon-stroke-width": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "1.6"
+            },
+            "--radius-xs": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "2px"
+            },
+            "--radius-sm": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "3px"
+            },
+            "--radius-md": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "4px"
+            },
+            "--radius-control": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "5px"
+            },
+            "--radius-tab": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "6px"
+            },
+            "--radius-menu": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "7px"
+            },
+            "--radius-modal": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "9px"
+            },
+            "--radius-window": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "0px"
+            },
+            "--radius-pane": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "0px"
+            },
+            "--opacity-disabled": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "0.4"
+            },
+            "--opacity-window": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "1"
+            },
+            "--shadow-menu": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "0 12px 35px\n    color-mix(in srgb, var(--color-background) 70%, transparent)"
+            },
+            "--shadow-modal": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "0 20px 70px\n    color-mix(in srgb, var(--color-background) 80%, transparent)"
+            },
+            "--color-backdrop": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "color-mix(\n    in srgb,\n    var(--color-background) 70%,\n    transparent\n  )"
+            },
+            "--color-drop-overlay": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "color-mix(\n    in srgb,\n    var(--color-surface-container-high) 85%,\n    transparent\n  )"
+            },
+            "--titlebar-height": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "44px"
+            },
+            "--statusbar-height": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "28px"
+            },
+            "--tab-height": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "32px"
+            },
+            "--tab-min-width": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "128px"
+            },
+            "--tab-max-width": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "164px"
+            },
+            "--titlebar-background": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-surface)"
+            },
+            "--sidebar-background": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-surface)"
+            },
+            "--statusbar-background": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-surface)"
+            },
+            "--settings-background": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-background)"
+            },
+            "--menu-background": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-surface-container)"
+            },
+            "--modal-background": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-surface-container)"
+            },
+            "--input-background": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-background)"
+            },
+            "--button-background": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-surface-container-high)"
+            },
+            "--tab-background-active": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-surface-container-high)"
+            },
+            "--sidebar-min-width": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "180px"
+            },
+            "--settings-nav-width": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "150px"
+            },
+            "--settings-page-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "28px"
+            },
+            "--tree-row-height": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "27px"
+            },
+            "--tree-indent": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "14px"
+            },
+            "--icon-button-size": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "28px"
+            },
+            "--scrollbar-width": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "8px"
+            },
+            "--scrollbar-height": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "5px"
+            },
+            "--terminal-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "8px 4px 4px 10px"
+            },
+            "--terminal-font-family": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--font-family-mono)"
+            },
+            "--terminal-font-size": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "13px"
+            },
+            "--terminal-line-height": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "1.25"
+            },
+            "--terminal-letter-spacing": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "0px"
+            },
+            "--terminal-font-weight": {
               "type": "string",
               "minLength": 1,
               "maxLength": 2000,
               "default": "normal"
+            },
+            "--terminal-font-weight-bold": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "bold"
+            },
+            "--terminal-cursor-style": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "bar"
+            },
+            "--terminal-cursor-inactive-style": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "outline"
+            },
+            "--terminal-cursor-blink": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "1"
+            },
+            "--terminal-cursor-width": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "1"
+            },
+            "--terminal-minimum-contrast-ratio": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "1"
+            },
+            "--terminal-draw-bold-text-in-bright-colors": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "1"
+            },
+            "--terminal-selection-foreground": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "none"
+            },
+            "--terminal-background": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-background)"
+            },
+            "--terminal-foreground": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-surface-text)"
+            },
+            "--terminal-cursor": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-primary)"
+            },
+            "--terminal-cursor-accent": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-primary-text)"
+            },
+            "--terminal-selection-background": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-surface-container-highest)"
+            },
+            "--terminal-selection-inactive-background": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-surface-container-high)"
+            },
+            "--terminal-black": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-background)"
+            },
+            "--terminal-red": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-error)"
+            },
+            "--terminal-green": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-primary)"
+            },
+            "--terminal-yellow": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-warning)"
+            },
+            "--terminal-blue": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-info)"
+            },
+            "--terminal-magenta": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-primary-container)"
+            },
+            "--terminal-cyan": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-info)"
+            },
+            "--terminal-white": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-surface-text)"
+            },
+            "--terminal-bright-black": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-secondary)"
+            },
+            "--terminal-bright-red": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-error)"
+            },
+            "--terminal-bright-green": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-background-text)"
+            },
+            "--terminal-bright-yellow": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-warning)"
+            },
+            "--terminal-bright-blue": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-info)"
+            },
+            "--terminal-bright-magenta": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-primary)"
+            },
+            "--terminal-bright-cyan": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-info)"
+            },
+            "--terminal-bright-white": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-background-text)"
+            },
+            "--terminal-search-match-background": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-surface-container-highest)"
+            },
+            "--terminal-search-active-match-background": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-primary-container)"
+            },
+            "--terminal-search-match-border": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-secondary)"
+            },
+            "--terminal-search-active-match-border": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "var(--color-primary)"
+            },
+            "--font-size-9": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(var(--font-size) * 0.692308)"
+            },
+            "--font-size-10": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(var(--font-size) * 0.769231)"
+            },
+            "--font-size-11": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(var(--font-size) * 0.846154)"
+            },
+            "--font-size-12": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(var(--font-size) * 0.923077)"
+            },
+            "--font-size-13": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(var(--font-size) * 1)"
+            },
+            "--font-size-14": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(var(--font-size) * 1.076923)"
+            },
+            "--font-size-15": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(var(--font-size) * 1.153846)"
+            },
+            "--font-size-17": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(var(--font-size) * 1.307692)"
+            },
+            "--font-size-18": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(var(--font-size) * 1.384615)"
+            },
+            "--font-size-22": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(var(--font-size) * 1.692308)"
+            },
+            "--space-1": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(1px * var(--density))"
+            },
+            "--space-2": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(2px * var(--density))"
+            },
+            "--space-3": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(3px * var(--density))"
+            },
+            "--space-4": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(4px * var(--density))"
+            },
+            "--space-5": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(5px * var(--density))"
+            },
+            "--space-6": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(6px * var(--density))"
+            },
+            "--space-7": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(7px * var(--density))"
+            },
+            "--space-8": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(8px * var(--density))"
+            },
+            "--space-9": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(9px * var(--density))"
+            },
+            "--space-10": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(10px * var(--density))"
+            },
+            "--space-11": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(11px * var(--density))"
+            },
+            "--space-12": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(12px * var(--density))"
+            },
+            "--space-14": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(14px * var(--density))"
+            },
+            "--space-16": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(16px * var(--density))"
+            },
+            "--space-18": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(18px * var(--density))"
+            },
+            "--space-20": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(20px * var(--density))"
+            },
+            "--space-22": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(22px * var(--density))"
+            },
+            "--space-24": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(24px * var(--density))"
+            },
+            "--space-28": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(28px * var(--density))"
+            },
+            "--space-30": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(30px * var(--density))"
+            },
+            "--space-32": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(32px * var(--density))"
+            },
+            "--space-70": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2000,
+              "default": "calc(70px * var(--density))"
+            },
+            "--app-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "0px"
+            },
+            "--app-gap": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "0px"
+            },
+            "--work-area-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "0px"
+            },
+            "--work-area-gap": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "0px"
+            },
+            "--stage-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "0px"
+            },
+            "--pane-spacing": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "0px"
+            },
+            "--sidebar-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "0px"
+            },
+            "--radius-sidebar": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "0px"
+            },
+            "--sidebar-section-gap": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "0px"
+            },
+            "--radius-editor": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--radius-pane)"
+            },
+            "--git-section-margin": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "0px"
+            },
+            "--settings-gap": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "0px"
+            },
+            "--settings-layout-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "0px"
+            },
+            "--titlebar-padding-left": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-8)"
+            },
+            "--titlebar-gap": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-3)"
+            },
+            "--tab-bar-gap": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-6)"
+            },
+            "--tab-gap": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-4)"
+            },
+            "--tab-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "0 var(--space-5) 0 var(--space-9)"
+            },
+            "--sidebar-heading-height": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "38px"
+            },
+            "--sidebar-heading-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-5) var(--space-10) var(--space-5) var(--space-16)"
+            },
+            "--tree-heading-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-3) var(--space-10) var(--space-3) var(--space-14)"
+            },
+            "--tree-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-4) 0 var(--space-16)"
+            },
+            "--tree-entry-gap": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-6)"
+            },
+            "--terminal-heading-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-4) var(--space-8) 0"
+            },
+            "--terminal-heading-align": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "center"
+            },
+            "--terminal-title-gap": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-8)"
+            },
+            "--editor-heading-gap": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-12)"
+            },
+            "--editor-heading-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-4) var(--space-12)"
+            },
+            "--editor-heading-height": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "38px"
+            },
+            "--editor-font-family": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--font-family-mono)"
+            },
+            "--editor-font-size": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--font-size-13)"
+            },
+            "--editor-line-height": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "1.6"
+            },
+            "--editor-content-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-12) 0"
+            },
+            "--editor-line-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "0 var(--space-12)"
+            },
+            "--markdown-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-24) clamp(16px, 4%, 48px) 72px"
+            },
+            "--markdown-max-width": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "80ch"
+            },
+            "--markdown-line-height": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "1.7"
+            },
+            "--button-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-7) var(--space-12)"
+            },
+            "--button-gap": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-7)"
+            },
+            "--menu-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-7)"
+            },
+            "--menu-item-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-8)"
+            },
+            "--menu-item-gap": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-8)"
+            },
+            "--statusbar-gap": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-10)"
+            },
+            "--statusbar-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "0 var(--space-12) 0 var(--space-6)"
+            },
+            "--settings-nav-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-18) var(--space-10)"
+            },
+            "--settings-nav-item-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-9) var(--space-12)"
+            },
+            "--settings-nav-item-gap": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-9)"
+            },
+            "--settings-heading-margin": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-22)"
+            },
+            "--settings-row-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-14) 0"
+            },
+            "--editor-setting-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-18) 0"
+            },
+            "--theme-library-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-18)"
+            },
+            "--theme-card-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-16)"
+            },
+            "--theme-list-gap": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-10)"
+            },
+            "--git-toolbar-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-5) var(--space-8)"
+            },
+            "--git-repository-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-5) var(--space-10)"
+            },
+            "--git-commit-flex": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "0 0 clamp(112px, 21vh, 184px)"
+            },
+            "--git-commit-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-10)"
+            },
+            "--git-file-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "0 var(--space-5) 0 var(--space-8)"
+            },
+            "--git-file-gap": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-4)"
+            },
+            "--commit-file-list-flex": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "0 0 26%"
+            },
+            "--modal-heading-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-10) var(--space-12) var(--space-10) var(--space-18)"
+            },
+            "--modal-content-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-18)"
+            },
+            "--titlebar-border-width": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--border-width)"
+            },
+            "--statusbar-border-width": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--border-width)"
+            },
+            "--tab-border-width": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--border-width)"
+            },
+            "--control-border-width": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--border-width)"
+            },
+            "--menu-border-width": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--border-width)"
+            },
+            "--modal-border-width": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--border-width)"
+            },
+            "--editor-heading-border-width": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--border-width)"
+            },
+            "--pane-border": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "0px solid var(--color-outline)"
+            },
+            "--pane-shadow": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "none"
+            },
+            "--editor-border": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--pane-border)"
+            },
+            "--editor-shadow": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--pane-shadow)"
+            },
+            "--editor-overflow": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "hidden"
+            },
+            "--input-padding": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "var(--space-8) var(--space-10)"
+            },
+            "--sidebar-max-width": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000,
+              "default": "520px"
+            }
+          }
+        },
+        "styles": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "propertyNames": {
+              "pattern": "^(--)?[a-z][a-z0-9-]*$"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            }
+          },
+          "description": "CSS selectors mapped to CSS declarations. Use kebab-case property names."
+        },
+        "backgrounds": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "app": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "image": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1024,
+                  "pattern": "^(?![./\\\\])(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*[\\\\:?#])(?!.*//).+$",
+                  "description": "A path relative to this theme folder. Keep the referenced file inside the folder."
+                },
+                "opacity": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "size": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "default": "cover"
+                },
+                "position": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "default": "center"
+                },
+                "repeat": {
+                  "enum": [
+                    "no-repeat",
+                    "repeat",
+                    "repeat-x",
+                    "repeat-y",
+                    "space",
+                    "round"
+                  ],
+                  "default": "no-repeat"
+                },
+                "blur": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "overlay": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color painted over the image."
+                },
+                "blendMode": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "default": "normal"
+                }
+              }
+            },
+            "terminal": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "image": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1024,
+                  "pattern": "^(?![./\\\\])(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*[\\\\:?#])(?!.*//).+$",
+                  "description": "A path relative to this theme folder. Keep the referenced file inside the folder."
+                },
+                "opacity": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "size": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "default": "cover"
+                },
+                "position": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "default": "center"
+                },
+                "repeat": {
+                  "enum": [
+                    "no-repeat",
+                    "repeat",
+                    "repeat-x",
+                    "repeat-y",
+                    "space",
+                    "round"
+                  ],
+                  "default": "no-repeat"
+                },
+                "blur": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "overlay": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color painted over the image."
+                },
+                "blendMode": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "default": "normal"
+                }
+              }
+            },
+            "sidebar": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "image": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1024,
+                  "pattern": "^(?![./\\\\])(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*[\\\\:?#])(?!.*//).+$",
+                  "description": "A path relative to this theme folder. Keep the referenced file inside the folder."
+                },
+                "opacity": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "size": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "default": "cover"
+                },
+                "position": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "default": "center"
+                },
+                "repeat": {
+                  "enum": [
+                    "no-repeat",
+                    "repeat",
+                    "repeat-x",
+                    "repeat-y",
+                    "space",
+                    "round"
+                  ],
+                  "default": "no-repeat"
+                },
+                "blur": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "overlay": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color painted over the image."
+                },
+                "blendMode": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "default": "normal"
+                }
+              }
+            },
+            "titlebar": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "image": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1024,
+                  "pattern": "^(?![./\\\\])(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*[\\\\:?#])(?!.*//).+$",
+                  "description": "A path relative to this theme folder. Keep the referenced file inside the folder."
+                },
+                "opacity": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "size": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "default": "cover"
+                },
+                "position": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "default": "center"
+                },
+                "repeat": {
+                  "enum": [
+                    "no-repeat",
+                    "repeat",
+                    "repeat-x",
+                    "repeat-y",
+                    "space",
+                    "round"
+                  ],
+                  "default": "no-repeat"
+                },
+                "blur": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "overlay": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color painted over the image."
+                },
+                "blendMode": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "default": "normal"
+                }
+              }
+            },
+            "statusbar": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "image": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1024,
+                  "pattern": "^(?![./\\\\])(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*[\\\\:?#])(?!.*//).+$",
+                  "description": "A path relative to this theme folder. Keep the referenced file inside the folder."
+                },
+                "opacity": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "size": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "default": "cover"
+                },
+                "position": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "default": "center"
+                },
+                "repeat": {
+                  "enum": [
+                    "no-repeat",
+                    "repeat",
+                    "repeat-x",
+                    "repeat-y",
+                    "space",
+                    "round"
+                  ],
+                  "default": "no-repeat"
+                },
+                "blur": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "overlay": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color painted over the image."
+                },
+                "blendMode": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "default": "normal"
+                }
+              }
+            },
+            "settings": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "image": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1024,
+                  "pattern": "^(?![./\\\\])(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*[\\\\:?#])(?!.*//).+$",
+                  "description": "A path relative to this theme folder. Keep the referenced file inside the folder."
+                },
+                "opacity": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "size": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "default": "cover"
+                },
+                "position": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "default": "center"
+                },
+                "repeat": {
+                  "enum": [
+                    "no-repeat",
+                    "repeat",
+                    "repeat-x",
+                    "repeat-y",
+                    "space",
+                    "round"
+                  ],
+                  "default": "no-repeat"
+                },
+                "blur": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "overlay": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color painted over the image."
+                },
+                "blendMode": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "default": "normal"
+                }
+              }
+            },
+            "modal": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "image": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1024,
+                  "pattern": "^(?![./\\\\])(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*[\\\\:?#])(?!.*//).+$",
+                  "description": "A path relative to this theme folder. Keep the referenced file inside the folder."
+                },
+                "opacity": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "size": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "default": "cover"
+                },
+                "position": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "default": "center"
+                },
+                "repeat": {
+                  "enum": [
+                    "no-repeat",
+                    "repeat",
+                    "repeat-x",
+                    "repeat-y",
+                    "space",
+                    "round"
+                  ],
+                  "default": "no-repeat"
+                },
+                "blur": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 100
+                },
+                "overlay": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color painted over the image."
+                },
+                "blendMode": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "default": "normal"
+                }
+              }
             }
           }
         },
@@ -1388,633 +1772,805 @@
           "type": "object",
           "additionalProperties": false,
           "properties": {
-            "image": {
+            "fontFamily": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 1024,
-              "pattern": "^(?![./\\\\])(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*[\\\\:?#])(?!.*//).+$",
-              "description": "A path relative to this theme folder. Keep the referenced file inside the folder."
+              "maxLength": 2000
             },
-            "opacity": {
+            "fontWeight": {
+              "oneOf": [
+                {
+                  "enum": ["normal", "bold"]
+                },
+                {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 1000
+                }
+              ]
+            },
+            "fontWeightBold": {
+              "oneOf": [
+                {
+                  "enum": ["normal", "bold"]
+                },
+                {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 1000
+                }
+              ]
+            },
+            "colors": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "background": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "foreground": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "cursor": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "cursorAccent": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "selectionBackground": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "selectionForeground": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "selectionInactiveBackground": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "black": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "red": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "green": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "yellow": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "blue": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "magenta": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "cyan": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "white": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "brightBlack": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "brightRed": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "brightGreen": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "brightYellow": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "brightBlue": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "brightMagenta": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "brightCyan": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "brightWhite": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "searchMatchBackground": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "searchActiveMatchBackground": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "searchMatchBorder": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                },
+                "searchActiveMatchBorder": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000,
+                  "description": "A CSS color. Background opacity does not affect terminal text."
+                }
+              }
+            },
+            "fontSize": {
               "type": "number",
-              "minimum": 0,
-              "maximum": 1
+              "minimum": 6,
+              "maximum": 72
             },
-            "size": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "default": "cover"
-            },
-            "position": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "default": "center"
-            },
-            "repeat": {
-              "enum": [
-                "no-repeat",
-                "repeat",
-                "repeat-x",
-                "repeat-y",
-                "space",
-                "round"
-              ],
-              "default": "no-repeat"
-            },
-            "blur": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 100
-            },
-            "overlay": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color painted over the image."
-            },
-            "blendMode": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "default": "normal"
-            }
-          }
-        },
-        "sidebar": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "image": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 1024,
-              "pattern": "^(?![./\\\\])(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*[\\\\:?#])(?!.*//).+$",
-              "description": "A path relative to this theme folder. Keep the referenced file inside the folder."
-            },
-            "opacity": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 1
-            },
-            "size": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "default": "cover"
-            },
-            "position": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "default": "center"
-            },
-            "repeat": {
-              "enum": [
-                "no-repeat",
-                "repeat",
-                "repeat-x",
-                "repeat-y",
-                "space",
-                "round"
-              ],
-              "default": "no-repeat"
-            },
-            "blur": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 100
-            },
-            "overlay": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color painted over the image."
-            },
-            "blendMode": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "default": "normal"
-            }
-          }
-        },
-        "titlebar": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "image": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 1024,
-              "pattern": "^(?![./\\\\])(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*[\\\\:?#])(?!.*//).+$",
-              "description": "A path relative to this theme folder. Keep the referenced file inside the folder."
-            },
-            "opacity": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 1
-            },
-            "size": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "default": "cover"
-            },
-            "position": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "default": "center"
-            },
-            "repeat": {
-              "enum": [
-                "no-repeat",
-                "repeat",
-                "repeat-x",
-                "repeat-y",
-                "space",
-                "round"
-              ],
-              "default": "no-repeat"
-            },
-            "blur": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 100
-            },
-            "overlay": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color painted over the image."
-            },
-            "blendMode": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "default": "normal"
-            }
-          }
-        },
-        "statusbar": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "image": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 1024,
-              "pattern": "^(?![./\\\\])(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*[\\\\:?#])(?!.*//).+$",
-              "description": "A path relative to this theme folder. Keep the referenced file inside the folder."
-            },
-            "opacity": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 1
-            },
-            "size": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "default": "cover"
-            },
-            "position": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "default": "center"
-            },
-            "repeat": {
-              "enum": [
-                "no-repeat",
-                "repeat",
-                "repeat-x",
-                "repeat-y",
-                "space",
-                "round"
-              ],
-              "default": "no-repeat"
-            },
-            "blur": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 100
-            },
-            "overlay": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color painted over the image."
-            },
-            "blendMode": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "default": "normal"
-            }
-          }
-        },
-        "settings": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "image": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 1024,
-              "pattern": "^(?![./\\\\])(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*[\\\\:?#])(?!.*//).+$",
-              "description": "A path relative to this theme folder. Keep the referenced file inside the folder."
-            },
-            "opacity": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 1
-            },
-            "size": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "default": "cover"
-            },
-            "position": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "default": "center"
-            },
-            "repeat": {
-              "enum": [
-                "no-repeat",
-                "repeat",
-                "repeat-x",
-                "repeat-y",
-                "space",
-                "round"
-              ],
-              "default": "no-repeat"
-            },
-            "blur": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 100
-            },
-            "overlay": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color painted over the image."
-            },
-            "blendMode": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "default": "normal"
-            }
-          }
-        },
-        "modal": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "image": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 1024,
-              "pattern": "^(?![./\\\\])(?!.*(?:^|/)\\.\\.?(?:/|$))(?!.*[\\\\:?#])(?!.*//).+$",
-              "description": "A path relative to this theme folder. Keep the referenced file inside the folder."
-            },
-            "opacity": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 1
-            },
-            "size": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "default": "cover"
-            },
-            "position": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "default": "center"
-            },
-            "repeat": {
-              "enum": [
-                "no-repeat",
-                "repeat",
-                "repeat-x",
-                "repeat-y",
-                "space",
-                "round"
-              ],
-              "default": "no-repeat"
-            },
-            "blur": {
-              "type": "number",
-              "minimum": 0,
-              "maximum": 100
-            },
-            "overlay": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color painted over the image."
-            },
-            "blendMode": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "default": "normal"
-            }
-          }
-        }
-      }
-    },
-    "terminal": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "fontFamily": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 2000
-        },
-        "fontWeight": {
-          "oneOf": [
-            {
-              "enum": ["normal", "bold"]
-            },
-            {
+            "lineHeight": {
               "type": "number",
               "minimum": 1,
-              "maximum": 1000
-            }
-          ]
-        },
-        "fontWeightBold": {
-          "oneOf": [
-            {
-              "enum": ["normal", "bold"]
+              "maximum": 3
             },
-            {
+            "letterSpacing": {
+              "type": "number",
+              "minimum": -2,
+              "maximum": 20
+            },
+            "cursorWidth": {
               "type": "number",
               "minimum": 1,
-              "maximum": 1000
-            }
-          ]
-        },
-        "colors": {
-          "type": "object",
-          "additionalProperties": false,
-          "properties": {
-            "background": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
+              "maximum": 10
             },
-            "foreground": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
+            "minimumContrastRatio": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 21
             },
-            "cursor": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
+            "cursorStyle": {
+              "enum": ["bar", "block", "underline"]
             },
-            "cursorAccent": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
+            "cursorInactiveStyle": {
+              "enum": ["outline", "bar", "block", "underline", "none"]
             },
-            "selectionBackground": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
+            "cursorBlink": {
+              "type": "boolean"
             },
-            "selectionForeground": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
+            "drawBoldTextInBrightColors": {
+              "type": "boolean"
             },
-            "selectionInactiveBackground": {
+            "preset": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
-            },
-            "black": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
-            },
-            "red": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
-            },
-            "green": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
-            },
-            "yellow": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
-            },
-            "blue": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
-            },
-            "magenta": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
-            },
-            "cyan": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
-            },
-            "white": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
-            },
-            "brightBlack": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
-            },
-            "brightRed": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
-            },
-            "brightGreen": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
-            },
-            "brightYellow": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
-            },
-            "brightBlue": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
-            },
-            "brightMagenta": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
-            },
-            "brightCyan": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
-            },
-            "brightWhite": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
-            },
-            "searchMatchBackground": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
-            },
-            "searchActiveMatchBackground": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
-            },
-            "searchMatchBorder": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
-            },
-            "searchActiveMatchBorder": {
-              "type": "string",
-              "minLength": 1,
-              "maxLength": 2000,
-              "description": "A CSS color. Background opacity does not affect terminal text."
+              "maxLength": 160,
+              "description": "An xterm-theme 1.1.0 preset name. Load the authoring selector to list names."
             }
           }
         },
-        "fontSize": {
-          "type": "number",
-          "minimum": 6,
-          "maximum": 72
+        "layout": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "tabs": {
+              "enum": ["inline", "above", "below"],
+              "default": "inline",
+              "description": "Place tabs in the title bar or in their own row above or below its controls."
+            },
+            "statusbar": {
+              "enum": ["top", "bottom"],
+              "default": "bottom",
+              "description": "Place the status bar above or below the work area."
+            },
+            "settingsNavigation": {
+              "enum": ["left", "right", "top", "bottom"],
+              "default": "left"
+            }
+          }
         },
-        "lineHeight": {
-          "type": "number",
-          "minimum": 1,
-          "maximum": 3
+        "editor": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "fontFamily": {
+              "type": "string"
+            },
+            "fontSize": {
+              "type": "number",
+              "minimum": 6,
+              "maximum": 72
+            },
+            "colors": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "background": {
+                  "type": "string",
+                  "description": "Hex RGB/RGBA, transparent, var(--semantic-token), or color-mix(in srgb, var(--token) 70%, transparent)."
+                },
+                "foreground": {
+                  "type": "string",
+                  "description": "Hex RGB/RGBA, transparent, var(--semantic-token), or color-mix(in srgb, var(--token) 70%, transparent)."
+                },
+                "gutterBackground": {
+                  "type": "string",
+                  "description": "Hex RGB/RGBA, transparent, var(--semantic-token), or color-mix(in srgb, var(--token) 70%, transparent)."
+                },
+                "gutterForeground": {
+                  "type": "string",
+                  "description": "Hex RGB/RGBA, transparent, var(--semantic-token), or color-mix(in srgb, var(--token) 70%, transparent)."
+                },
+                "activeLine": {
+                  "type": "string",
+                  "description": "Hex RGB/RGBA, transparent, var(--semantic-token), or color-mix(in srgb, var(--token) 70%, transparent)."
+                },
+                "selection": {
+                  "type": "string",
+                  "description": "Hex RGB/RGBA, transparent, var(--semantic-token), or color-mix(in srgb, var(--token) 70%, transparent)."
+                },
+                "cursor": {
+                  "type": "string",
+                  "description": "Hex RGB/RGBA, transparent, var(--semantic-token), or color-mix(in srgb, var(--token) 70%, transparent)."
+                }
+              }
+            },
+            "syntax": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "keyword": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "color": {
+                      "type": "string",
+                      "description": "Hex RGB/RGBA, transparent, var(--semantic-token), or color-mix(in srgb, var(--token) 70%, transparent)."
+                    },
+                    "fontStyle": {
+                      "enum": ["normal", "italic"]
+                    },
+                    "fontWeight": {
+                      "enum": [
+                        "normal",
+                        "bold",
+                        100,
+                        200,
+                        300,
+                        400,
+                        500,
+                        600,
+                        700,
+                        800,
+                        900
+                      ]
+                    },
+                    "textDecoration": {
+                      "enum": ["none", "underline"]
+                    }
+                  }
+                },
+                "string": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "color": {
+                      "type": "string",
+                      "description": "Hex RGB/RGBA, transparent, var(--semantic-token), or color-mix(in srgb, var(--token) 70%, transparent)."
+                    },
+                    "fontStyle": {
+                      "enum": ["normal", "italic"]
+                    },
+                    "fontWeight": {
+                      "enum": [
+                        "normal",
+                        "bold",
+                        100,
+                        200,
+                        300,
+                        400,
+                        500,
+                        600,
+                        700,
+                        800,
+                        900
+                      ]
+                    },
+                    "textDecoration": {
+                      "enum": ["none", "underline"]
+                    }
+                  }
+                },
+                "number": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "color": {
+                      "type": "string",
+                      "description": "Hex RGB/RGBA, transparent, var(--semantic-token), or color-mix(in srgb, var(--token) 70%, transparent)."
+                    },
+                    "fontStyle": {
+                      "enum": ["normal", "italic"]
+                    },
+                    "fontWeight": {
+                      "enum": [
+                        "normal",
+                        "bold",
+                        100,
+                        200,
+                        300,
+                        400,
+                        500,
+                        600,
+                        700,
+                        800,
+                        900
+                      ]
+                    },
+                    "textDecoration": {
+                      "enum": ["none", "underline"]
+                    }
+                  }
+                },
+                "comment": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "color": {
+                      "type": "string",
+                      "description": "Hex RGB/RGBA, transparent, var(--semantic-token), or color-mix(in srgb, var(--token) 70%, transparent)."
+                    },
+                    "fontStyle": {
+                      "enum": ["normal", "italic"]
+                    },
+                    "fontWeight": {
+                      "enum": [
+                        "normal",
+                        "bold",
+                        100,
+                        200,
+                        300,
+                        400,
+                        500,
+                        600,
+                        700,
+                        800,
+                        900
+                      ]
+                    },
+                    "textDecoration": {
+                      "enum": ["none", "underline"]
+                    }
+                  }
+                },
+                "type": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "color": {
+                      "type": "string",
+                      "description": "Hex RGB/RGBA, transparent, var(--semantic-token), or color-mix(in srgb, var(--token) 70%, transparent)."
+                    },
+                    "fontStyle": {
+                      "enum": ["normal", "italic"]
+                    },
+                    "fontWeight": {
+                      "enum": [
+                        "normal",
+                        "bold",
+                        100,
+                        200,
+                        300,
+                        400,
+                        500,
+                        600,
+                        700,
+                        800,
+                        900
+                      ]
+                    },
+                    "textDecoration": {
+                      "enum": ["none", "underline"]
+                    }
+                  }
+                },
+                "function": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "color": {
+                      "type": "string",
+                      "description": "Hex RGB/RGBA, transparent, var(--semantic-token), or color-mix(in srgb, var(--token) 70%, transparent)."
+                    },
+                    "fontStyle": {
+                      "enum": ["normal", "italic"]
+                    },
+                    "fontWeight": {
+                      "enum": [
+                        "normal",
+                        "bold",
+                        100,
+                        200,
+                        300,
+                        400,
+                        500,
+                        600,
+                        700,
+                        800,
+                        900
+                      ]
+                    },
+                    "textDecoration": {
+                      "enum": ["none", "underline"]
+                    }
+                  }
+                },
+                "variable": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "color": {
+                      "type": "string",
+                      "description": "Hex RGB/RGBA, transparent, var(--semantic-token), or color-mix(in srgb, var(--token) 70%, transparent)."
+                    },
+                    "fontStyle": {
+                      "enum": ["normal", "italic"]
+                    },
+                    "fontWeight": {
+                      "enum": [
+                        "normal",
+                        "bold",
+                        100,
+                        200,
+                        300,
+                        400,
+                        500,
+                        600,
+                        700,
+                        800,
+                        900
+                      ]
+                    },
+                    "textDecoration": {
+                      "enum": ["none", "underline"]
+                    }
+                  }
+                },
+                "property": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "color": {
+                      "type": "string",
+                      "description": "Hex RGB/RGBA, transparent, var(--semantic-token), or color-mix(in srgb, var(--token) 70%, transparent)."
+                    },
+                    "fontStyle": {
+                      "enum": ["normal", "italic"]
+                    },
+                    "fontWeight": {
+                      "enum": [
+                        "normal",
+                        "bold",
+                        100,
+                        200,
+                        300,
+                        400,
+                        500,
+                        600,
+                        700,
+                        800,
+                        900
+                      ]
+                    },
+                    "textDecoration": {
+                      "enum": ["none", "underline"]
+                    }
+                  }
+                },
+                "operator": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "color": {
+                      "type": "string",
+                      "description": "Hex RGB/RGBA, transparent, var(--semantic-token), or color-mix(in srgb, var(--token) 70%, transparent)."
+                    },
+                    "fontStyle": {
+                      "enum": ["normal", "italic"]
+                    },
+                    "fontWeight": {
+                      "enum": [
+                        "normal",
+                        "bold",
+                        100,
+                        200,
+                        300,
+                        400,
+                        500,
+                        600,
+                        700,
+                        800,
+                        900
+                      ]
+                    },
+                    "textDecoration": {
+                      "enum": ["none", "underline"]
+                    }
+                  }
+                },
+                "punctuation": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "color": {
+                      "type": "string",
+                      "description": "Hex RGB/RGBA, transparent, var(--semantic-token), or color-mix(in srgb, var(--token) 70%, transparent)."
+                    },
+                    "fontStyle": {
+                      "enum": ["normal", "italic"]
+                    },
+                    "fontWeight": {
+                      "enum": [
+                        "normal",
+                        "bold",
+                        100,
+                        200,
+                        300,
+                        400,
+                        500,
+                        600,
+                        700,
+                        800,
+                        900
+                      ]
+                    },
+                    "textDecoration": {
+                      "enum": ["none", "underline"]
+                    }
+                  }
+                },
+                "heading": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "color": {
+                      "type": "string",
+                      "description": "Hex RGB/RGBA, transparent, var(--semantic-token), or color-mix(in srgb, var(--token) 70%, transparent)."
+                    },
+                    "fontStyle": {
+                      "enum": ["normal", "italic"]
+                    },
+                    "fontWeight": {
+                      "enum": [
+                        "normal",
+                        "bold",
+                        100,
+                        200,
+                        300,
+                        400,
+                        500,
+                        600,
+                        700,
+                        800,
+                        900
+                      ]
+                    },
+                    "textDecoration": {
+                      "enum": ["none", "underline"]
+                    }
+                  }
+                },
+                "strong": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "color": {
+                      "type": "string",
+                      "description": "Hex RGB/RGBA, transparent, var(--semantic-token), or color-mix(in srgb, var(--token) 70%, transparent)."
+                    },
+                    "fontStyle": {
+                      "enum": ["normal", "italic"]
+                    },
+                    "fontWeight": {
+                      "enum": [
+                        "normal",
+                        "bold",
+                        100,
+                        200,
+                        300,
+                        400,
+                        500,
+                        600,
+                        700,
+                        800,
+                        900
+                      ]
+                    },
+                    "textDecoration": {
+                      "enum": ["none", "underline"]
+                    }
+                  }
+                },
+                "emphasis": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "color": {
+                      "type": "string",
+                      "description": "Hex RGB/RGBA, transparent, var(--semantic-token), or color-mix(in srgb, var(--token) 70%, transparent)."
+                    },
+                    "fontStyle": {
+                      "enum": ["normal", "italic"]
+                    },
+                    "fontWeight": {
+                      "enum": [
+                        "normal",
+                        "bold",
+                        100,
+                        200,
+                        300,
+                        400,
+                        500,
+                        600,
+                        700,
+                        800,
+                        900
+                      ]
+                    },
+                    "textDecoration": {
+                      "enum": ["none", "underline"]
+                    }
+                  }
+                },
+                "link": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "color": {
+                      "type": "string",
+                      "description": "Hex RGB/RGBA, transparent, var(--semantic-token), or color-mix(in srgb, var(--token) 70%, transparent)."
+                    },
+                    "fontStyle": {
+                      "enum": ["normal", "italic"]
+                    },
+                    "fontWeight": {
+                      "enum": [
+                        "normal",
+                        "bold",
+                        100,
+                        200,
+                        300,
+                        400,
+                        500,
+                        600,
+                        700,
+                        800,
+                        900
+                      ]
+                    },
+                    "textDecoration": {
+                      "enum": ["none", "underline"]
+                    }
+                  }
+                },
+                "invalid": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "color": {
+                      "type": "string",
+                      "description": "Hex RGB/RGBA, transparent, var(--semantic-token), or color-mix(in srgb, var(--token) 70%, transparent)."
+                    },
+                    "fontStyle": {
+                      "enum": ["normal", "italic"]
+                    },
+                    "fontWeight": {
+                      "enum": [
+                        "normal",
+                        "bold",
+                        100,
+                        200,
+                        300,
+                        400,
+                        500,
+                        600,
+                        700,
+                        800,
+                        900
+                      ]
+                    },
+                    "textDecoration": {
+                      "enum": ["none", "underline"]
+                    }
+                  }
+                }
+              }
+            }
+          }
         },
-        "letterSpacing": {
-          "type": "number",
-          "minimum": -2,
-          "maximum": 20
-        },
-        "cursorWidth": {
-          "type": "number",
-          "minimum": 1,
-          "maximum": 10
-        },
-        "minimumContrastRatio": {
-          "type": "number",
-          "minimum": 1,
-          "maximum": 21
-        },
-        "cursorStyle": {
-          "enum": ["bar", "block", "underline"]
-        },
-        "cursorInactiveStyle": {
-          "enum": ["outline", "bar", "block", "underline", "none"]
-        },
-        "cursorBlink": {
-          "type": "boolean"
-        },
-        "drawBoldTextInBrightColors": {
-          "type": "boolean"
-        }
-      }
-    },
-    "stylesheet": {
-      "type": "string",
-      "minLength": 1,
-      "maxLength": 1024,
-      "pattern": "\\.css$",
-      "description": "Legacy single CSS path. Use stylesheets for new themes; do not combine both fields.",
-      "deprecated": true
-    },
-    "stylesheets": {
-      "type": "array",
-      "uniqueItems": true,
-      "items": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 1024,
-        "pattern": "\\.css$"
-      },
-      "description": "Local CSS files relative to the theme folder, loaded automatically in this order after JSON styles. Omit or use an empty array for JSON-only themes."
-    },
-    "layout": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "tabs": {
-          "enum": ["inline", "above", "below"],
-          "default": "inline",
-          "description": "Place tabs in the title bar or in their own row above or below its controls."
-        },
-        "statusbar": {
-          "enum": ["top", "bottom"],
-          "default": "bottom",
-          "description": "Place the status bar above or below the work area."
-        },
-        "settingsNavigation": {
-          "enum": ["left", "right", "top", "bottom"],
-          "default": "left"
+        "plugins": {
+          "type": "object",
+          "propertyNames": {
+            "pattern": "^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "propertyNames": {
+              "pattern": "^[a-z][a-z0-9-]*$"
+            },
+            "additionalProperties": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 4000
+            }
+          }
         }
       }
     }
-  },
-  "not": {
-    "required": ["stylesheet", "stylesheets"]
   }
 }

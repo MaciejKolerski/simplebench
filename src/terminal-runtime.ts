@@ -16,7 +16,7 @@ import {
   terminalAppearance,
   terminalSearchColors,
   themeAppliedEvent,
-} from "./theme-runtime";
+} from "./theme/runtime";
 
 export interface CommandBlock {
   id: string;

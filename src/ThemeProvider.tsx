@@ -5,97 +5,155 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
+  type ReactNode,
 } from "react";
-import type { ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { watch } from "@tauri-apps/plugin-fs";
 import { api, errorMessage, native } from "./api";
-import { builtinPreferences } from "./themes";
-import type {
-  Appearance,
-  AppearancePreference,
-  ThemeBundle,
-  ThemeCurrent,
-  ThemePreferences,
-} from "./themes";
-import { applyAppearance, prepareTheme } from "./theme-runtime";
-
+import {
+  builtinPreferences,
+  type Appearance,
+  type AppearancePreference,
+  type ThemeBundle,
+  type ThemeCurrent,
+  type ThemePreferences,
+} from "./theme/format";
+import {
+  effectiveTheme,
+  prepareTheme,
+  subscribeTheme,
+  holdThemePreview,
+} from "./theme/runtime";
 interface Themes {
   preferences: ThemePreferences;
   ready: boolean;
   error: string;
   safeMode: boolean;
   fixedAppearance: Appearance | null;
+  snapshot: ReturnType<typeof effectiveTheme>;
   reload: () => Promise<void>;
   select: (
-    active: string | null,
+    id: string | null,
     appearance?: AppearancePreference,
   ) => Promise<void>;
+  preview: (bundle: ThemeBundle) => Promise<void>;
+  cancelPreview: () => Promise<void>;
 }
 const Context = createContext<Themes | null>(null);
-
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [preferences, setPreferences] = useState(builtinPreferences);
-  const [ready, setReady] = useState(!native);
-  const [error, setError] = useState("");
-  const [safeMode, setSafeMode] = useState(false);
-  const [fixedAppearance, setFixedAppearance] = useState<Appearance | null>(
-    null,
-  );
-  const appliedAppearance = useRef<AppearancePreference>("system");
-  const mounted = useRef(false);
-  const revision = useRef(0);
-  const saving = useRef(false);
-  const synchronizing = useRef(0);
-  const syncWindow = useCallback(async (appearance: AppearancePreference) => {
-    ++synchronizing.current;
-    try {
-      await api("sync_theme_window", { appearance });
-    } finally {
-      --synchronizing.current;
-    }
-  }, []);
-  const reload = useCallback(async () => {
-    if (!native || saving.current) return;
-    const request = ++revision.current;
-    try {
-      const current = await api<ThemeCurrent>("load_theme_preferences");
-      const prepared = await prepareTheme(current.theme, current.preferences);
-      if (!mounted.current || request !== revision.current || saving.current) {
+  const [preferences, setPreferences] = useState(builtinPreferences),
+    [ready, setReady] = useState(!native),
+    [error, setError] = useState("");
+  const [safeMode, setSafeMode] = useState(false),
+    [fixedAppearance, setFixedAppearance] = useState<Appearance | null>(null),
+    [directory, setDirectory] = useState("");
+  const snapshot = useSyncExternalStore(subscribeTheme, effectiveTheme);
+  const mounted = useRef(false),
+    generation = useRef(0),
+    saving = useRef(false),
+    previewing = useRef<ThemeBundle | null>(null),
+    synchronizing = useRef(0),
+    applied = useRef<AppearancePreference>("system");
+  const previewAppearance = useRef<AppearancePreference>("system");
+  const restorePreview = useRef<null | (() => Promise<void>)>(null);
+  const latestPreferences = useRef(preferences);
+  latestPreferences.current = preferences;
+  const abort = useRef<AbortController | null>(null);
+  const nativeQueue = useRef(Promise.resolve());
+  const sync = (appearance: AppearancePreference) => {
+    if (!native) return Promise.resolve();
+    const operation = nativeQueue.current.then(async () => {
+      ++synchronizing.current;
+      try {
+        await api("sync_theme_window", { appearance });
+      } finally {
+        --synchronizing.current;
+      }
+    });
+    nativeQueue.current = operation.catch(() => {});
+    return operation;
+  };
+  const apply = useCallback(
+    async (
+      bundle: ThemeBundle | null,
+      prefs: ThemePreferences,
+      request: number,
+      sourceRevision?: number,
+    ) => {
+      abort.current?.abort();
+      const controller = new AbortController();
+      abort.current = controller;
+      const prepared = await prepareTheme(
+        bundle,
+        prefs,
+        controller.signal,
+        sourceRevision,
+      );
+      if (!mounted.current || request !== generation.current) {
         prepared.dispose();
-        return;
+        return false;
       }
       try {
-        await syncWindow(prepared.appearance);
+        await sync(prepared.appearance);
       } catch (error) {
         prepared.dispose();
         throw error;
       }
-      if (!mounted.current || request !== revision.current || saving.current) {
+      if (!mounted.current || request !== generation.current) {
         prepared.dispose();
-        return;
+        return false;
       }
-      prepared.commit();
-      appliedAppearance.current = prepared.appearance;
-      setFixedAppearance(prepared.manifest.appearance ?? null);
-      setPreferences(current.preferences);
-      setSafeMode(current.safeMode);
-      setError("");
+      await prepared.commit(() => {
+        if (mounted.current && request === generation.current) setReady(true);
+      });
+      if (!mounted.current || request !== generation.current) return false;
+      applied.current = prepared.appearance;
+      setFixedAppearance(
+        prepared.manifest.appearance === "light" ||
+          prepared.manifest.appearance === "dark"
+          ? prepared.manifest.appearance
+          : null,
+      );
+      return true;
+    },
+    [],
+  );
+  const reload = useCallback(async () => {
+    if (!native || saving.current || previewing.current) return;
+    const request = ++generation.current;
+    try {
+      const current = await api<ThemeCurrent>("load_theme_preferences");
+      if (request !== generation.current) return;
+      if (
+        await apply(
+          current.theme,
+          current.preferences,
+          request,
+          current.revision,
+        )
+      ) {
+        setPreferences(current.preferences);
+        setSafeMode(current.safeMode);
+        setDirectory(current.theme?.directory ?? "");
+        setError("");
+      }
     } catch (error) {
-      if (mounted.current && request === revision.current)
+      if (mounted.current && request === generation.current)
         setError(
           `${errorMessage(error)} The last working appearance is still in use.`,
         );
     } finally {
-      if (mounted.current && request === revision.current) setReady(true);
+      if (mounted.current && request === generation.current) setReady(true);
     }
-  }, [syncWindow]);
+  }, [apply]);
   useEffect(() => {
     mounted.current = true;
     let active = true;
-    const unlisten = native
+    const stop = native
       ? listen("theme-changed", () => void reload())
       : Promise.resolve(() => {});
-    void unlisten
+    void stop
       .then(() => {
         if (active) void reload();
       })
@@ -105,72 +163,137 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
           setReady(true);
         }
       });
-    const focused = () => void reload();
     const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const appearanceChanged = () => {
-      const appearance = appliedAppearance.current;
-      if (appearance === "system") applyAppearance("system");
-      else if (
-        native &&
-        !synchronizing.current &&
-        !saving.current &&
-        media.matches !== (appearance === "dark")
-      ) {
-        // Linux portal notifications can change GTK's preference despite a manual mode.
-        void syncWindow(appearance).catch((error) => {
-          if (mounted.current) setError(errorMessage(error));
-        });
-      }
+    const changed = () => {
+      if (synchronizing.current || saving.current) return;
+      if (applied.current === "system") {
+        const bundle = previewing.current;
+        if (bundle)
+          void apply(
+            bundle,
+            latestPreferences.current,
+            ++generation.current,
+          ).catch((error) => setError(errorMessage(error)));
+        else void reload();
+      } else if (media.matches !== (applied.current === "dark"))
+        void sync(applied.current).catch((error) =>
+          setError(errorMessage(error)),
+        );
     };
-    media.addEventListener("change", appearanceChanged);
-    window.addEventListener("focus", focused);
+    window.addEventListener("focus", reload);
+    media.addEventListener("change", changed);
     return () => {
       active = false;
       mounted.current = false;
-      ++revision.current;
-      window.removeEventListener("focus", focused);
-      media.removeEventListener("change", appearanceChanged);
-      void unlisten.then((stop) => stop()).catch(() => {});
+      ++generation.current;
+      abort.current?.abort();
+      window.removeEventListener("focus", reload);
+      media.removeEventListener("change", changed);
+      void stop.then((stop) => stop()).catch(() => {});
     };
-  }, [reload, syncWindow]);
+  }, [reload, apply]);
+  useEffect(() => {
+    if (!native || !directory || safeMode) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const stop = watch(
+      directory,
+      (event) => {
+        if (typeof event.type === "object" && "access" in event.type) return;
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          if (active) void reload();
+        }, 350);
+      },
+      { recursive: true, delayMs: 200 },
+    );
+    void stop
+      .then(() => {
+        // Catch changes between the initial read and watch registration.
+        if (active) void reload();
+      })
+      .catch((error) => {
+        if (active)
+          setError(
+            `Theme watch failed: ${errorMessage(error)} Use Refresh to retry loading.`,
+          );
+      });
+    return () => {
+      active = false;
+      clearTimeout(timer);
+      void stop.then((stop) => stop()).catch(() => {});
+    };
+  }, [directory, safeMode, reload]);
   const select = async (
-    active: string | null,
+    id: string | null,
     appearance = preferences.appearance,
   ) => {
     if (saving.current) return;
     saving.current = true;
-    ++revision.current;
+    const request = ++generation.current;
     try {
-      const next: ThemePreferences = {
-        version: 1,
-        active,
-        appearance,
-      };
-      const bundle = active
-        ? await api<ThemeBundle>("load_theme", { id: active })
-        : null;
+      const next: ThemePreferences = { version: 1, active: id, appearance };
+      const bundle = id ? await api<ThemeBundle>("load_theme", { id }) : null;
       const prepared = await prepareTheme(bundle, next);
       try {
-        if (native) {
-          await api("save_theme_preferences", { data: next });
-          await syncWindow(prepared.appearance);
-        }
-        if (!mounted.current) {
+        await sync(prepared.appearance);
+        if (native) await api("save_theme_preferences", { data: next });
+        if (!mounted.current || request !== generation.current) {
           prepared.dispose();
           return;
         }
-        prepared.commit();
-        appliedAppearance.current = prepared.appearance;
-        setFixedAppearance(prepared.manifest.appearance ?? null);
+        previewing.current = null;
+        await prepared.commit();
+        applied.current = prepared.appearance;
         setPreferences(next);
+        setDirectory(bundle?.directory ?? "");
+        setFixedAppearance(
+          prepared.manifest.appearance === "light" ||
+            prepared.manifest.appearance === "dark"
+            ? prepared.manifest.appearance
+            : null,
+        );
         setError("");
       } catch (error) {
         prepared.dispose();
+        await sync(applied.current);
         throw error;
       }
     } finally {
       saving.current = false;
+      await reload();
     }
+  };
+  const preview = async (bundle: ThemeBundle) => {
+    const request = ++generation.current;
+    const first = !restorePreview.current;
+    if (first) {
+      previewAppearance.current = applied.current;
+      restorePreview.current = holdThemePreview();
+    }
+    try {
+      if (await apply(bundle, preferences, request)) {
+        previewing.current = bundle;
+        setError("");
+      }
+    } catch (error) {
+      if (first) {
+        await restorePreview.current?.();
+        restorePreview.current = null;
+      }
+      throw error;
+    }
+  };
+  const cancelPreview = async () => {
+    if (restorePreview.current) {
+      ++generation.current;
+      abort.current?.abort();
+      await restorePreview.current();
+      restorePreview.current = null;
+      await sync((applied.current = previewAppearance.current));
+    }
+    previewing.current = null;
+    await reload();
   };
   return (
     <Context.Provider
@@ -180,17 +303,19 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         error,
         safeMode,
         fixedAppearance,
+        snapshot,
         reload,
         select,
+        preview,
+        cancelPreview,
       }}
     >
       {ready ? children : null}
     </Context.Provider>
   );
 }
-
 export function useThemes() {
-  const value = useContext(Context);
-  if (!value) throw new Error("ThemeProvider is missing.");
-  return value;
+  const context = useContext(Context);
+  if (!context) throw new Error("ThemeProvider is missing.");
+  return context;
 }

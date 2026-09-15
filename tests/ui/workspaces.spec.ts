@@ -482,7 +482,9 @@ test("deleting the final workspace retains dirty files after cancellation or fai
       await guard
         .getByRole("button", { name: "Save changes", exact: true })
         .click();
-      await expect(guard.getByRole("alert")).toContainText("Disk is full");
+      await expect(
+        guard.getByRole("alert").filter({ hasText: /\S/ }),
+      ).toContainText("Disk is full");
     }
     if (attempt === "discard") {
       await guard
@@ -589,7 +591,9 @@ test("adding a workspace chooses a folder every time, including the same folder,
     (window as any).__nativeTest.directoryError = "Folder not found";
   });
   await panel.getByRole("button", { name: /^Agent 1 / }).click();
-  await expect(page.getByRole("alert")).toContainText("Folder not found");
+  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toContainText(
+    "Folder not found",
+  );
   await expect(
     panel.getByRole("button", { name: /^simplebench / }),
   ).toHaveAttribute("aria-current", "true");

@@ -174,6 +174,7 @@ export default function BrowserPane({
     >
       <form
         className="browser-toolbar"
+        data-pane-drag-handle
         aria-label="Browser navigation"
         onSubmit={(event) => {
           event.preventDefault();

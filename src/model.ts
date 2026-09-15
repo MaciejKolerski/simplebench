@@ -1,3 +1,6 @@
+import type { PanelDescriptor } from "../packages/plugin-sdk/index";
+import { jsonState, pluginId } from "./plugins/manifest.ts";
+export type PluginPanel = PanelDescriptor;
 import { restoreBrowserUrl } from "./browser-url.ts";
 
 export interface ShellProfile {
@@ -30,7 +33,7 @@ export interface Split {
   first: Layout;
   second: Layout;
 }
-export type LayoutPane = Pane | FileTab | BrowserTab;
+export type LayoutPane = Pane | FileTab | BrowserTab | PluginPanel;
 export type Layout = LayoutPane | Split;
 export interface LayoutSize {
   width: number;
@@ -100,7 +103,8 @@ export const newBrowserTab = (url = "about:blank"): BrowserTab => ({
   title: "Browser",
   url: restoreBrowserUrl(url),
 });
-export type Tab = TerminalTab | CommitTab | DiffTab | FileTab | BrowserTab;
+export type Tab =
+  TerminalTab | CommitTab | DiffTab | FileTab | BrowserTab | PluginPanel;
 export const tabTitle = (tab: Tab) => tab.customTitle ?? tab.title;
 export type TabDropSide = "left" | "right" | "top" | "bottom";
 export type TabCloseAction =
@@ -110,6 +114,7 @@ export interface Workspace {
   name: string;
   activeTabId: string;
   tabs: Tab[];
+  pluginSidebars?: PluginPanel[];
 }
 export interface Project {
   id: string;
@@ -117,10 +122,11 @@ export interface Project {
   activeWorkspaceId: string;
   workspaces: Workspace[];
 }
-export type SidebarPanel = "files" | "git" | "workspaces";
+export type SidebarPanel =
+  "files" | "git" | "workspaces" | `${string}.${string}`;
 export type SidebarSide = "left" | "right";
 export interface Session {
-  version: 1;
+  version: 2;
   activeProjectId: string | null;
   projects: Project[];
   sidebar: SidebarPanel | null;
@@ -231,7 +237,7 @@ export function removeWorkspace(session: Session, id: string): Session {
 }
 export function newSession(): Session {
   return {
-    version: 1,
+    version: 2,
     projects: [],
     activeProjectId: null,
     sidebar: "files",
@@ -426,7 +432,7 @@ export function movePane(
   const panels = layoutPanes(layout);
   const source = panels.find((pane) => pane.id === id);
   if (
-    source?.type !== "terminal" ||
+    !source ||
     id === targetId ||
     !panels.some((pane) => pane.id === targetId)
   )
@@ -899,7 +905,8 @@ const string = (value: unknown, fallback: string) =>
 
 export function restoreSession(value: unknown, info: AppInfo): Session {
   const data = record(value);
-  if (data.version !== 1 || !Array.isArray(data.projects)) return newSession();
+  if (![1, 2].includes(data.version as number) || !Array.isArray(data.projects))
+    return newSession();
   const ids = new Set<string>();
   const id = (value: unknown) => {
     let candidate = string(value, newId());
@@ -947,8 +954,35 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
       : {}),
     url: restoreBrowserUrl(node.url),
   });
+  const plugin = (node: Record<string, unknown>): PluginPanel => {
+    if (
+      typeof node.owner !== "string" ||
+      !pluginId.test(node.owner) ||
+      typeof node.viewType !== "string" ||
+      !pluginId.test(node.viewType) ||
+      !Number.isInteger(node.stateVersion) ||
+      (node.stateVersion as number) < 1
+    )
+      throw new Error(
+        "The saved plugin panel has an unsupported descriptor. The session was preserved.",
+      );
+    jsonState(node.state);
+    return {
+      type: "plugin",
+      id: id(node.id),
+      title: string(node.title, "Unavailable plugin view"),
+      ...(typeof node.customTitle === "string"
+        ? { customTitle: node.customTitle }
+        : {}),
+      owner: node.owner,
+      viewType: node.viewType,
+      stateVersion: node.stateVersion as number,
+      state: node.state,
+    };
+  };
   const layout = (value: unknown, cwd: string, depth = 0): Layout => {
     const node = record(value);
+    if (node.type === "plugin") return plugin(node);
     if (node.type === "file") return file(node, cwd);
     if (node.type === "browser") return browser(node);
     // Preserve every layout accepted by the native JSON parser's nesting limit.
@@ -964,6 +998,8 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
         first: layout(node.first, cwd, depth + 1),
         second: layout(node.second, cwd, depth + 1),
       };
+    if (node.type !== undefined && node.type !== "terminal")
+      throw new Error("Unknown saved panel type. The session was preserved.");
     return {
       type: "terminal",
       id: id(node.id),
@@ -985,6 +1021,7 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
         const tabs = (Array.isArray(workspace.tabs) ? workspace.tabs : []).map(
           (value): Tab => {
             const tab = record(value);
+            if (tab.type === "plugin") return plugin(tab);
             if (tab.type === "browser") return browser(tab);
             if (tab.type === "file") {
               return file(tab, path);
@@ -1014,6 +1051,10 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
                 staged: tab.staged === true,
               };
             }
+            if (tab.type !== undefined && tab.type !== "terminal")
+              throw new Error(
+                "Unknown saved tab type. The session was preserved.",
+              );
             const tree = layout(tab.layout, path);
             const leaves = layoutPanes(tree);
             return {
@@ -1036,6 +1077,13 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
           id: id(workspace.id),
           name: string(workspace.name, "Default"),
           tabs,
+          ...(Array.isArray(workspace.pluginSidebars)
+            ? {
+                pluginSidebars: workspace.pluginSidebars.map((value) =>
+                  plugin(record(value)),
+                ),
+              }
+            : {}),
           activeTabId: tabs.some((tab) => tab.id === workspace.activeTabId)
             ? (workspace.activeTabId as string)
             : tabs[0].id,
@@ -1061,13 +1109,20 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
     git: savedSides.git === "right" ? "right" : "left",
     workspaces: savedSides.workspaces === "right" ? "right" : "left",
   };
+  for (const [key, side] of Object.entries(savedSides))
+    if (pluginId.test(key) && (side === "left" || side === "right"))
+      sidebarSides[key as SidebarPanel] = side;
   const left =
-    data.sidebar === "git" || data.sidebar === "workspaces"
+    (typeof data.sidebar === "string" && pluginId.test(data.sidebar)) ||
+    data.sidebar === "git" ||
+    data.sidebar === "workspaces"
       ? data.sidebar
       : data.sidebar === null
         ? null
         : "files";
   const right =
+    (typeof data.rightSidebar === "string" &&
+      pluginId.test(data.rightSidebar)) ||
     data.rightSidebar === "git" ||
     data.rightSidebar === "files" ||
     data.rightSidebar === "workspaces"
@@ -1080,7 +1135,7 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
         : 180
       : 250;
   return {
-    version: 1,
+    version: 2,
     projects,
     activeProjectId:
       data.activeProjectId === null
@@ -1088,12 +1143,75 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
         : projects.some((project) => project.id === data.activeProjectId)
           ? (data.activeProjectId as string)
           : (projects[0]?.id ?? null),
-    sidebar: left && sidebarSides[left] === "left" ? left : null,
-    rightSidebar: right && sidebarSides[right] === "right" ? right : null,
+    sidebar:
+      left && sidebarSides[left as SidebarPanel] === "left"
+        ? (left as SidebarPanel)
+        : null,
+    rightSidebar:
+      right && sidebarSides[right as SidebarPanel] === "right"
+        ? (right as SidebarPanel)
+        : null,
     sidebarSides,
     terminalOverviewSide:
       data.terminalOverviewSide === "right" ? "right" : "left",
     sidebarWidth: sidebarWidth(data.sidebarWidth),
     rightSidebarWidth: sidebarWidth(data.rightSidebarWidth),
+  };
+}
+
+export function pluginPanels(session: Session): PluginPanel[] {
+  return session.projects.flatMap((p) =>
+    p.workspaces.flatMap((w) => [
+      ...(w.pluginSidebars ?? []),
+      ...w.tabs.flatMap((tab) =>
+        tab.type === "plugin"
+          ? [tab]
+          : tab.type === "terminal"
+            ? layoutPanes(tab.layout).filter(
+                (pane): pane is PluginPanel => pane.type === "plugin",
+              )
+            : [],
+      ),
+    ]),
+  );
+}
+export function updatePluginPanel(
+  session: Session,
+  id: string,
+  state: PluginPanel["state"],
+): Session {
+  jsonState(state);
+  const update = (layout: Layout): Layout =>
+    layout.type === "split"
+      ? {
+          ...layout,
+          first: update(layout.first),
+          second: update(layout.second),
+        }
+      : layout.type === "plugin" && layout.id === id
+        ? { ...layout, state }
+        : layout;
+  return {
+    ...session,
+    projects: session.projects.map((p) => ({
+      ...p,
+      workspaces: p.workspaces.map((w) => ({
+        ...w,
+        ...(w.pluginSidebars
+          ? {
+              pluginSidebars: w.pluginSidebars.map((p) =>
+                p.id === id ? { ...p, state } : p,
+              ),
+            }
+          : {}),
+        tabs: w.tabs.map((tab) =>
+          tab.type === "terminal"
+            ? { ...tab, layout: update(tab.layout) }
+            : tab.type === "plugin" && tab.id === id
+              ? { ...tab, state }
+              : tab,
+        ),
+      })),
+    })),
   };
 }

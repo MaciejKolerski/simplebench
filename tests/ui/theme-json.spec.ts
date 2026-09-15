@@ -3,9 +3,9 @@ import type { Locator, Page } from "@playwright/test";
 import { mockDesktop } from "./desktop";
 
 const manifest = {
-  version: 1,
+  version: 2,
   name: "JSON test",
-  tokens: { "--radius-control": "8px" },
+  common: { tokens: { "--radius-control": "8px" } },
 };
 const text = (editor: Locator) =>
   editor
@@ -87,9 +87,7 @@ test("theme JSON uses the code editor, formats with undo, searches and saves thr
   await editor.press("Control+z");
   await expect.poll(() => text(editor)).toContain("Edited JSON");
   await editor.press("Control+z");
-  await expect
-    .poll(() => text(editor))
-    .toBe(JSON.stringify(JSON.parse(compact), null, 4));
+  await expect.poll(() => text(editor)).toBe(compact);
   expect(
     await page.evaluate(() =>
       (window as any).__nativeTest.calls.filter((call: any) =>

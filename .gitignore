@@ -11,3 +11,5 @@ dist/
 .vscode/
 playwright-report/
 test-results/
+
+tests/fixtures/*/package/

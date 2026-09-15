@@ -6,12 +6,14 @@ import { indentUnit } from "@codemirror/language";
 import { json } from "@codemirror/lang-json";
 import { gotoLine, openSearchPanel } from "@codemirror/search";
 import { FileJson, Redo2, Search, Undo2 } from "lucide-react";
+import { editorAppearance } from "./theme/editor";
+import { formatThemeText } from "./theme/format";
 import { codeEditorExtensions } from "./editor-extensions";
 import { useEditorPreferences } from "./EditorPreferencesProvider";
 import { useKeybindings } from "./KeybindingsProvider";
 import { actionForEvent } from "./keybindings";
 import { errorMessage } from "./api";
-import { themeAppliedEvent } from "./theme-runtime";
+import { themeAppliedEvent } from "./theme/runtime";
 import { IconButton } from "./ui";
 
 export default function ThemeJsonEditor({
@@ -39,10 +41,7 @@ export default function ThemeJsonEditor({
   useLayoutEffect(() => {
     const appearance = new Compartment();
     const wrapping = new Compartment();
-    const darkTheme = () =>
-      EditorView.darkTheme.of(
-        document.documentElement.dataset.appearance !== "light",
-      );
+    const darkTheme = () => editorAppearance();
     const editor = new EditorView({
       parent: host.current!,
       state: EditorState.create({
@@ -143,11 +142,11 @@ export default function ThemeJsonEditor({
     const editor = view.current!;
     if (editor.state.readOnly) return;
     try {
-      const parsed = JSON.parse(editor.state.doc.toString());
       const unit = editor.state.facet(indentUnit);
-      const formatted = JSON.stringify(parsed, null, "\t").replace(
-        /^\t+/gm,
-        (tabs) => unit.repeat(tabs.length),
+      const formatted = formatThemeText(
+        editor.state.doc.toString(),
+        unit.length,
+        unit !== "\t",
       );
       if (formatted !== editor.state.doc.toString())
         editor.dispatch({
@@ -174,7 +173,7 @@ export default function ThemeJsonEditor({
     <div className="theme-json" hidden={!visible}>
       <div className="editor-heading">
         <FileJson size={15} />
-        <span className="editor-path">theme.json</span>
+        <span className="editor-path">theme.jsonc</span>
         <div className="editor-actions">
           <IconButton
             title="Undo"

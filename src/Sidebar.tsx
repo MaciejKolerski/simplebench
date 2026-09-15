@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import type { SidebarSide } from "./model";
-import { themeAppliedEvent } from "./theme-runtime";
+import { themeAppliedEvent } from "./theme/runtime";
 
 export default function Sidebar({
   side,

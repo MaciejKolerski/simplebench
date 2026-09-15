@@ -38,7 +38,9 @@ export default function SidebarToggle({
         ? "Source Control"
         : panel === "terminalOverview"
           ? "Terminal overview"
-          : "Workspaces";
+          : panel === "workspaces"
+            ? "Workspaces"
+            : title;
   const dismiss = () => {
     setAnchor(undefined);
     trigger.current?.focus({ preventScroll: true });

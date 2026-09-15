@@ -626,3 +626,10 @@ mod tests {
         assert!(label("../main").is_err());
     }
 }
+
+#[cfg(feature = "native-smoke")]
+pub fn smoke_pages(app: &tauri::AppHandle) -> serde_json::Value {
+    let state = app.state::<Browsers>();
+    let pages = state.pages.lock().unwrap();
+    serde_json::json!(pages.iter().map(|(id,page)|(id.clone(),serde_json::json!({"url":page.url,"title":page.title,"visible":page.bounds.is_some(),"bounds":page.bounds.map(|b|[b.x,b.y,b.width,b.height])}))).collect::<std::collections::BTreeMap<_,_>>())
+}

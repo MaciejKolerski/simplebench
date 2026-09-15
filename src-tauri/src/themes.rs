@@ -5,7 +5,10 @@ use std::{
     fs,
     io::Read,
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Mutex,
+    },
 };
 use tauri::{Emitter, Manager, State, Window};
 use tauri_plugin_opener::OpenerExt;
@@ -15,7 +18,10 @@ const ASSET_LIMIT: u64 = 20 * 1024 * 1024;
 const PACKAGE_LIMIT: u64 = 64 * 1024 * 1024;
 
 #[derive(Default)]
-pub struct Themes(pub Mutex<()>);
+pub struct Themes {
+    pub(crate) lock: Mutex<Option<String>>,
+    revision: AtomicU64,
+}
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
@@ -62,7 +68,12 @@ impl Preferences {
 #[derive(Serialize)]
 pub struct Bundle {
     id: String,
-    manifest: Value,
+    raw: String,
+    revision: String,
+    directory: String,
+    migration: Vec<String>,
+    #[serde(rename = "readOnly")]
+    read_only: bool,
 }
 
 #[derive(Serialize)]
@@ -71,6 +82,7 @@ pub struct Current {
     preferences: Preferences,
     theme: Option<Bundle>,
     safe_mode: bool,
+    revision: u64,
 }
 
 #[derive(Serialize)]
@@ -80,6 +92,7 @@ pub struct Entry {
     description: String,
     author: String,
     error: Option<String>,
+    owner: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -123,10 +136,20 @@ fn valid_id(id: &str) -> Result<(), String> {
 fn relative(path: &str) -> Result<(), String> {
     if path.is_empty()
         || path.len() > 1024
-        || path.chars().any(|c| c.is_control() || "\\:?#".contains(c))
         || path
-            .split('/')
-            .any(|part| part.is_empty() || part == "." || part == "..")
+            .chars()
+            .any(|c| c.is_control() || "\\:%?#<>\"|*".contains(c))
+        || path.split('/').any(|part| {
+            let base = part.split('.').next().unwrap_or("").to_ascii_lowercase();
+            part.is_empty()
+                || part == "."
+                || part == ".."
+                || part.ends_with(['.', ' '])
+                || ["con", "prn", "aux", "nul"].contains(&base.as_str())
+                || ((base.starts_with("com") || base.starts_with("lpt"))
+                    && base.len() == 4
+                    && base.as_bytes()[3].is_ascii_digit())
+        })
     {
         return Err(format!(
             "Use a relative path inside the theme folder: {path}"
@@ -221,12 +244,173 @@ fn resource(root: &Path, path: &str, kind: &str) -> Result<(), String> {
     Ok(())
 }
 
+fn hash(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    format!("{:x}", Sha256::digest(bytes))
+}
+fn parse_raw(raw: &str) -> Result<Value, String> {
+    use jsonc_parser::ast::Value as Ast;
+    use jsonc_parser::{parse_to_ast, parse_to_serde_value, ParseOptions};
+    let options = ParseOptions {
+        allow_comments: true,
+        allow_trailing_commas: true,
+        allow_loose_object_property_names: false,
+        allow_missing_commas: false,
+        allow_single_quoted_strings: false,
+        allow_hexadecimal_numbers: false,
+        allow_unary_plus_numbers: false,
+    };
+    let parsed = parse_to_ast(raw, &Default::default(), &options)
+        .map_err(|e| format!("theme.jsonc: {e}"))?;
+    fn visit(node: &Ast<'_>, depth: usize) -> Result<(), String> {
+        if depth > 32 {
+            return Err("Theme nesting exceeds 32 levels.".into());
+        }
+        match node {
+            Ast::Object(object) => {
+                let mut seen = std::collections::HashSet::new();
+                for property in &object.properties {
+                    let name = property.name.as_str();
+                    if !seen.insert(name) {
+                        return Err(format!("Duplicate theme property: {name}"));
+                    }
+                    visit(&property.value, depth + 1)?;
+                }
+            }
+            Ast::Array(array) => {
+                for value in &array.elements {
+                    visit(value, depth + 1)?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+    visit(parsed.value.as_ref().ok_or("Expected a theme object.")?, 0)?;
+    parse_to_serde_value(raw, &options).map_err(|e| e.to_string())
+}
+fn document_raw(root: &Path) -> Result<(String, Vec<String>), String> {
+    let modern = root
+        .join("theme.jsonc")
+        .try_exists()
+        .map_err(|e| e.to_string())?;
+    let path = inside(root, if modern { "theme.jsonc" } else { "theme.json" })?;
+    let bytes = read_limited(&path, JSON_LIMIT)?;
+    let raw = String::from_utf8(bytes).map_err(|e| e.to_string())?;
+    if modern {
+        return Ok((raw, Vec::new()));
+    }
+    let legacy: Value = serde_json::from_str(&raw).map_err(|e| format!("theme.json: {e}"))?;
+    validate_manifest(root, &legacy)?;
+    let mut common = legacy
+        .as_object()
+        .ok_or("Expected a legacy theme object.")?
+        .clone();
+    let mut modern = serde_json::Map::new();
+    modern.insert("version".into(), 2.into());
+    common.remove("version");
+    common.remove("$schema");
+    for key in ["name", "author", "description", "appearance"] {
+        if let Some(value) = common.remove(key) {
+            modern.insert(key.into(), value);
+        }
+    }
+    let mut resources = serde_json::Map::new();
+    for key in ["assets", "stylesheets"] {
+        if let Some(value) = common.remove(key) {
+            resources.insert(key.into(), value);
+        }
+    }
+    if let Some(value) = common.remove("stylesheet") {
+        resources.insert("stylesheets".into(), Value::Array(vec![value]));
+    }
+    modern.insert("common".into(), common.into());
+    modern.insert("resources".into(), resources.into());
+    Ok((serde_json::to_string_pretty(&modern).map_err(|e|e.to_string())?,vec!["Converted version 1. The original theme.json is preserved; saving creates theme.jsonc.".into()]))
+}
 fn manifest(root: &Path) -> Result<Value, String> {
-    let bytes = read_limited(&inside(root, "theme.json")?, JSON_LIMIT)?;
-    let data: Value =
-        serde_json::from_slice(&bytes).map_err(|error| format!("theme.json: {error}"))?;
-    validate_manifest(root, &data)?;
+    let (raw, _) = document_raw(root)?;
+    let data = parse_raw(&raw)?;
+    validate_modern(root, &data)?;
     Ok(data)
+}
+fn validate_modern(root: &Path, data: &Value) -> Result<(), String> {
+    let object = data.as_object().ok_or("theme.jsonc must be an object.")?;
+    if data["version"] != 2 {
+        return Err("Unsupported theme version. Expected version 2.".into());
+    }
+    for key in object.keys() {
+        if ![
+            "$schema",
+            "version",
+            "name",
+            "author",
+            "description",
+            "appearance",
+            "common",
+            "light",
+            "dark",
+            "resources",
+        ]
+        .contains(&key.as_str())
+        {
+            return Err(format!("Unknown theme field: {key}"));
+        }
+    }
+    if data["name"]
+        .as_str()
+        .is_none_or(|name| name.trim().is_empty() || name.chars().count() > 160)
+    {
+        return Err("The theme needs a name of 1–160 characters.".into());
+    }
+    if let Some(value) = data.get("appearance") {
+        if !matches!(value.as_str(), Some("adaptive" | "dark" | "light")) {
+            return Err("Invalid theme appearance.".into());
+        }
+    }
+    for field in ["common", "light", "dark"] {
+        if let Some(values) = data.get(field) {
+            let values = values
+                .as_object()
+                .ok_or("Theme variants must be objects.")?;
+            for key in values.keys() {
+                if ![
+                    "tokens",
+                    "styles",
+                    "backgrounds",
+                    "layout",
+                    "terminal",
+                    "editor",
+                    "plugins",
+                ]
+                .contains(&key.as_str())
+                {
+                    return Err(format!("Unknown {field} field: {key}"));
+                }
+            }
+            let mut legacy = values.clone();
+            legacy.remove("editor");
+            legacy.remove("plugins");
+            legacy.insert("version".into(), 1.into());
+            legacy.insert("name".into(), "Surface".into());
+            validate_manifest(root, &legacy.into())?;
+        }
+    }
+    if let Some(resources) = data.get("resources") {
+        let resources = resources
+            .as_object()
+            .ok_or("resources must be an object.")?;
+        for key in resources.keys() {
+            if !["assets", "stylesheets"].contains(&key.as_str()) {
+                return Err(format!("Unknown resources field: {key}"));
+            }
+        }
+        let mut legacy = resources.clone();
+        legacy.insert("version".into(), 1.into());
+        legacy.insert("name".into(), "Resources".into());
+        validate_manifest(root, &legacy.into())?;
+    }
+    Ok(())
 }
 
 fn validate_manifest(root: &Path, data: &Value) -> Result<(), String> {
@@ -359,10 +543,45 @@ fn validate_manifest(root: &Path, data: &Value) -> Result<(), String> {
 fn bundle(root: &Path, id: &str) -> Result<Bundle, String> {
     valid_id(id)?;
     let folder = inside(root, id)?;
+    let (raw, migration) = document_raw(&folder)?;
     Ok(Bundle {
         id: id.into(),
-        manifest: manifest(&folder)?,
+        revision: hash(raw.as_bytes()),
+        raw,
+        directory: folder.to_string_lossy().into_owned(),
+        migration,
+        read_only: false,
     })
+}
+
+fn theme_root(app: &tauri::AppHandle, id: &str) -> Result<PathBuf, String> {
+    valid_id(id)?;
+    if id.starts_with("@plugin-") {
+        return crate::plugins::theme_directories(app)?
+            .into_iter()
+            .find(|theme| theme.id == id)
+            .map(|theme| theme.directory)
+            .ok_or("The plugin theme is no longer installed.".into());
+    }
+    inside(&library(app)?, id)
+}
+fn app_bundle(app: &tauri::AppHandle, id: &str) -> Result<Bundle, String> {
+    if !id.starts_with("@plugin-") {
+        return bundle(&library(app)?, id);
+    }
+    let folder = theme_root(app, id)?;
+    let (raw, migration) = document_raw(&folder)?;
+    Ok(Bundle {
+        id: id.into(),
+        revision: hash(raw.as_bytes()),
+        raw,
+        directory: folder.to_string_lossy().into_owned(),
+        migration,
+        read_only: true,
+    })
+}
+pub(crate) fn selected_theme(app: &tauri::AppHandle) -> Result<Option<String>, String> {
+    Ok(read_preferences(&data_dir(app)?.join("theme-settings.json"))?.active)
 }
 
 fn read_preferences(path: &Path) -> Result<Preferences, String> {
@@ -390,8 +609,9 @@ pub fn load_theme_preferences(
     state: State<'_, Themes>,
 ) -> Result<Current, String> {
     authorize(window.label(), false)?;
-    let _guard = state.0.lock().map_err(|error| error.to_string())?;
-    let safe_mode = std::env::var_os("SIMPLEBENCH_SAFE_THEME").is_some_and(|value| value == "1");
+    let mut observed = state.lock.lock().map_err(|error| error.to_string())?;
+    let safe_mode = crate::plugins::safe_mode()
+        || std::env::var_os("SIMPLEBENCH_SAFE_THEME").is_some_and(|value| value == "1");
     let preferences = if safe_mode {
         Preferences::builtin()
     } else {
@@ -400,19 +620,30 @@ pub fn load_theme_preferences(
     let theme = preferences
         .active
         .as_ref()
-        .map(|id| bundle(&library(&app)?, id))
+        .map(|id| app_bundle(&app, id))
         .transpose()?;
+    let mut identity = serde_json::to_string(&preferences).map_err(|e| e.to_string())?;
+    if let Some(bundle) = &theme {
+        identity.push_str(&bundle.revision);
+        resource_identity(Path::new(&bundle.directory), &mut identity, &mut 0, 0)?;
+    }
+    let identity = hash(identity.as_bytes());
+    if observed.as_ref() != Some(&identity) {
+        *observed = Some(identity);
+        state.revision.fetch_add(1, Ordering::SeqCst);
+    }
     Ok(Current {
         preferences,
         theme,
         safe_mode,
+        revision: state.revision.load(Ordering::SeqCst),
     })
 }
 
 #[tauri::command]
 pub fn load_theme(window: Window, app: tauri::AppHandle, id: String) -> Result<Bundle, String> {
     authorize(window.label(), false)?;
-    bundle(&library(&app)?, &id)
+    app_bundle(&app, &id)
 }
 
 #[tauri::command]
@@ -431,12 +662,12 @@ pub fn list_themes(window: Window, app: tauri::AppHandle) -> Result<Catalog, Str
         {
             continue;
         }
-        let result = bundle(&directory, &id);
+        let result = inside(&directory, &id).and_then(|folder| manifest(&folder));
         let (name, description, author, error) = match result {
             Ok(bundle) => (
-                bundle.manifest["name"].as_str().unwrap_or(&id).into(),
-                bundle.manifest["description"].as_str().unwrap_or("").into(),
-                bundle.manifest["author"].as_str().unwrap_or("").into(),
+                bundle["name"].as_str().unwrap_or(&id).into(),
+                bundle["description"].as_str().unwrap_or("").into(),
+                bundle["author"].as_str().unwrap_or("").into(),
                 None,
             ),
             Err(error) => (id.clone(), String::new(), String::new(), Some(error)),
@@ -447,7 +678,29 @@ pub fn list_themes(window: Window, app: tauri::AppHandle) -> Result<Catalog, Str
             description,
             author,
             error,
+            owner: None,
         });
+    }
+    if let Ok(contributions) = crate::plugins::theme_directories(&app) {
+        for theme in contributions {
+            let (name, description, author, error) = match manifest(&theme.directory) {
+                Ok(data) => (
+                    data["name"].as_str().unwrap_or(&theme.id).into(),
+                    data["description"].as_str().unwrap_or("").into(),
+                    data["author"].as_str().unwrap_or("").into(),
+                    None,
+                ),
+                Err(error) => (theme.id.clone(), String::new(), String::new(), Some(error)),
+            };
+            themes.push(Entry {
+                id: theme.id,
+                name,
+                description,
+                author,
+                error,
+                owner: Some(theme.owner),
+            });
+        }
     }
     themes.sort_by_key(|entry| entry.name.to_lowercase());
     Ok(Catalog {
@@ -464,12 +717,12 @@ pub fn save_theme_preferences(
     data: Preferences,
 ) -> Result<(), String> {
     authorize(window.label(), true)?;
-    let _guard = state.0.lock().map_err(|error| error.to_string())?;
+    let _guard = state.lock.lock().map_err(|error| error.to_string())?;
     if data.version != 1 {
         return Err("Unsupported theme settings version.".into());
     }
     if let Some(id) = &data.active {
-        bundle(&library(&app)?, id)?;
+        manifest(&theme_root(&app, id)?)?;
     }
     let directory = data_dir(&app)?;
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
@@ -478,7 +731,8 @@ pub fn save_theme_preferences(
         &data,
         JSON_LIMIT as usize,
     )?;
-    app.emit("theme-changed", ())
+    let revision = state.revision.fetch_add(1, Ordering::SeqCst) + 1;
+    app.emit("theme-changed", revision)
         .map_err(|error| error.to_string())
 }
 
@@ -495,52 +749,52 @@ pub fn save_theme_manifest(
     app: tauri::AppHandle,
     state: State<'_, Themes>,
     id: String,
-    expected: Value,
-    data: Value,
-) -> Result<(), String> {
+    expected: String,
+    raw: String,
+) -> Result<Bundle, String> {
     authorize(window.label(), true)?;
-    let _guard = state.0.lock().map_err(|error| error.to_string())?;
-    save_manifest(&library(&app)?, &id, &expected, &data)?;
-    app.emit("theme-changed", ())
-        .map_err(|error| error.to_string())
+    let _guard = state.lock.lock().map_err(|e| e.to_string())?;
+    if id.starts_with("@plugin-") {
+        return Err("Duplicate a plugin theme before editing it.".into());
+    }
+    let root = library(&app)?;
+    save_manifest(&root, &id, &expected, &raw)?;
+    let revision = state.revision.fetch_add(1, Ordering::SeqCst) + 1;
+    app.emit("theme-changed", revision)
+        .map_err(|e| e.to_string())?;
+    bundle(&root, &id)
 }
-
-fn save_manifest(root: &Path, id: &str, expected: &Value, data: &Value) -> Result<(), String> {
+fn save_manifest(root: &Path, id: &str, expected: &str, raw: &str) -> Result<(), String> {
     use std::io::Write;
+    if raw.len() as u64 > JSON_LIMIT {
+        return Err("theme.jsonc exceeds 256 KiB.".into());
+    }
     valid_id(id)?;
     let folder = inside(root, id)?;
-    let path = inside(&folder, "theme.json")?;
-    let permissions = fs::metadata(&path)
-        .map_err(|error| error.to_string())?
-        .permissions();
-    if permissions.readonly() {
-        return Err("This theme file is read-only.".into());
-    }
-    validate_manifest(&folder, data)?;
-    let bytes = serde_json::to_vec_pretty(data).map_err(|error| error.to_string())?;
-    if bytes.len() as u64 > JSON_LIMIT {
-        return Err("theme.json exceeds 256 KiB.".into());
-    }
-    let mut temporary =
-        tempfile::NamedTempFile::new_in(&folder).map_err(|error| error.to_string())?;
-    temporary
-        .write_all(&bytes)
-        .map_err(|error| error.to_string())?;
-    temporary
-        .as_file()
-        .set_permissions(permissions)
-        .map_err(|error| error.to_string())?;
-    temporary
-        .as_file()
-        .sync_all()
-        .map_err(|error| error.to_string())?;
-    // Check immediately before replacement so an external edit is not silently lost.
-    if &manifest(&folder)? != expected {
-        return Err("This theme changed on disk. Reopen the editor before saving; your draft is still available.".into());
+    validate_modern(&folder, &parse_raw(raw)?)?;
+    let path = folder.join("theme.jsonc");
+    let mut temporary = tempfile::NamedTempFile::new_in(&folder).map_err(|e| e.to_string())?;
+    if path.try_exists().map_err(|e| e.to_string())? {
+        let checked = inside(&folder, "theme.jsonc")?;
+        let permissions = fs::metadata(checked)
+            .map_err(|e| e.to_string())?
+            .permissions();
+        if permissions.readonly() {
+            return Err("This theme file is read-only.".into());
+        }
+        temporary
+            .as_file()
+            .set_permissions(permissions)
+            .map_err(|e| e.to_string())?;
     }
     temporary
-        .persist(&path)
-        .map_err(|error| error.to_string())?;
+        .write_all(raw.as_bytes())
+        .map_err(|e| e.to_string())?;
+    temporary.as_file().sync_all().map_err(|e| e.to_string())?;
+    if hash(document_raw(&folder)?.0.as_bytes()) != expected {
+        return Err("This theme changed on disk. Your draft is retained; reopen the editor or copy your draft before reloading.".into());
+    }
+    temporary.persist(path).map_err(|e| e.to_string())?;
     Ok(())
 }
 
@@ -554,7 +808,7 @@ pub fn open_themes_folder(
     let mut path = library(&app)?;
     if let Some(id) = id {
         valid_id(&id)?;
-        path = inside(&path, &id)?;
+        path = theme_root(&app, &id)?;
     }
     app.opener()
         .open_path(path.to_string_lossy().into_owned(), None::<&str>)
@@ -641,6 +895,10 @@ fn import(root: &Path, source: &Path) -> Result<String, String> {
     let result = (|| {
         copy_package(&source, &temporary, &mut 0, &mut 0, 0)?;
         manifest(&temporary)?;
+        if !temporary.join("theme.jsonc").exists() {
+            let (raw, _) = document_raw(&temporary)?;
+            fs::write(temporary.join("theme.jsonc"), raw).map_err(|e| e.to_string())?;
+        }
         fs::rename(&temporary, root.join(&id)).map_err(|error| error.to_string())?;
         Ok(id)
     })();
@@ -659,7 +917,7 @@ pub async fn import_theme(
     authorize(window.label(), true)?;
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<Themes>();
-        let _guard = state.0.lock().map_err(|error| error.to_string())?;
+        let _guard = state.lock.lock().map_err(|error| error.to_string())?;
         import(&library(&app)?, Path::new(&path))
     })
     .await
@@ -673,7 +931,7 @@ pub fn create_theme(
     state: State<'_, Themes>,
 ) -> Result<String, String> {
     authorize(window.label(), true)?;
-    let _guard = state.0.lock().map_err(|error| error.to_string())?;
+    let _guard = state.lock.lock().map_err(|error| error.to_string())?;
     create_starter(&library(&app)?)
 }
 
@@ -687,37 +945,20 @@ fn create_starter(root: &Path) -> Result<String, String> {
     let temporary = root.join(format!(".create-{id}"));
     fs::create_dir(&temporary).map_err(|error| error.to_string())?;
     let result = (|| {
-        fs::create_dir(temporary.join("images")).map_err(|error| error.to_string())?;
-        fs::create_dir(temporary.join("styles")).map_err(|error| error.to_string())?;
-        for (path, contents) in [
-            (
-                "theme.json",
-                include_str!("../../themes/deepmono-custom/theme.json"),
-            ),
-            (
-                "theme.css",
-                include_str!("../../themes/deepmono-custom/theme.css"),
-            ),
-            (
-                "styles/components.css",
-                include_str!("../../themes/deepmono-custom/styles/components.css"),
-            ),
-            (
-                "images/graphite.svg",
-                include_str!("../../themes/deepmono-custom/images/graphite.svg"),
-            ),
-            (
-                "theme.schema.json",
-                include_str!("../../themes/theme.schema.json"),
-            ),
-            (
-                "tokens.json",
-                include_str!("../../themes/default-tokens.json"),
-            ),
-            ("README.md", include_str!("../../themes/README.md")),
-        ] {
-            fs::write(temporary.join(path), contents).map_err(|error| error.to_string())?;
-        }
+        let raw = serde_json::to_vec_pretty(&serde_json::json!({
+            "$schema": "./theme.schema.json",
+            "version": 2,
+            "name": "My theme",
+            "appearance": "adaptive",
+            "common": {}
+        }))
+        .map_err(|error| error.to_string())?;
+        fs::write(temporary.join("theme.jsonc"), raw).map_err(|error| error.to_string())?;
+        fs::write(
+            temporary.join("theme.schema.json"),
+            include_str!("../../themes/theme.schema.json"),
+        )
+        .map_err(|error| error.to_string())?;
         manifest(&temporary)?;
         fs::rename(&temporary, root.join(&id)).map_err(|error| error.to_string())?;
         Ok(id)
@@ -788,7 +1029,43 @@ pub fn protocol(
             if request.method() != "GET" {
                 return Err("Only GET is supported.".into());
             }
-            asset(&library(&app)?, request.uri().path())
+            let path = request.uri().path();
+            let encoded = path
+                .trim_start_matches('/')
+                .split('/')
+                .next()
+                .ok_or("Missing theme id.")?;
+            let id = percent_decode_str(encoded)
+                .decode_utf8()
+                .map_err(|e| e.to_string())?;
+            if id.starts_with("@plugin-") {
+                let decoded = percent_decode_str(path.trim_start_matches('/'))
+                    .decode_utf8()
+                    .map_err(|e| e.to_string())?;
+                let mut parts = decoded.splitn(3, '/');
+                parts.next();
+                let revision = parts.next().ok_or("Missing revision.")?;
+                if revision.is_empty()
+                    || !revision
+                        .bytes()
+                        .all(|c| c.is_ascii_alphanumeric() || c == b'-')
+                {
+                    return Err("Invalid revision.".into());
+                }
+                let path = parts.next().ok_or("Missing resource path.")?;
+                let mime = mime(path).ok_or("Unsupported theme resource.")?;
+                let bytes = read_limited(
+                    &inside(&theme_root(&app, &id)?, path)?,
+                    if mime.starts_with("text/css") {
+                        JSON_LIMIT
+                    } else {
+                        ASSET_LIMIT
+                    },
+                )?;
+                Ok((mime, bytes))
+            } else {
+                asset(&library(&app)?, path)
+            }
         });
         let (status, mime, bytes) = match result {
             Ok((mime, bytes)) => (200, mime, bytes),
@@ -816,50 +1093,73 @@ mod tests {
     use super::*;
 
     #[test]
-    fn saves_layouts_atomically_and_preserves_external_changes_and_invalid_drafts() {
+    fn shared_grammar_and_duplicate_preserve_comments_resources_and_originals() {
+        let root = tempfile::tempdir().unwrap();
+        let fixtures: Value =
+            serde_json::from_str(include_str!("../../tests/fixtures/themes/grammar.json")).unwrap();
+        for fixture in fixtures.as_array().unwrap() {
+            let result = parse_raw(fixture["raw"].as_str().unwrap())
+                .and_then(|data| validate_modern(root.path(), &data));
+            assert_eq!(
+                result.is_ok(),
+                fixture["valid"].as_bool().unwrap(),
+                "{}: {result:?}",
+                fixture["name"]
+            );
+        }
+        let source = root.path().join("source");
+        fs::create_dir(&source).unwrap();
+        let raw = "// Keep this comment\n{\"version\":2,\"name\":\"Copy\"}";
+        fs::write(source.join("theme.jsonc"), raw).unwrap();
+        let copied = duplicate(root.path(), Some(&source)).unwrap();
+        assert_eq!(
+            fs::read_to_string(root.path().join(copied).join("theme.jsonc")).unwrap(),
+            raw
+        );
+        assert_eq!(fs::read_to_string(source.join("theme.jsonc")).unwrap(), raw);
+        let builtin = duplicate(root.path(), None).unwrap();
+        assert_eq!(manifest(&root.path().join(builtin)).unwrap()["version"], 2);
+    }
+    #[test]
+    fn raw_jsonc_saves_preserve_comments_revisions_permissions_and_legacy_sources() {
         let root = tempfile::tempdir().unwrap();
         let folder = fixture(root.path());
-        let original = manifest(&folder).unwrap();
-        let mut data = original.clone();
-        data["layout"] =
-            serde_json::json!({"tabs":"below", "statusbar":"top", "settingsNavigation":"right"});
-        data["tokens"] = serde_json::json!({"--pane-spacing":"10px", "--pane-border":"3px solid var(--color-outline)"});
-        save_manifest(root.path(), "sample", &original, &data).unwrap();
-        assert_eq!(manifest(&folder).unwrap(), data);
-        assert!(save_manifest(root.path(), "sample", &original, &original)
-            .unwrap_err()
-            .contains("changed on disk"));
-        for layout in [
-            serde_json::json!(null),
-            serde_json::json!({"tabs":"vertical"}),
-            serde_json::json!({"unknown":"left"}),
+        let legacy = fs::read(folder.join("theme.json")).unwrap();
+        let original = bundle(root.path(), "sample").unwrap();
+        let raw = r#"{ // preserve this comment
+ "version":2,"name":"Raw","common":{"layout":{"tabs":"below"}},}"#;
+        save_manifest(root.path(), "sample", &original.revision, &raw).unwrap();
+        assert_eq!(fs::read_to_string(folder.join("theme.jsonc")).unwrap(), raw);
+        assert_eq!(fs::read(folder.join("theme.json")).unwrap(), legacy);
+        assert!(
+            save_manifest(root.path(), "sample", &original.revision, &raw)
+                .unwrap_err()
+                .contains("changed on disk")
+        );
+        let next = bundle(root.path(), "sample").unwrap();
+        for invalid in [
+            "{",
+            r#"{"version":2,"version":2,"name":"Duplicate"}"#,
+            r#"{"version":2,"name":"Missing","resources":{"stylesheets":["missing.css"]}}"#,
+            r#"{"version":2,"name":"Invalid","common":{"layout":{"tabs":"floating"}}}"#,
         ] {
-            let mut invalid = data.clone();
-            invalid["layout"] = layout;
-            assert!(save_manifest(root.path(), "sample", &data, &invalid).is_err());
-            assert_eq!(manifest(&folder).unwrap(), data);
+            assert!(save_manifest(root.path(), "sample", &next.revision, invalid).is_err());
+            assert_eq!(fs::read_to_string(folder.join("theme.jsonc")).unwrap(), raw);
         }
-        let mut missing = data.clone();
-        missing["stylesheet"] = serde_json::json!("missing.css");
-        assert!(save_manifest(root.path(), "sample", &data, &missing).is_err());
-        assert_eq!(manifest(&folder).unwrap(), data);
-        assert_eq!(fs::read_dir(&folder).unwrap().count(), 3);
-        assert!(save_manifest(root.path(), "../sample", &data, &data).is_err());
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let path = folder.join("theme.json");
+            let path = folder.join("theme.jsonc");
             fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
-            save_manifest(root.path(), "sample", &data, &data).unwrap();
+            save_manifest(root.path(), "sample", &next.revision, &raw).unwrap();
             assert_eq!(
                 fs::metadata(&path).unwrap().permissions().mode() & 0o777,
                 0o640
             );
             fs::set_permissions(&path, fs::Permissions::from_mode(0o440)).unwrap();
-            assert!(save_manifest(root.path(), "sample", &data, &original)
+            assert!(save_manifest(root.path(), "sample", &next.revision, &raw)
                 .unwrap_err()
                 .contains("read-only"));
-            assert_eq!(manifest(&folder).unwrap(), data);
         }
     }
 
@@ -883,9 +1183,17 @@ mod tests {
             "user changes"
         );
         let theme = bundle(root.path(), "my-theme-2").unwrap();
-        assert_eq!(theme.manifest["name"], "DeepMono Custom");
+        let data = parse_raw(&theme.raw).unwrap();
+        assert_eq!(data["name"], "My theme");
+        assert_eq!(data["appearance"], "adaptive");
+        assert_eq!(data["common"], serde_json::json!({}));
         assert!(root.path().join("my-theme-2/theme.schema.json").is_file());
-        assert!(asset(root.path(), "/my-theme-2/1/images/graphite.svg").is_ok());
+        assert_eq!(
+            fs::read_dir(root.path().join("my-theme-2"))
+                .unwrap()
+                .count(),
+            2
+        );
     }
 
     #[test]
@@ -911,7 +1219,7 @@ mod tests {
         fs::write(theme.join("theme.json"), data.to_string()).unwrap();
         let id = import(root.path(), &theme).unwrap();
         assert_eq!(
-            bundle(root.path(), &id).unwrap().manifest["stylesheets"],
+            parse_raw(&bundle(root.path(), &id).unwrap().raw).unwrap()["resources"]["stylesheets"],
             data["stylesheets"]
         );
         assert_eq!(
@@ -1055,4 +1363,77 @@ mod tests {
         assert_eq!(fs::read_dir(root.path()).unwrap().count(), 0);
         assert!(asset(source.path(), "/sample/1/outside.svg").is_err());
     }
+}
+
+fn resource_identity(
+    root: &Path,
+    output: &mut String,
+    count: &mut usize,
+    depth: usize,
+) -> Result<(), String> {
+    if depth > 16 {
+        return Err("Theme resources exceed 16 levels.".into());
+    }
+    let mut entries = fs::read_dir(root)
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| e.to_string())?;
+    entries.sort_by_key(|entry| entry.file_name());
+    for entry in entries {
+        *count += 1;
+        if *count > 1024 {
+            return Err("Too many theme resources.".into());
+        }
+        let metadata = entry.metadata().map_err(|e| e.to_string())?;
+        output.push_str(&format!(
+            "{:?}:{:?}:{}",
+            entry.file_name(),
+            metadata.modified().map_err(|e| e.to_string())?,
+            metadata.len()
+        ));
+        if entry.file_type().map_err(|e| e.to_string())?.is_symlink() {
+            return Err("Theme resources cannot use symbolic links.".into());
+        }
+        if metadata.is_dir() {
+            resource_identity(&entry.path(), output, count, depth + 1)?;
+        }
+    }
+    Ok(())
+}
+#[tauri::command]
+pub fn duplicate_theme(
+    window: Window,
+    app: tauri::AppHandle,
+    state: State<'_, Themes>,
+    id: Option<String>,
+) -> Result<String, String> {
+    authorize(window.label(), true)?;
+    let _guard = state.lock.lock().map_err(|e| e.to_string())?;
+    let source = id.as_ref().map(|id| theme_root(&app, id)).transpose()?;
+    duplicate(&library(&app)?, source.as_deref())
+}
+fn duplicate(root: &Path, source: Option<&Path>) -> Result<String, String> {
+    let stage = tempfile::Builder::new()
+        .prefix(".duplicate-")
+        .tempdir_in(root)
+        .map_err(|e| e.to_string())?;
+    let folder = stage.path().join("package");
+    let raw = if let Some(source) = source {
+        copy_package(source, &folder, &mut 0, &mut 0, 0)?;
+        document_raw(&folder)?.0
+    } else {
+        fs::create_dir(&folder).map_err(|e| e.to_string())?;
+        include_str!("../../themes/deepmono.json").to_string()
+    };
+    // Preserve the source text, comments and resources; authors can rename their copy in the editor.
+    fs::write(folder.join("theme.jsonc"), raw).map_err(|e| e.to_string())?;
+    manifest(&folder)?;
+    let mut id = "theme-copy".to_string();
+    let mut suffix = 2;
+    while root.join(&id).exists() {
+        id = format!("theme-copy-{suffix}");
+        suffix += 1;
+    }
+    fs::rename(folder, root.join(&id)).map_err(|e| e.to_string())?;
+    Ok(id)
 }

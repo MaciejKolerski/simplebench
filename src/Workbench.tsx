@@ -1,6 +1,12 @@
+import { builtinViews } from "./plugins/builtins";
+import { listen } from "@tauri-apps/api/event";
+import PluginPanel from "./plugins/PluginPanel";
+import { useThemes } from "./ThemeProvider";
+import { pluginHost, HostContext } from "./plugins/runtime";
+import { setPluginCloseHandler } from "./plugins/PluginsProvider";
+import { pluginPanels, updatePluginPanel, newId } from "./model";
 import Select from "./Select";
 import {
-  lazy,
   Suspense,
   useCallback,
   useEffect,
@@ -70,6 +76,7 @@ import type {
   SidebarPanel,
   Split,
   TabCloseAction,
+  TabDropSide,
   TerminalTab,
   Workspace,
 } from "./model";
@@ -89,19 +96,20 @@ import Sidebar from "./Sidebar";
 import SidebarToggle from "./SidebarToggle";
 import Workspaces from "./Workspaces";
 import Welcome from "./Welcome";
-import CommitDetails from "./CommitDetails";
-import FileDiff from "./FileDiff";
-import BrowserPane from "./BrowserPane";
 import { configureBrowsers, retainBrowsers } from "./browser-runtime";
 import SplitView from "./SplitView";
 import { usePaneMotion } from "./pane-motion";
 import { usePointerFocus } from "./usePointerFocus";
-import { useWindowZoom } from "./useWindowZoom";
+import { useWindowZoom, changeWindowZoom } from "./useWindowZoom";
 import TabBar from "./TabBar";
 import FileEditorStatus from "./FileEditorStatus";
 import { useKeybindings } from "./KeybindingsProvider";
 import { useTerminalPreferences } from "./TerminalPreferencesProvider";
 import { defaultTerminalProfile } from "./terminal-preferences";
+import type { ActionId } from "./keybindings";
+import CommandPicker from "./plugins/CommandPicker";
+import { PluginFills, Slot, SlotProvider } from "./plugins/Slots";
+import { commandAvailable } from "./plugins/host";
 import {
   actionForEvent,
   isTextInput,
@@ -131,8 +139,6 @@ import type { FileChange, FileOperation } from "./explorer-model";
 import type { SearchMatch } from "./ProjectSearch";
 import "@xterm/xterm/css/xterm.css";
 
-const FileEditor = lazy(() => import("./FileEditor"));
-
 type Dialog =
   | {
       type: "name";
@@ -161,12 +167,14 @@ function initialize() {
         saved &&
         typeof saved === "object" &&
         "version" in saved &&
-        saved.version !== 1
+        saved.version !== 1 &&
+        saved.version !== 2
       ) {
         throw new Error(
           "This session was saved in an unsupported format. The saved file has been left intact.",
         );
       }
+      if (saved) restoreSession(saved, info);
       return { info, saved, restoreError: "" };
     } catch (error) {
       return { info, saved: null, restoreError: errorMessage(error) };
@@ -224,10 +232,18 @@ function useGit(root: string) {
 
 export default function Workbench() {
   const closeGuard = useCloseGuard();
+  const theme = useThemes();
   useSyncExternalStore(subscribeEditors, editorRevision);
   const fileOpenRequest = useRef(0);
   const fileOperationBusy = useRef(false);
   const preferences = useKeybindings();
+  const [commandPicker, setCommandPicker] = useState(false);
+  const [docking, setDocking] = useState<{
+    mode: "movePanel" | "dockTab";
+    target: string;
+    side: TabDropSide;
+  } | null>(null);
+  const executeBuiltin = useRef<(id: ActionId) => void>(() => {});
   const terminalPreferences = useTerminalPreferences();
   const { bindings } = preferences;
   const [info, setInfo] = useState<AppInfo>();
@@ -250,6 +266,9 @@ export default function Workbench() {
       currentSession.current = next;
       retainEditorTabs(next);
       retainBrowsers(next);
+      pluginHost.retainPanels(
+        new Set(next ? pluginPanels(next).map((panel) => panel.id) : []),
+      );
       renderPaneLayout(
         () => renderSession(next),
         animate &&
@@ -260,6 +279,146 @@ export default function Workbench() {
     },
     [renderPaneLayout],
   );
+  useEffect(
+    () =>
+      setPluginCloseHandler(async (owner) => {
+        const ids = new Set(
+          (currentSession.current ? pluginPanels(currentSession.current) : [])
+            .filter((p) => p.owner === owner)
+            .map((p) => p.id),
+        );
+        return closeGuard.confirm(ids, []);
+      }),
+    [closeGuard.confirm],
+  );
+  const [focusedPlugin, setFocusedPlugin] = useState<string | null>(null);
+  const focusedSidebar = selected?.workspace.pluginSidebars?.find(
+    (panel) =>
+      panel.id === focusedPlugin &&
+      (session?.sidebar === panel.viewType ||
+        session?.rightSidebar === panel.viewType),
+  );
+  const hostContext = {
+    projectPath: selected?.project.path ?? null,
+    workspaceName: selected?.workspace.name ?? null,
+    activePanelId: selected ? (activePanel(selected.tab)?.id ?? null) : null,
+    viewType: selected
+      ? ((activePanel(selected.tab)?.type === "plugin"
+          ? (activePanel(selected.tab) as import("./model").PluginPanel)
+              .viewType
+          : activePanel(selected.tab)?.type) ?? null)
+      : null,
+    appearance: theme.snapshot.appearance,
+    themeRevision: theme.snapshot.sourceRevision,
+  };
+  if (focusedSidebar) {
+    hostContext.activePanelId = focusedSidebar.id;
+    hostContext.viewType = focusedSidebar.viewType;
+  }
+  useEffect(() => {
+    const focus = (event: FocusEvent) => {
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest(".terminal-stage, .tab-bar") &&
+        !target.closest(".sidebar")
+      )
+        setFocusedPlugin(null);
+    };
+    document.addEventListener("focusin", focus);
+    return () => document.removeEventListener("focusin", focus);
+  }, []);
+  useEffect(() => {
+    pluginHost.setContext(hostContext);
+    pluginHost.openView = async (viewType, value) => {
+      const state = currentSession.current;
+      const selection = state && active(state);
+      if (!state || !selection) throw new Error("Open a workspace first.");
+      const entry = pluginHost.catalog.entries.find((e) =>
+        e.manifest?.contributes?.views?.some((v) => v.id === viewType),
+      );
+      const view = entry?.manifest?.contributes?.views?.find(
+        (v) => v.id === viewType,
+      );
+      if (!entry || !view) throw new Error("Unknown plugin view.");
+      if (view.placement === "sidebar") {
+        const existing = selection.workspace.pluginSidebars?.find(
+          (p) => p.viewType === viewType,
+        );
+        const panel = existing ?? {
+          type: "plugin" as const,
+          id: newId(),
+          title: view.title,
+          owner: entry.id,
+          viewType,
+          stateVersion: view.stateVersion,
+          state: value,
+        };
+        const side = state.sidebarSides[viewType as SidebarPanel] ?? "left";
+        const next = updateWorkspace(state, selection.workspace.id, (w) => ({
+          ...w,
+          pluginSidebars: existing
+            ? w.pluginSidebars
+            : [...(w.pluginSidebars ?? []), panel],
+        }));
+        setSession(moveSidebar(next, viewType as SidebarPanel, side));
+        return panel.id;
+      }
+      const existing =
+        !view.multiple &&
+        pluginPanels(state).find(
+          (p) =>
+            p.viewType === viewType &&
+            selection.workspace.tabs.some(
+              (t) =>
+                t.id === p.id ||
+                (t.type === "terminal" &&
+                  layoutPanes(t.layout).some((pane) => pane.id === p.id)),
+            ),
+        );
+      const panel = existing || {
+        type: "plugin" as const,
+        id: newId(),
+        title: view.title,
+        owner: entry.id,
+        viewType,
+        stateVersion: view.stateVersion,
+        state: value,
+      };
+      setSession(
+        updateWorkspace(state, selection.workspace.id, (w) => {
+          const parent = w.tabs.find(
+            (t) =>
+              t.id === panel.id ||
+              (t.type === "terminal" &&
+                layoutPanes(t.layout).some((p) => p.id === panel.id)),
+          );
+          return {
+            ...w,
+            tabs: parent
+              ? w.tabs.map((t) =>
+                  t === parent && t.type === "terminal"
+                    ? { ...t, activePaneId: panel.id }
+                    : t,
+                )
+              : [...w.tabs, panel],
+            activeTabId: parent?.id ?? panel.id,
+          };
+        }),
+      );
+      return panel.id;
+    };
+    if (session) pluginHost.start();
+    pluginHost.panelOwner = (id) =>
+      currentSession.current
+        ? pluginPanels(currentSession.current).find((panel) => panel.id === id)
+            ?.owner
+        : undefined;
+    pluginHost.retainPanels(
+      new Set(session ? pluginPanels(session).map((panel) => panel.id) : []),
+    );
+    pluginHost.theme(theme.snapshot.revision, theme.snapshot.appearance);
+  }, [session, theme.snapshot, focusedPlugin]);
   const [error, setError] = useState("");
   const [diffRevision, setDiffRevision] = useState(0);
   useWindowZoom(setError);
@@ -303,6 +462,33 @@ export default function Workbench() {
     }
     return true;
   });
+  useEffect(() => {
+    if (!native) return;
+    const stop = listen("plugin-restart-request", () => {
+      void (async () => {
+        if (
+          closing.current ||
+          fileOperationBusy.current ||
+          updater.busy.current
+        )
+          return;
+        closing.current = true;
+        try {
+          if (!(await closeGuard.confirm())) return;
+          if (currentSession.current && savingEnabled.current)
+            await saveSession(captureEditorPositions(currentSession.current));
+          await api("restart_plugins");
+        } catch (error) {
+          setError(errorMessage(error));
+        } finally {
+          closing.current = false;
+        }
+      })();
+    });
+    return () => {
+      void stop.then((stop) => stop()).catch(() => {});
+    };
+  }, [closeGuard.confirm]);
   const git = useGit(selected?.project.path ?? "");
   const closeProjectMenu = useCallback(() => setProjectMenuOpen(false), []);
 
@@ -504,8 +690,12 @@ export default function Workbench() {
     if (!tab) return;
     const modified = new Set(
       workspace.tabs
-        .filter((tab) =>
-          filesInTab(tab).some((file) => loadedEditor(file)?.dirty),
+        .filter(
+          (tab) =>
+            filesInTab(tab).some((file) => loadedEditor(file)?.dirty) ||
+            (tab.type === "terminal"
+              ? layoutPanes(tab.layout).some((p) => pluginHost.isDirty(p.id))
+              : pluginHost.isDirty(tab.id)),
         )
         .map((tab) => tab.id),
     );
@@ -515,8 +705,11 @@ export default function Workbench() {
     const fileIds = new Set(
       workspace.tabs
         .filter((tab) => ids.has(tab.id))
-        .flatMap(filesInTab)
-        .map((file) => file.id),
+        .flatMap((tab) =>
+          tab.type === "terminal"
+            ? layoutPanes(tab.layout).map((p) => p.id)
+            : [tab.id],
+        ),
     );
     if (
       !ids.size ||
@@ -561,79 +754,27 @@ export default function Workbench() {
   useEffect(() => {
     if (!session || !info || !preferences.ready || !terminalPreferences.ready)
       return;
-    const keyboard = (event: KeyboardEvent) => {
+    const execute = (action: ActionId) => {
       const selected = currentSession.current && active(currentSession.current);
       const panel = selected && activePanel(selected.tab);
-      const inEditor =
-        event.target instanceof Element &&
-        !!event.target.closest(".file-editor");
-      const action = actionForEvent(event, bindings);
-      if (
-        event.defaultPrevented ||
-        document.querySelector("dialog[open]") ||
-        (event.target instanceof Element &&
-          event.target.closest(
-            ".tab-context-menu, .editor-status-menu, .sidebar-context-menu, .markdown-preview-menu, .explorer-context-menu",
-          )) ||
-        (isTextInput(event.target) &&
-          !inEditor &&
-          !(
-            action === "terminalOverview" &&
-            event.target instanceof Element &&
-            event.target.closest(".terminal-pane")
-          ))
-      )
+      if (isZoomAction(action)) {
+        void changeWindowZoom(action).catch((error) =>
+          setError(errorMessage(error)),
+        );
         return;
-      if (!action || action === "runCommand" || isZoomAction(action)) return;
-      if (
-        action === "terminalOverview" &&
-        (selected?.tab.type !== "terminal" ||
-          !panes(selected.tab.layout).length)
-      )
+      }
+      if (action === "runCommand") {
+        document
+          .querySelector<HTMLButtonElement>(
+            ".terminal-pane.is-active .composer-run:not(:disabled)",
+          )
+          ?.click();
         return;
-      const editorAction = [
-        "saveFile",
-        "findFile",
-        "goToLine",
-        "toggleWordWrap",
-      ].includes(action);
-      if (editorAction && panel?.type !== "file") return;
-      if (
-        ["newTerminal", "splitVertical"].includes(action) &&
-        selected?.tab.type !== "terminal"
-      )
+      }
+      if (action === "commandPicker") {
+        setCommandPicker(true);
         return;
-      if (
-        panel?.type !== "terminal" &&
-        [
-          "searchTerminal",
-          "commandInput",
-          "commandBlocks",
-          "copyTerminal",
-          "pasteTerminal",
-          "changeEnvironment",
-        ].includes(action)
-      )
-        return;
-      if (
-        !selected &&
-        action !== "openSettings" &&
-        action !== "toggleWorkspaces"
-      )
-        return;
-      if (action === "toggleSourceControl" && !git.status) return;
-      if (
-        (action === "copyTerminal" || action === "pasteTerminal") &&
-        !(
-          event.target instanceof Element &&
-          event.target.classList.contains("xterm-helper-textarea")
-        )
-      )
-        return;
-      // Capture application shortcuts before xterm can forward them to the PTY.
-      event.preventDefault();
-      event.stopPropagation();
-      if (event.repeat) return;
+      }
       setProjectMenuOpen(false);
       if (action === "openSettings") {
         openSettings();
@@ -645,9 +786,44 @@ export default function Workbench() {
       }
       if (!selected) return;
       const { workspace, tab } = selected;
+      const sidebar = workspace.pluginSidebars?.find(
+        (panel) => panel.id === pluginHost.context.activePanelId,
+      );
+      if (sidebar && action === "closeTerminal") {
+        void (async () => {
+          if (await closeGuard.confirm(new Set([sidebar.id]), []))
+            change((state) =>
+              updateWorkspace(state, workspace.id, (w) => ({
+                ...w,
+                pluginSidebars: w.pluginSidebars?.filter(
+                  (panel) => panel.id !== sidebar.id,
+                ),
+              })),
+            );
+        })();
+        return;
+      }
       const runtime =
         panel?.type === "terminal" ? runningTerminal(panel.id) : undefined;
       switch (action) {
+        case "movePanel":
+        case "dockTab": {
+          const target =
+            action === "movePanel"
+              ? tab.type === "terminal"
+                ? layoutPanes(tab.layout).find((p) => p.id !== tab.activePaneId)
+                    ?.id
+                : undefined
+              : workspace.tabs.find(
+                  (t) => t.type === "terminal" && t.id !== tab.id,
+                )?.id;
+          if (!target || tab.type === "diff" || tab.type === "commit") {
+            setError("There is no compatible docking target.");
+            break;
+          }
+          setDocking({ mode: action, target, side: "right" });
+          break;
+        }
         case "terminalOverview":
           setTerminalOverview((shown) => !shown);
           break;
@@ -720,6 +896,112 @@ export default function Workbench() {
           break;
         }
       }
+    };
+    executeBuiltin.current = execute;
+    const keyboard = (event: KeyboardEvent) => {
+      const selected = currentSession.current && active(currentSession.current);
+      const panel = selected && activePanel(selected.tab);
+      const inEditor =
+        event.target instanceof Element &&
+        !!event.target.closest(".file-editor");
+      const action = actionForEvent(event, bindings);
+      if (
+        event.defaultPrevented ||
+        document.querySelector("dialog[open]") ||
+        (event.target instanceof Element &&
+          event.target.closest(
+            ".tab-context-menu, .editor-status-menu, .sidebar-context-menu, .markdown-preview-menu, .explorer-context-menu",
+          )) ||
+        (isTextInput(event.target) &&
+          !action?.includes(".") &&
+          !inEditor &&
+          !(
+            action === "terminalOverview" &&
+            event.target instanceof Element &&
+            event.target.closest(".terminal-pane")
+          ))
+      )
+        return;
+      if (!action || action === "runCommand" || isZoomAction(action)) return;
+      if (action.includes(".")) {
+        const entry = pluginHost.catalog.entries.find(
+          (e) =>
+            e.enabled &&
+            e.manifest?.contributes?.commands?.some((c) => c.id === action),
+        );
+        const command = entry?.manifest?.contributes?.commands?.find(
+          (c) => c.id === action,
+        );
+        if (
+          !entry ||
+          !command ||
+          !commandAvailable(
+            command.context,
+            pluginHost.context,
+            isTextInput(event.target),
+          )
+        )
+          return;
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.repeat)
+          void pluginHost
+            .execute(action, isTextInput(event.target))
+            .catch((error) => setError(errorMessage(error)));
+        return;
+      }
+
+      if (
+        action === "terminalOverview" &&
+        (selected?.tab.type !== "terminal" ||
+          !panes(selected.tab.layout).length)
+      )
+        return;
+      const editorAction = [
+        "saveFile",
+        "findFile",
+        "goToLine",
+        "toggleWordWrap",
+      ].includes(action);
+      if (editorAction && panel?.type !== "file") return;
+      if (
+        ["newTerminal", "splitVertical"].includes(action) &&
+        selected?.tab.type !== "terminal"
+      )
+        return;
+      if (
+        panel?.type !== "terminal" &&
+        [
+          "searchTerminal",
+          "commandInput",
+          "commandBlocks",
+          "copyTerminal",
+          "pasteTerminal",
+          "changeEnvironment",
+        ].includes(action)
+      )
+        return;
+      if (
+        !selected &&
+        action !== "commandPicker" &&
+        action !== "openSettings" &&
+        action !== "toggleWorkspaces"
+      )
+        return;
+      if (action === "toggleSourceControl" && !git.status) return;
+      if (
+        (action === "copyTerminal" || action === "pasteTerminal") &&
+        !(
+          event.target instanceof Element &&
+          event.target.classList.contains("xterm-helper-textarea")
+        )
+      )
+        return;
+      // Capture application shortcuts before xterm can forward them to the PTY.
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.repeat) return;
+      execute(action);
     };
     window.addEventListener("keydown", keyboard, true);
     return () => window.removeEventListener("keydown", keyboard, true);
@@ -921,7 +1203,14 @@ export default function Workbench() {
         if (
           !target ||
           !(await closeGuard.confirm(
-            new Set(target.tabs.flatMap(filesInTab).map((file) => file.id)),
+            new Set([
+              ...(target.pluginSidebars ?? []).map((panel) => panel.id),
+              ...target.tabs.flatMap((tab) =>
+                tab.type === "terminal"
+                  ? layoutPanes(tab.layout).map((p) => p.id)
+                  : [tab.id],
+              ),
+            ]),
             target.tabs.flatMap((tab) =>
               tab.type === "terminal"
                 ? panes(tab.layout).map((pane) => pane.id)
@@ -994,38 +1283,60 @@ export default function Workbench() {
   );
   if (!selected)
     return (
-      <div className="app-shell">
-        <header className="titlebar" data-tauri-drag-region>
-          {projectPicker}
-          <div className="titlebar-space" data-tauri-drag-region />
-          <IconButton
-            title={shortcutTitle("Settings", bindings.openSettings)}
-            onClick={openSettings}
-          >
-            <Settings size={16} />
-          </IconButton>
-          <WindowControls onError={setError} />
-        </header>
-        {notice}
-        <div className="work-area">
-          {workspacePanel}
-          <Welcome
-            busy={browsing}
-            onOpenFolder={() => void browse()}
-            onNewFile={() => void browse("file")}
-          />
-        </div>
-        <footer className="statusbar">
-          {workspaceToggle}
-          <span className="status-spacer" />
-        </footer>
-        {dialog && (
-          <AppDialog dialog={dialog} onClose={() => setDialog(null)} />
-        )}
-        {updater.dialog}
-        {closeGuard.dialog}
-        {cliTitles.dialog}
-      </div>
+      <HostContext.Provider value={hostContext}>
+        <SlotProvider>
+          <PluginFills />
+          <div className="app-shell">
+            <header className="titlebar" data-tauri-drag-region>
+              {projectPicker}
+              <div className="titlebar-space" data-tauri-drag-region />
+              <IconButton
+                title={shortcutTitle("Settings", bindings.openSettings)}
+                onClick={openSettings}
+              >
+                <Settings size={16} />
+              </IconButton>
+              <WindowControls onError={setError} />
+            </header>
+            {notice}
+            <div className="work-area">
+              {workspacePanel}
+              <Welcome
+                busy={browsing}
+                onOpenFolder={() => void browse()}
+                onNewFile={() => void browse("file")}
+              />
+            </div>
+            <footer className="statusbar">
+              {workspaceToggle}
+              <Slot name="statusbar" />
+              <button
+                className="text-button"
+                onClick={() => setCommandPicker(true)}
+              >
+                Commands
+              </button>
+              <span className="status-spacer" />
+            </footer>
+            {dialog && (
+              <AppDialog dialog={dialog} onClose={() => setDialog(null)} />
+            )}
+            {commandPicker && (
+              <CommandPicker
+                onClose={() => setCommandPicker(false)}
+                onBuiltin={(id) => {
+                  setCommandPicker(false);
+                  executeBuiltin.current(id);
+                }}
+                onError={setError}
+              />
+            )}
+            {updater.dialog}
+            {closeGuard.dialog}
+            {cliTitles.dialog}
+          </div>
+        </SlotProvider>
+      </HostContext.Provider>
     );
   const { project, workspace, tab } = selected;
   const panel = activePanel(tab);
@@ -1040,6 +1351,80 @@ export default function Workbench() {
     git.status || (git.loading && sidebarOpen("git"))
       ? ["files", "git"]
       : ["files"];
+  const pluginSidebarViews = workspace.pluginSidebars ?? [];
+  const pluginSidebars = pluginSidebarViews
+    .filter((panel) => sidebarOpen(panel.viewType as SidebarPanel))
+    .map((panel) => {
+      const side =
+        session.sidebarSides[panel.viewType as SidebarPanel] ?? "left";
+      const width = side === "left" ? "sidebarWidth" : "rightSidebarWidth";
+      return (
+        <Sidebar
+          key={panel.id}
+          side={side}
+          width={session[width]}
+          label={panel.title}
+          onResize={(value) =>
+            change((state) => ({ ...state, [width]: value }))
+          }
+        >
+          <Slot name="sidebar-actions" />
+          <PluginPanel
+            panel={panel}
+            placement="sidebar"
+            active
+            onFocus={() => {
+              setFocusedPlugin(panel.id);
+              pluginHost.setContext({
+                ...hostContext,
+                activePanelId: panel.id,
+                viewType: panel.viewType,
+              });
+            }}
+            setState={(value) =>
+              change((state) => updatePluginPanel(state, panel.id, value))
+            }
+            onClose={() =>
+              void (async () => {
+                if (await closeGuard.confirm(new Set([panel.id]), []))
+                  change((state) =>
+                    updateWorkspace(state, workspace.id, (w) => ({
+                      ...w,
+                      pluginSidebars: w.pluginSidebars?.filter(
+                        (p) => p.id !== panel.id,
+                      ),
+                    })),
+                  );
+              })()
+            }
+          />
+        </Sidebar>
+      );
+    });
+  const pluginSidebarToggles = pluginSidebarViews.map((panel) => (
+    <div
+      className="status-panel-control"
+      data-side={session.sidebarSides[panel.viewType as SidebarPanel] ?? "left"}
+      key={panel.id}
+    >
+      <SidebarToggle
+        panel={panel.viewType as SidebarPanel}
+        side={session.sidebarSides[panel.viewType as SidebarPanel] ?? "left"}
+        active={sidebarOpen(panel.viewType as SidebarPanel)}
+        title={panel.title}
+        onToggle={() =>
+          change((state) =>
+            toggleSidebar(state, panel.viewType as SidebarPanel),
+          )
+        }
+        onMove={(side) =>
+          change((state) =>
+            moveSidebar(state, panel.viewType as SidebarPanel, side),
+          )
+        }
+      />
+    </div>
+  ));
   const selectTab = (id: string) =>
     change((state) =>
       updateWorkspace(state, workspace.id, (workspace) => ({
@@ -1110,7 +1495,7 @@ export default function Workbench() {
     }
     if (
       !(await closeGuard.confirm(
-        new Set(pane.type === "file" ? [id] : []),
+        new Set(pane.type === "file" || pane.type === "plugin" ? [id] : []),
         pane.type === "terminal" ? [id] : [],
       ))
     )
@@ -1340,398 +1725,582 @@ export default function Workbench() {
   };
 
   return (
-    <div className="app-shell">
-      <header className="titlebar" data-tauri-drag-region>
-        {projectPicker}
-        <TabBar
-          key={workspace.id}
-          tabs={workspace.tabs}
-          modified={
-            new Set(
-              workspace.tabs
-                .filter((tab) =>
-                  filesInTab(tab).some((file) => loadedEditor(file)?.dirty),
+    <HostContext.Provider value={hostContext}>
+      <SlotProvider>
+        <PluginFills />
+        <div className="app-shell">
+          <header className="titlebar" data-tauri-drag-region>
+            {projectPicker}
+            <TabBar
+              key={workspace.id}
+              tabs={workspace.tabs}
+              modified={
+                new Set(
+                  workspace.tabs
+                    .filter(
+                      (tab) =>
+                        filesInTab(tab).some(
+                          (file) => loadedEditor(file)?.dirty,
+                        ) ||
+                        (tab.type === "terminal"
+                          ? layoutPanes(tab.layout).some((p) =>
+                              pluginHost.isDirty(p.id),
+                            )
+                          : pluginHost.isDirty(tab.id)),
+                    )
+                    .map((tab) => tab.id),
                 )
-                .map((tab) => tab.id),
-            )
-          }
-          activeTabId={tab.id}
-          newTabTitle={shortcutTitle("New tab", bindings.newTab)}
-          onNew={() => addTab()}
-          onNewBrowser={() =>
-            change((state) => {
-              const added = newBrowserTab();
-              return updateWorkspace(state, workspace.id, (current) => ({
-                ...current,
-                tabs: [...current.tabs, added],
-                activeTabId: added.id,
-              }));
-            })
-          }
-          onNewFile={() =>
-            change((state) => {
-              const file = newFileTab(state);
-              return updateWorkspace(state, workspace.id, (current) => ({
-                ...current,
-                tabs: [...current.tabs, file],
-                activeTabId: file.id,
-              }));
-            })
-          }
-          onSelect={selectTab}
-          onClose={closeTab}
-          mergeContainer={terminalLayout}
-          onMove={(id, beforeId) =>
-            change((state) =>
-              updateWorkspace(state, workspace.id, (current) =>
-                moveTab(current, id, beforeId),
-              ),
-            )
-          }
-          onMerge={(id, targetId, side) => {
-            const container = terminalLayout.current;
-            if (!container) return;
-            change(
-              (state) =>
-                updateWorkspace(state, workspace.id, (current) =>
-                  current.activeTabId === targetId
-                    ? mergeTabs(current, id, targetId, side, {
-                        width: container.clientWidth,
-                        height: container.clientHeight,
-                      })
-                    : current,
-                ),
-              true,
-            );
-          }}
-          onRename={(candidate) =>
-            setDialog({
-              type: "name",
-              title: "Rename tab",
-              initial: tabTitle(candidate),
-              submit: (title) =>
-                change((state) =>
-                  updateTab(state, candidate.id, (tab) => ({
-                    ...tab,
-                    customTitle: title,
-                  })),
-                ),
-            })
-          }
-        />
-        <div className="titlebar-space" data-tauri-drag-region />
-        <IconButton
-          title={shortcutTitle("Settings", bindings.openSettings)}
-          onClick={openSettings}
-        >
-          <Settings size={16} />
-        </IconButton>
-        <WindowControls onError={setError} />
-      </header>
-      {notice}
-      <div className="work-area">
-        {workspacePanel}
-        {sidebarPanels.filter(sidebarOpen).map((panel) => {
-          const side = session.sidebarSides[panel];
-          const widthKey =
-            side === "left" ? "sidebarWidth" : "rightSidebarWidth";
-          return (
-            <Sidebar
-              key={panel}
-              side={side}
-              width={session[widthKey]}
-              label={panel === "files" ? "Explorer" : "Source Control"}
-              onResize={(width) =>
-                change((state) => ({ ...state, [widthKey]: width }))
               }
-            >
-              {panel === "files" ? (
-                <Explorer
-                  key={project.path}
-                  root={project.path}
-                  onTerminal={addTab}
-                  onOpenFile={(relative, match) =>
-                    void openFile(relative, project.path, match)
-                  }
-                  gitStatus={git.status}
-                  onRefreshGit={git.refresh}
-                  onOpenCommit={openHistoryCommit}
-                  onOperation={operateFile}
-                  onError={setError}
-                />
-              ) : (
-                <SourceControl
-                  key={project.path}
-                  status={git.status}
-                  loading={git.loading}
-                  onRefresh={git.refresh}
-                  onPull={async (rebase) => {
-                    const root = git.status!.root;
-                    if (fileOperationBusy.current)
-                      throw new Error(
-                        "Wait for the current file operation to finish.",
-                      );
-                    fileOperationBusy.current = true;
-                    let resume: (() => void) | undefined;
-                    try {
-                      resume = await pauseEditorFileOperations();
-                      await api("git_pull", { root, rebase });
-                    } finally {
-                      resume?.();
-                      fileOperationBusy.current = false;
-                      setDiffRevision((value) => value + 1);
-                    }
-                  }}
-                  onDiff={diff}
-                  onOpenCommit={openHistoryCommit}
-                  onOpenFile={(path) => void openFile(path, git.status!.root)}
-                  onDiscard={async (change) => {
-                    const root = git.status!.root;
-                    if (fileOperationBusy.current)
-                      throw new Error(
-                        "Wait for the current file operation to finish.",
-                      );
-                    fileOperationBusy.current = true;
-                    let resume: (() => void) | undefined;
-                    try {
-                      resume = await pauseEditorFileOperations();
-                      const path = `${root.replace(/[\\/]$/, "")}/${change.path}`;
-                      if (
-                        fileTabs(currentSession.current!).some((file) => {
-                          const document = loadedEditor(file);
-                          return (
-                            document?.dirty && containsPath(path, document.path)
-                          );
-                        })
-                      )
-                        throw new Error(
-                          "Save or discard unsaved editor changes before discarding Git changes.",
-                        );
-                      await api("git_discard", { root, change });
-                    } finally {
-                      resume?.();
-                      fileOperationBusy.current = false;
-                    }
-                  }}
-                  onError={setError}
-                />
-              )}
-            </Sidebar>
-          );
-        })}
-        <main
-          className="terminal-stage"
-          id={`panel-${tab.id}`}
-          role="tabpanel"
-          aria-labelledby={`tab-${tab.id}`}
-        >
-          {tab.type === "diff" ? (
-            <FileDiff
-              key={tab.id}
-              tab={tab}
-              requestRevision={diffRevision}
-              onOpenFile={() => void openFile(tab.relative, tab.root)}
+              activeTabId={tab.id}
+              newTabTitle={shortcutTitle("New tab", bindings.newTab)}
+              onNew={() => addTab()}
+              onNewBrowser={() =>
+                change((state) => {
+                  const added = newBrowserTab();
+                  return updateWorkspace(state, workspace.id, (current) => ({
+                    ...current,
+                    tabs: [...current.tabs, added],
+                    activeTabId: added.id,
+                  }));
+                })
+              }
+              onNewFile={() =>
+                change((state) => {
+                  const file = newFileTab(state);
+                  return updateWorkspace(state, workspace.id, (current) => ({
+                    ...current,
+                    tabs: [...current.tabs, file],
+                    activeTabId: file.id,
+                  }));
+                })
+              }
+              onSelect={selectTab}
+              onClose={closeTab}
+              mergeContainer={terminalLayout}
+              onMove={(id, beforeId) =>
+                change((state) =>
+                  updateWorkspace(state, workspace.id, (current) =>
+                    moveTab(current, id, beforeId),
+                  ),
+                )
+              }
+              onMerge={(id, targetId, side) => {
+                const container = terminalLayout.current;
+                if (!container) return;
+                change(
+                  (state) =>
+                    updateWorkspace(state, workspace.id, (current) =>
+                      current.activeTabId === targetId
+                        ? mergeTabs(current, id, targetId, side, {
+                            width: container.clientWidth,
+                            height: container.clientHeight,
+                          })
+                        : current,
+                    ),
+                  true,
+                );
+              }}
+              onRename={(candidate) =>
+                setDialog({
+                  type: "name",
+                  title: "Rename tab",
+                  initial: tabTitle(candidate),
+                  submit: (title) =>
+                    change((state) =>
+                      updateTab(state, candidate.id, (tab) => ({
+                        ...tab,
+                        customTitle: title,
+                      })),
+                    ),
+                })
+              }
             />
-          ) : tab.type === "commit" ? (
-            <CommitDetails
-              key={tab.id}
-              root={tab.root}
-              commitId={tab.commit}
-              onOpenFile={(path) => void openFile(path, tab.root)}
-              onOpenCommit={(commit) => openHistoryCommit(commit, tab.root)}
+            <div className="titlebar-space" data-tauri-drag-region />
+            <IconButton
+              title={shortcutTitle("Settings", bindings.openSettings)}
+              onClick={openSettings}
+            >
+              <Settings size={16} />
+            </IconButton>
+            <WindowControls onError={setError} />
+          </header>
+          {notice}
+          <div className="work-area">
+            {workspacePanel}
+            {pluginSidebars}
+            {sidebarPanels.filter(sidebarOpen).map((panel) => {
+              const side = session.sidebarSides[panel];
+              const widthKey =
+                side === "left" ? "sidebarWidth" : "rightSidebarWidth";
+              return (
+                <Sidebar
+                  key={panel}
+                  side={side}
+                  width={session[widthKey]}
+                  label={panel === "files" ? "Explorer" : "Source Control"}
+                  onResize={(width) =>
+                    change((state) => ({ ...state, [widthKey]: width }))
+                  }
+                >
+                  {panel === "files" ? (
+                    <Explorer
+                      key={project.path}
+                      root={project.path}
+                      onTerminal={addTab}
+                      onOpenFile={(relative, match) =>
+                        void openFile(relative, project.path, match)
+                      }
+                      gitStatus={git.status}
+                      onRefreshGit={git.refresh}
+                      onOpenCommit={openHistoryCommit}
+                      onOperation={operateFile}
+                      onError={setError}
+                    />
+                  ) : (
+                    <SourceControl
+                      key={project.path}
+                      status={git.status}
+                      loading={git.loading}
+                      onRefresh={git.refresh}
+                      onPull={async (rebase) => {
+                        const root = git.status!.root;
+                        if (fileOperationBusy.current)
+                          throw new Error(
+                            "Wait for the current file operation to finish.",
+                          );
+                        fileOperationBusy.current = true;
+                        let resume: (() => void) | undefined;
+                        try {
+                          resume = await pauseEditorFileOperations();
+                          await api("git_pull", { root, rebase });
+                        } finally {
+                          resume?.();
+                          fileOperationBusy.current = false;
+                          setDiffRevision((value) => value + 1);
+                        }
+                      }}
+                      onDiff={diff}
+                      onOpenCommit={openHistoryCommit}
+                      onOpenFile={(path) =>
+                        void openFile(path, git.status!.root)
+                      }
+                      onDiscard={async (change) => {
+                        const root = git.status!.root;
+                        if (fileOperationBusy.current)
+                          throw new Error(
+                            "Wait for the current file operation to finish.",
+                          );
+                        fileOperationBusy.current = true;
+                        let resume: (() => void) | undefined;
+                        try {
+                          resume = await pauseEditorFileOperations();
+                          const path = `${root.replace(/[\\/]$/, "")}/${change.path}`;
+                          if (
+                            fileTabs(currentSession.current!).some((file) => {
+                              const document = loadedEditor(file);
+                              return (
+                                document?.dirty &&
+                                containsPath(path, document.path)
+                              );
+                            })
+                          )
+                            throw new Error(
+                              "Save or discard unsaved editor changes before discarding Git changes.",
+                            );
+                          await api("git_discard", { root, change });
+                        } finally {
+                          resume?.();
+                          fileOperationBusy.current = false;
+                        }
+                      }}
+                      onError={setError}
+                    />
+                  )}
+                </Sidebar>
+              );
+            })}
+            <main
+              className="terminal-stage"
+              id={`panel-${tab.id}`}
+              role="tabpanel"
+              aria-labelledby={`tab-${tab.id}`}
+            >
+              {tab.type === "diff" ? (
+                <builtinViews.diff
+                  key={tab.id}
+                  tab={tab}
+                  requestRevision={diffRevision}
+                  onOpenFile={() => void openFile(tab.relative, tab.root)}
+                />
+              ) : tab.type === "commit" ? (
+                <builtinViews.commit
+                  key={tab.id}
+                  root={tab.root}
+                  commitId={tab.commit}
+                  onOpenFile={(path) => void openFile(path, tab.root)}
+                  onOpenCommit={(commit) => openHistoryCommit(commit, tab.root)}
+                  onError={setError}
+                />
+              ) : tab.type === "browser" ? (
+                <builtinViews.browser
+                  key={tab.id}
+                  tab={tab}
+                  onClose={() => void closeTab(tab.id)}
+                />
+              ) : tab.type === "plugin" ? (
+                <PluginPanel
+                  panel={tab}
+                  active
+                  setState={(value) =>
+                    change((state) => updatePluginPanel(state, tab.id, value))
+                  }
+                  onFocus={() => {}}
+                  onClose={() => void closeTab(tab.id)}
+                />
+              ) : tab.type === "file" ? (
+                <Suspense
+                  fallback={
+                    <div className="empty-message" role="status">
+                      Loading editor…
+                    </div>
+                  }
+                >
+                  <builtinViews.file
+                    key={tab.id}
+                    tab={tab}
+                    onOpenFile={(root, relative) =>
+                      void openFile(relative, root)
+                    }
+                    onMarkdownView={(view) =>
+                      change((state) => updateMarkdownView(state, tab.id, view))
+                    }
+                    onPosition={(position) =>
+                      change((state) =>
+                        updateFilePosition(state, tab.id, position),
+                      )
+                    }
+                  />
+                </Suspense>
+              ) : (
+                <div className="terminal-layout" ref={terminalLayout}>
+                  <SplitView
+                    key={tab.id}
+                    layout={tab.layout}
+                    profile={profile}
+                    profiles={info.profiles}
+                    activePaneId={tab.activePaneId}
+                    overview={terminalOverview}
+                    onFocus={(id) => {
+                      if (id !== tab.activePaneId)
+                        modifyTab((tab) => ({ ...tab, activePaneId: id }));
+                    }}
+                    onRestart={restartPane}
+                    onMove={(id, targetId, side) => {
+                      const container = terminalLayout.current;
+                      if (!container) return;
+                      modifyTab((tab) => {
+                        const layout = movePane(
+                          tab.layout,
+                          id,
+                          targetId,
+                          side,
+                          {
+                            width: container.clientWidth,
+                            height: container.clientHeight,
+                          },
+                        );
+                        return layout === tab.layout
+                          ? tab
+                          : { ...tab, layout, activePaneId: id };
+                      }, true);
+                    }}
+                    onClosePane={closePane}
+                    onPluginState={(id, value) =>
+                      change((state) => updatePluginPanel(state, id, value))
+                    }
+                    onFilePosition={(id, position) =>
+                      change((state) => updateFilePosition(state, id, position))
+                    }
+                    onMarkdownView={(id, view) =>
+                      change((state) => updateMarkdownView(state, id, view))
+                    }
+                    onOpenFile={(root, relative) =>
+                      void openFile(relative, root)
+                    }
+                    onKeepActivePane={async () => {
+                      const kept = allPanes.find(
+                        (pane) => pane.id === tab.activePaneId,
+                      )!;
+                      const removed = allPanes.filter(
+                        (pane) => pane.id !== kept.id,
+                      );
+                      if (
+                        !(await closeGuard.confirm(
+                          new Set(
+                            removed
+                              .filter(
+                                (pane) =>
+                                  pane.type === "file" ||
+                                  pane.type === "plugin",
+                              )
+                              .map((pane) => pane.id),
+                          ),
+                          removed
+                            .filter((pane) => pane.type === "terminal")
+                            .map((pane) => pane.id),
+                        ))
+                      )
+                        return;
+                      closeTerminals(
+                        removed
+                          .filter((pane) => pane.type === "terminal")
+                          .map((pane) => pane.id),
+                      );
+                      modifyTab((tab) => ({ ...tab, layout: kept }));
+                      setPaneNotice("");
+                    }}
+                    onResize={(id, ratio) =>
+                      modifyTab((tab) => ({
+                        ...tab,
+                        layout: resizeSplit(tab.layout, id, ratio),
+                      }))
+                    }
+                  />
+                </div>
+              )}
+              {paneNotice && (
+                <div className="pane-limit-notice" role="status">
+                  <span>{paneNotice}</span>
+                  <IconButton
+                    title="Dismiss panel limit"
+                    onClick={() => setPaneNotice("")}
+                  >
+                    <X size={14} />
+                  </IconButton>
+                </div>
+              )}
+            </main>
+          </div>
+          <footer className="statusbar">
+            {workspaceToggle}
+            {sidebarPanels.map((panel) => (
+              <div
+                key={panel}
+                className="status-panel-control"
+                data-side={session.sidebarSides[panel]}
+              >
+                <SidebarToggle
+                  panel={panel}
+                  side={session.sidebarSides[panel]}
+                  active={sidebarOpen(panel)}
+                  title={
+                    panel === "files"
+                      ? shortcutTitle(
+                          "Toggle file explorer",
+                          bindings.toggleExplorer,
+                        )
+                      : shortcutTitle(
+                          "Toggle source control",
+                          bindings.toggleSourceControl,
+                        )
+                  }
+                  onToggle={() =>
+                    change((state) => toggleSidebar(state, panel))
+                  }
+                  onMove={(side) =>
+                    change((state) => moveSidebar(state, panel, side))
+                  }
+                />
+                {panel === "git" && git.status && (
+                  <>
+                    <span className="status-divider" />
+                    <button
+                      className="branch-status"
+                      title="Show source control"
+                      onClick={() =>
+                        change((state) => showSidebar(state, "git"))
+                      }
+                    >
+                      <GitBranch size={12} />
+                      {git.status.branch}
+                      {git.status.changes.length > 0 && (
+                        <span className="count-badge">
+                          {git.status.changes.length}
+                        </span>
+                      )}
+                    </button>
+                  </>
+                )}
+              </div>
+            ))}
+            <div
+              className="status-panel-control"
+              data-side={session.terminalOverviewSide}
+            >
+              <SidebarToggle
+                panel="terminalOverview"
+                side={session.terminalOverviewSide}
+                title={shortcutTitle(
+                  "Toggle terminal overview",
+                  bindings.terminalOverview,
+                )}
+                active={tab.type === "terminal" && terminalOverview}
+                disabled={tab.type !== "terminal" || !panes(tab.layout).length}
+                onToggle={() => setTerminalOverview((shown) => !shown)}
+                onMove={(side) =>
+                  change((state) => ({ ...state, terminalOverviewSide: side }))
+                }
+              />
+            </div>
+            {pluginSidebarToggles}
+            <Slot name="statusbar" />
+            <button
+              className="text-button"
+              onClick={() => setCommandPicker(true)}
+            >
+              Commands
+            </button>
+            <span className="status-spacer" />
+            {editorDocument && (
+              <FileEditorStatus
+                key={editorDocument.path}
+                document={editorDocument}
+              />
+            )}
+          </footer>
+          {docking && (
+            <Modal
+              title={
+                docking.mode === "movePanel"
+                  ? "Move active panel"
+                  : "Dock current tab"
+              }
+              onClose={() => setDocking(null)}
+            >
+              <form
+                className="dialog-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const element =
+                    terminalLayout.current ??
+                    document.querySelector<HTMLElement>(".terminal-stage");
+                  if (!element) return;
+                  const size = {
+                    width: element.clientWidth,
+                    height: element.clientHeight,
+                  };
+                  const next =
+                    docking.mode === "dockTab"
+                      ? mergeTabs(
+                          workspace,
+                          tab.id,
+                          docking.target,
+                          docking.side,
+                          size,
+                        )
+                      : tab.type === "terminal"
+                        ? (() => {
+                            const layout = movePane(
+                              tab.layout,
+                              tab.activePaneId,
+                              docking.target,
+                              docking.side,
+                              size,
+                            );
+                            return layout === tab.layout
+                              ? workspace
+                              : {
+                                  ...workspace,
+                                  tabs: workspace.tabs.map((t) =>
+                                    t.id === tab.id ? { ...tab, layout } : t,
+                                  ),
+                                };
+                          })()
+                        : workspace;
+                  if (next === workspace) {
+                    setError(
+                      "The requested docking operation does not fit this layout.",
+                    );
+                    return;
+                  }
+                  change(
+                    (state) => updateWorkspace(state, workspace.id, () => next),
+                    true,
+                  );
+                  setDocking(null);
+                }}
+              >
+                <label>
+                  Target
+                  <Select
+                    aria-label="Docking target"
+                    value={docking.target}
+                    onChange={(target) => setDocking({ ...docking, target })}
+                    options={
+                      docking.mode === "dockTab"
+                        ? workspace.tabs
+                            .filter(
+                              (t) => t.type === "terminal" && t.id !== tab.id,
+                            )
+                            .map((t) => ({ value: t.id, label: tabTitle(t) }))
+                        : tab.type === "terminal"
+                          ? layoutPanes(tab.layout)
+                              .filter((p) => p.id !== tab.activePaneId)
+                              .map((p, index) => ({
+                                value: p.id,
+                                label: `${p.type} ${index + 1}${"title" in p ? ` · ${p.title}` : ""}`,
+                              }))
+                          : []
+                    }
+                  />
+                </label>
+                <label>
+                  Position
+                  <Select
+                    aria-label="Docking position"
+                    value={docking.side}
+                    onChange={(side) =>
+                      setDocking({ ...docking, side: side as TabDropSide })
+                    }
+                    options={["left", "right", "top", "bottom"].map(
+                      (value) => ({ value, label: value }),
+                    )}
+                  />
+                </label>
+                <div className="dialog-actions">
+                  <button
+                    type="button"
+                    className="button"
+                    onClick={() => setDocking(null)}
+                  >
+                    Cancel
+                  </button>
+                  <button className="button button-primary" type="submit">
+                    Dock
+                  </button>
+                </div>
+              </form>
+            </Modal>
+          )}
+          {commandPicker && (
+            <CommandPicker
+              onClose={() => setCommandPicker(false)}
+              onBuiltin={(id) => {
+                setCommandPicker(false);
+                executeBuiltin.current(id);
+              }}
               onError={setError}
             />
-          ) : tab.type === "browser" ? (
-            <BrowserPane
-              key={tab.id}
-              tab={tab}
-              onClose={() => void closeTab(tab.id)}
-            />
-          ) : tab.type === "file" ? (
-            <Suspense
-              fallback={
-                <div className="empty-message" role="status">
-                  Loading editor…
-                </div>
-              }
-            >
-              <FileEditor
-                key={tab.id}
-                tab={tab}
-                onOpenFile={(root, relative) => void openFile(relative, root)}
-                onMarkdownView={(view) =>
-                  change((state) => updateMarkdownView(state, tab.id, view))
-                }
-                onPosition={(position) =>
-                  change((state) => updateFilePosition(state, tab.id, position))
-                }
-              />
-            </Suspense>
-          ) : (
-            <div className="terminal-layout" ref={terminalLayout}>
-              <SplitView
-                key={tab.id}
-                layout={tab.layout}
-                profile={profile}
-                profiles={info.profiles}
-                activePaneId={tab.activePaneId}
-                overview={terminalOverview}
-                onFocus={(id) => {
-                  if (id !== tab.activePaneId)
-                    modifyTab((tab) => ({ ...tab, activePaneId: id }));
-                }}
-                onRestart={restartPane}
-                onMove={(id, targetId, side) => {
-                  const container = terminalLayout.current;
-                  if (!container) return;
-                  modifyTab((tab) => {
-                    const layout = movePane(tab.layout, id, targetId, side, {
-                      width: container.clientWidth,
-                      height: container.clientHeight,
-                    });
-                    return layout === tab.layout
-                      ? tab
-                      : { ...tab, layout, activePaneId: id };
-                  }, true);
-                }}
-                onClosePane={closePane}
-                onFilePosition={(id, position) =>
-                  change((state) => updateFilePosition(state, id, position))
-                }
-                onMarkdownView={(id, view) =>
-                  change((state) => updateMarkdownView(state, id, view))
-                }
-                onOpenFile={(root, relative) => void openFile(relative, root)}
-                onKeepActivePane={async () => {
-                  const kept = allPanes.find(
-                    (pane) => pane.id === tab.activePaneId,
-                  )!;
-                  const removed = allPanes.filter(
-                    (pane) => pane.id !== kept.id,
-                  );
-                  if (
-                    !(await closeGuard.confirm(
-                      new Set(
-                        removed
-                          .filter((pane) => pane.type === "file")
-                          .map((pane) => pane.id),
-                      ),
-                      removed
-                        .filter((pane) => pane.type === "terminal")
-                        .map((pane) => pane.id),
-                    ))
-                  )
-                    return;
-                  closeTerminals(
-                    removed
-                      .filter((pane) => pane.type === "terminal")
-                      .map((pane) => pane.id),
-                  );
-                  modifyTab((tab) => ({ ...tab, layout: kept }));
-                  setPaneNotice("");
-                }}
-                onResize={(id, ratio) =>
-                  modifyTab((tab) => ({
-                    ...tab,
-                    layout: resizeSplit(tab.layout, id, ratio),
-                  }))
-                }
-              />
-            </div>
           )}
-          {paneNotice && (
-            <div className="pane-limit-notice" role="status">
-              <span>{paneNotice}</span>
-              <IconButton
-                title="Dismiss panel limit"
-                onClick={() => setPaneNotice("")}
-              >
-                <X size={14} />
-              </IconButton>
-            </div>
+          {dialog && (
+            <AppDialog dialog={dialog} onClose={() => setDialog(null)} />
           )}
-        </main>
-      </div>
-      <footer className="statusbar">
-        {workspaceToggle}
-        {sidebarPanels.map((panel) => (
-          <div
-            key={panel}
-            className="status-panel-control"
-            data-side={session.sidebarSides[panel]}
-          >
-            <SidebarToggle
-              panel={panel}
-              side={session.sidebarSides[panel]}
-              active={sidebarOpen(panel)}
-              title={
-                panel === "files"
-                  ? shortcutTitle(
-                      "Toggle file explorer",
-                      bindings.toggleExplorer,
-                    )
-                  : shortcutTitle(
-                      "Toggle source control",
-                      bindings.toggleSourceControl,
-                    )
-              }
-              onToggle={() => change((state) => toggleSidebar(state, panel))}
-              onMove={(side) =>
-                change((state) => moveSidebar(state, panel, side))
-              }
-            />
-            {panel === "git" && git.status && (
-              <>
-                <span className="status-divider" />
-                <button
-                  className="branch-status"
-                  title="Show source control"
-                  onClick={() => change((state) => showSidebar(state, "git"))}
-                >
-                  <GitBranch size={12} />
-                  {git.status.branch}
-                  {git.status.changes.length > 0 && (
-                    <span className="count-badge">
-                      {git.status.changes.length}
-                    </span>
-                  )}
-                </button>
-              </>
-            )}
-          </div>
-        ))}
-        <div
-          className="status-panel-control"
-          data-side={session.terminalOverviewSide}
-        >
-          <SidebarToggle
-            panel="terminalOverview"
-            side={session.terminalOverviewSide}
-            title={shortcutTitle(
-              "Toggle terminal overview",
-              bindings.terminalOverview,
-            )}
-            active={tab.type === "terminal" && terminalOverview}
-            disabled={tab.type !== "terminal" || !panes(tab.layout).length}
-            onToggle={() => setTerminalOverview((shown) => !shown)}
-            onMove={(side) =>
-              change((state) => ({ ...state, terminalOverviewSide: side }))
-            }
-          />
+          {updater.dialog}
+          {closeGuard.dialog}
+          {cliTitles.dialog}
         </div>
-        <span className="status-spacer" />
-        {editorDocument && (
-          <FileEditorStatus
-            key={editorDocument.path}
-            document={editorDocument}
-          />
-        )}
-      </footer>
-      {dialog && <AppDialog dialog={dialog} onClose={() => setDialog(null)} />}
-      {updater.dialog}
-      {closeGuard.dialog}
-      {cliTitles.dialog}
-    </div>
+      </SlotProvider>
+    </HostContext.Provider>
   );
 }
 

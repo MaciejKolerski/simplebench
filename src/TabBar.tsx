@@ -9,6 +9,7 @@ import {
   Globe,
   Plus,
   Terminal,
+  Puzzle,
   X,
 } from "lucide-react";
 import type { Tab, TabCloseAction, TabDropSide } from "./model";
@@ -222,6 +223,8 @@ export default function TabBar({
                   <Globe size={14} />
                 ) : tab.type === "file" ? (
                   <FileCode size={14} />
+                ) : tab.type === "plugin" ? (
+                  <Puzzle size={14} />
                 ) : (
                   <Terminal size={14} />
                 )}

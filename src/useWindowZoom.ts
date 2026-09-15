@@ -45,6 +45,28 @@ function applyZoom(next: number) {
     );
 }
 
+export function changeWindowZoom(action: "zoomIn" | "zoomOut" | "resetZoom") {
+  pending = pending.then(async () => {
+    const next =
+      action === "resetZoom"
+        ? 100
+        : Math.max(
+            50,
+            Math.min(200, percentage + (action === "zoomIn" ? 10 : -10)),
+          );
+    if (next === percentage) return;
+    await applyZoom(next);
+    try {
+      localStorage.setItem(storageKey, String(next));
+    } catch {
+      // A storage failure must not prevent resizing the current window's content.
+    }
+  });
+  const result = pending;
+  pending = pending.catch(() => {});
+  return result;
+}
+
 export function useWindowZoom(onError: (message: string) => void) {
   const { bindings, ready } = useKeybindings();
   useEffect(() => {
@@ -73,26 +95,9 @@ export function useWindowZoom(onError: (message: string) => void) {
       if (!isZoomAction(action)) return;
       event.preventDefault();
       event.stopPropagation();
-      pending = pending
-        .then(async () => {
-          const next =
-            action === "resetZoom"
-              ? 100
-              : Math.max(
-                  50,
-                  Math.min(200, percentage + (action === "zoomIn" ? 10 : -10)),
-                );
-          if (next === percentage) return;
-          await applyZoom(next);
-          try {
-            localStorage.setItem(storageKey, String(next));
-          } catch {
-            // A storage failure must not prevent resizing the current window's content.
-          }
-        })
-        .catch((error) =>
-          onError(`Could not change zoom: ${errorMessage(error)}`),
-        );
+      void changeWindowZoom(action).catch((error) =>
+        onError(`Could not change zoom: ${errorMessage(error)}`),
+      );
     };
     window.addEventListener("keydown", keyboard, true);
     return () => window.removeEventListener("keydown", keyboard, true);

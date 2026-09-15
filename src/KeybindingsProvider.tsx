@@ -9,10 +9,17 @@ import {
 import type { ReactNode } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { api, errorMessage, macOS, native } from "./api";
-import { defaultKeybindings, restoreKeybindings } from "./keybindings";
-import type { Keybindings, KeybindingSettings } from "./keybindings";
+import { usePlugins } from "./plugins/PluginsProvider";
+import { defaultKeybindings, restoreKeybindings, actions } from "./keybindings";
+import type {
+  ActionId,
+  ShortcutAction,
+  Keybindings,
+  KeybindingSettings,
+} from "./keybindings";
 
 interface Preferences {
+  actions: readonly ShortcutAction[];
   bindings: Keybindings;
   defaults: Keybindings;
   focusFollowsPointer: boolean;
@@ -22,10 +29,33 @@ interface Preferences {
   save: (bindings: Keybindings, focusFollowsPointer?: boolean) => Promise<void>;
 }
 const Context = createContext<Preferences | null>(null);
-const defaults = defaultKeybindings(macOS);
+const builtinDefaults = defaultKeybindings(macOS);
 
 export function KeybindingsProvider({ children }: { children: ReactNode }) {
-  const [bindings, setBindings] = useState(defaults);
+  const { catalog } = usePlugins();
+  const contributions: ShortcutAction[] = catalog.entries.flatMap(
+    (entry) =>
+      entry.manifest?.contributes?.commands?.map((command) => ({
+        id: command.id as ActionId,
+        label: command.label,
+        description: command.description,
+        group: entry.manifest!.name,
+        shortcut:
+          entry.manifest?.contributes?.keybindings?.find(
+            (binding) => binding.command === command.id,
+          )?.shortcut ?? null,
+      })) ?? [],
+  );
+  const contributionKey = JSON.stringify(contributions);
+  const defaults = restoreKeybindings(
+    { version: 1, bindings: {} },
+    macOS,
+    contributions,
+  );
+  for (const action of contributions)
+    if (action.shortcut && defaults[action.id] === null)
+      action.description += ` Default ${action.shortcut} conflicts with another command; assign a free shortcut.`;
+  const [bindings, setBindings] = useState(builtinDefaults);
   const [focusFollowsPointer, setFocusFollowsPointer] = useState(false);
   const [ready, setReady] = useState(!native);
   const [error, setError] = useState("");
@@ -36,7 +66,7 @@ export function KeybindingsProvider({ children }: { children: ReactNode }) {
     const request = ++revision.current;
     try {
       const data = await api<KeybindingSettings | null>("load_keybindings");
-      const value = restoreKeybindings(data, macOS);
+      const value = restoreKeybindings(data, macOS, contributions);
       if (mounted.current && request === revision.current) {
         setBindings(value);
         setFocusFollowsPointer(data?.focusFollowsPointer ?? false);
@@ -48,7 +78,7 @@ export function KeybindingsProvider({ children }: { children: ReactNode }) {
     } finally {
       if (mounted.current && request === revision.current) setReady(true);
     }
-  }, []);
+  }, [contributionKey]);
   useEffect(() => {
     mounted.current = true;
     if (!native)
@@ -86,7 +116,7 @@ export function KeybindingsProvider({ children }: { children: ReactNode }) {
       bindings: next,
       focusFollowsPointer: pointerFocus,
     };
-    restoreKeybindings(data, macOS);
+    restoreKeybindings(data, macOS, contributions);
     if (native) await api("save_keybindings", { data });
     if (mounted.current) {
       ++revision.current;
@@ -98,6 +128,7 @@ export function KeybindingsProvider({ children }: { children: ReactNode }) {
   return (
     <Context.Provider
       value={{
+        actions: [...actions, ...contributions],
         bindings,
         defaults,
         focusFollowsPointer,

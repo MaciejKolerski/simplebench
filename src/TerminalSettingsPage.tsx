@@ -12,14 +12,14 @@ import {
   terminalBehaviorNumbers,
 } from "./terminal-preferences";
 import type { TerminalPreferences } from "./terminal-preferences";
-import { terminalColors, terminalEnums, terminalNumbers } from "./themes";
-import type { ThemeTerminal } from "./themes";
+import { terminalColors, terminalEnums, terminalNumbers } from "./theme/format";
+import type { ThemeTerminal } from "./theme/format";
 import {
   loadTerminalFonts,
   terminalAppearance,
   terminalPalette,
   themeAppliedEvent,
-} from "./theme-runtime";
+} from "./theme/runtime";
 
 const labels: Record<string, string> = {
   windowsShell: "Default shell",
@@ -68,7 +68,7 @@ const help: Record<string, string> = {
   windowsShell:
     "Used for new terminal tabs and workspaces. Existing terminals keep their shell, including when split or restored. PowerShell uses version 7 when installed, otherwise Windows PowerShell.",
   fontFamily:
-    "Use an installed font or a comma-separated fallback list. JetBrains Mono is bundled.",
+    "Use an installed font or a comma-separated fallback list. JetBrains Mono and fallback symbol fonts are bundled.",
   fontSize: "6–72 px.",
   lineHeight: "1–3 times the font height.",
   letterSpacing: "−2 to 20 px between characters.",

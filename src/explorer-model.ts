@@ -107,7 +107,7 @@ export function applyFileChange(
   };
   const layout = (item: Layout, project: Project): Layout | null => {
     if (item.type === "file") return file(item);
-    if (item.type === "browser") return item;
+    if (item.type === "browser" || item.type === "plugin") return item;
     if (item.type === "terminal")
       return {
         ...item,
@@ -128,7 +128,7 @@ export function applyFileChange(
           const updated = file(tab);
           return updated ? [updated] : [];
         }
-        if (tab.type === "browser") return [tab];
+        if (tab.type === "browser" || tab.type === "plugin") return [tab];
         if (tab.type === "diff") {
           if (newPath === null && containsPath(oldPath, tab.root)) return [];
           const root = relocate(tab.root);

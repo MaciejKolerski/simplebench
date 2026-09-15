@@ -320,7 +320,7 @@ test("JSON style validation rejects malformed declarations before saving", async
   await install(page);
   await settings(page);
   const result = await page.evaluate(async () => {
-    const { compileTheme } = await import("/src/theme-runtime.ts");
+    const { compileTheme } = await import("/src/theme/runtime.ts");
     const attempt = (styles: Record<string, Record<string, string>>) => {
       try {
         return {
@@ -447,7 +447,7 @@ test("theme controls save section spacing and layouts in both windows without re
   }
   await editor.getByRole("button", { name: "Save theme", exact: true }).click();
   await expect(editor.getByRole("status")).toContainText(
-    "applied to all windows",
+    "Open windows have been notified",
   );
   await expect(page.locator(".work-area")).toHaveCSS("padding", "12px");
   await expect(page.locator(".terminal-pane").first()).toHaveCSS(
@@ -522,7 +522,7 @@ test("theme controls save section spacing and layouts in both windows without re
     .getByRole("button", { name: "Create theme", exact: true })
     .click();
   const starter = preferences.getByRole("dialog", {
-    name: "Edit theme: Imported theme",
+    name: "Edit theme: My theme",
     exact: true,
   });
   await expect(starter).toBeVisible();
@@ -550,19 +550,21 @@ test("above-tab and horizontal settings navigation layouts fit without moving DO
   for (const settingsNavigation of ["top", "bottom"] as const) {
     for (const target of [page, preferences]) {
       await target.evaluate(async (settingsNavigation) => {
-        const { prepareTheme } = await import("/src/theme-runtime.ts");
+        const { prepareTheme } = await import("/src/theme/runtime.ts");
         const prepared = await prepareTheme(
           {
             id: "layout",
-            manifest: {
-              version: 1,
+            revision: "test",
+            directory: "/app/themes/layout",
+            raw: JSON.stringify({
+              version: 2,
               name: "Layout",
-              layout: { tabs: "above", settingsNavigation },
-            },
+              common: { layout: { tabs: "above", settingsNavigation } },
+            }),
           },
           { version: 1, active: "layout", appearance: "dark" },
         );
-        prepared.commit();
+        await prepared.commit();
       }, settingsNavigation);
     }
     const tabs = (await page.locator(".tab-bar").boundingBox())!;
@@ -598,11 +600,20 @@ test("theme editing preserves drafts on validation, disk failures, external edit
   });
   await editor.getByRole("button", { name: "Edit JSON", exact: true }).click();
   const json = editor.getByRole("textbox", { name: "Theme JSON", exact: true });
-  await json.fill('{"version":1,"name":"Draft","layout":{"tabs":"broken"}}');
-  await editor.getByRole("button", { name: "Save theme", exact: true }).click();
+  await json.fill(
+    '{"version":2,"name":"Draft","common":{"layout":{"tabs":"broken"}}}',
+  );
+  await expect(
+    editor.getByRole("button", { name: "Save theme", exact: true }),
+  ).toBeDisabled();
   await expect(editor.getByRole("alert")).toContainText("layout.tabs");
   expect(await calls(page, "save_theme_manifest")).toHaveLength(0);
-  const draft = JSON.stringify({ ...theme, name: "My draft", stylesheets: [] });
+  const draft = JSON.stringify({
+    version: 2,
+    name: "My draft",
+    common: { tokens: theme.tokens },
+    resources: { stylesheets: [] },
+  });
   await json.fill(draft);
   await page.evaluate(() => {
     (window as any).__nativeTest.failThemeSave = true;
@@ -633,4 +644,102 @@ test("theme editing preserves drafts on validation, disk failures, external edit
         JSON.parse(localStorage.getItem("test-theme-manifests")!).glass.name,
     ),
   ).toBe("External edit");
+});
+
+test("preview stays local and cancel restores working layers even when current files become invalid", async ({
+  page,
+  context,
+}) => {
+  await install(page);
+  await settings(page);
+  await page.getByRole("button", { name: "Use Graphite Glass theme" }).click();
+  const main = await context.newPage();
+  await install(main);
+  await main.goto("/");
+  await expect(main.locator(".terminal-pane")).toBeVisible();
+  await page.getByRole("button", { name: "Edit theme", exact: true }).click();
+  const editor = page.getByRole("dialog", {
+    name: "Edit theme: Graphite Glass",
+    exact: true,
+  });
+  await editor.getByRole("searchbox").fill("radius-control");
+  await editor
+    .getByRole("textbox", { name: "--radius-control", exact: true })
+    .fill("17px");
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await editor.getByRole("button", { name: "Preview", exact: true }).click();
+    await expect(page.locator("html")).toHaveCSS("--radius-control", "17px");
+    await expect(main.locator("html")).toHaveCSS("--radius-control", "12px");
+    if (attempt === 2)
+      await page.evaluate(() => {
+        const themes = JSON.parse(
+          localStorage.getItem("test-theme-manifests")!,
+        );
+        themes.glass.version = 99;
+        localStorage.setItem("test-theme-manifests", JSON.stringify(themes));
+      });
+    await editor
+      .getByRole("button", { name: "Cancel preview", exact: true })
+      .click();
+    await expect(page.locator("html")).toHaveCSS("--radius-control", "12px");
+    await expect(page.locator("[data-theme-held]")).toHaveCount(0);
+  }
+  await expect(
+    editor.getByRole("textbox", { name: "--radius-control", exact: true }),
+  ).toHaveValue("17px");
+  await expect(
+    editor.getByRole("button", { name: "Save theme", exact: true }),
+  ).toBeEnabled();
+  await page.screenshot({
+    path: test.info().outputPath("theme-preview-recovery.png"),
+  });
+});
+
+test("required font failures retain the active theme before any layer is swapped", async ({
+  page,
+}) => {
+  await mockDesktop(page);
+  await page.goto("/");
+  await expect(page.locator(".terminal-pane")).toBeVisible();
+  await page.route("**/broken.woff2", (route) =>
+    route.fulfill({ contentType: "font/woff2", body: "not a font" }),
+  );
+  const result = await page.evaluate(async () => {
+    const { prepareTheme, effectiveTheme } =
+      await import("/src/theme/runtime.ts");
+    const before = effectiveTheme().revision;
+    const background = getComputedStyle(
+      document.documentElement,
+    ).getPropertyValue("--color-background");
+    let failure = "";
+    try {
+      await prepareTheme(
+        {
+          id: "broken",
+          directory: "/themes/broken",
+          revision: "test",
+          raw: JSON.stringify({
+            version: 2,
+            name: "Broken",
+            common: { tokens: { "--color-background": "#abcdef" } },
+            resources: { assets: { font: "broken.woff2" } },
+          }),
+        },
+        { version: 1, active: "broken", appearance: "dark" },
+      );
+    } catch (error) {
+      failure = String(error);
+    }
+    return {
+      failure,
+      unchanged:
+        before === effectiveTheme().revision &&
+        background ===
+          getComputedStyle(document.documentElement).getPropertyValue(
+            "--color-background",
+          ),
+    };
+  });
+  expect(result.failure).toContain("Cannot load required font");
+  expect(result.unchanged).toBe(true);
 });

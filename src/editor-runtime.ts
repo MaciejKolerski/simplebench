@@ -32,7 +32,8 @@ import {
   writeEditorText,
 } from "./editor-text";
 import type { LineEndings } from "./editor-text";
-import { themeAppliedEvent } from "./theme-runtime";
+import { editorAppearance } from "./theme/editor";
+import { themeAppliedEvent } from "./theme/runtime";
 
 interface DiskFile {
   path: string;
@@ -298,11 +299,11 @@ export class EditorDocument {
 
   private applyAppearance = () => {
     if (this.disposed) return;
-    const dark = document.documentElement.dataset.appearance !== "light";
-    if (this.state.facet(EditorView.darkTheme) !== dark)
-      this.dispatch({
-        effects: this.appearance.reconfigure(EditorView.darkTheme.of(dark)),
-      });
+    this.dispatch({
+      effects: this.appearance.reconfigure(
+        editorAppearance(this.snapshot.large),
+      ),
+    });
     this.view?.requestMeasure();
   };
 
@@ -396,11 +397,7 @@ export class EditorDocument {
           autocapitalize: "off",
           autocorrect: "off",
         }),
-        this.appearance.of(
-          EditorView.darkTheme.of(
-            document.documentElement.dataset.appearance !== "light",
-          ),
-        ),
+        this.appearance.of(editorAppearance(this.snapshot.large)),
       ],
     });
   }

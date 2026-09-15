@@ -18,13 +18,11 @@ import {
   indentMore,
 } from "@codemirror/commands";
 import {
-  HighlightStyle,
   bracketMatching,
   foldGutter,
   foldKeymap,
   indentOnInput,
   indentUnit,
-  syntaxHighlighting,
 } from "@codemirror/language";
 import {
   autocompletion,
@@ -33,40 +31,6 @@ import {
   completionKeymap,
 } from "@codemirror/autocomplete";
 import { search, searchKeymap } from "@codemirror/search";
-import { tags } from "@lezer/highlight";
-
-const syntax = HighlightStyle.define([
-  {
-    tag: [tags.keyword, tags.modifier, tags.operatorKeyword],
-    color: "var(--color-accent-text)",
-    fontWeight: "600",
-  },
-  {
-    tag: [tags.string, tags.special(tags.string), tags.regexp],
-    color: "var(--color-info)",
-  },
-  {
-    tag: [tags.number, tags.bool, tags.null, tags.atom],
-    color: "var(--color-warning)",
-  },
-  {
-    tag: [tags.comment, tags.meta],
-    color: "var(--color-surface-variant-text)",
-    fontStyle: "italic",
-  },
-  {
-    tag: [tags.typeName, tags.className, tags.namespace],
-    color: "var(--color-muted-text)",
-  },
-  {
-    tag: [tags.function(tags.variableName), tags.function(tags.propertyName)],
-    color: "var(--color-background-text)",
-  },
-  { tag: [tags.heading, tags.strong], fontWeight: "bold" },
-  { tag: tags.emphasis, fontStyle: "italic" },
-  { tag: tags.link, textDecoration: "underline" },
-  { tag: tags.invalid, color: "var(--color-error)" },
-]);
 
 export function codeEditorExtensions(large = false): Extension {
   return [
@@ -113,7 +77,6 @@ export function codeEditorExtensions(large = false): Extension {
           closeBrackets(),
           foldGutter(),
           autocompletion(),
-          syntaxHighlighting(syntax),
         ]),
     EditorView.theme({
       "&": { height: "100%" },

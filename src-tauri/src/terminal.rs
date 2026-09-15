@@ -185,6 +185,16 @@ impl Terminals {
             .ok_or_else(|| "The terminal session is no longer running.".into())
     }
 
+    #[cfg(feature = "native-smoke")]
+    pub fn smoke_sessions(&self) -> serde_json::Value {
+        serde_json::json!(self
+            .sessions
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|(id, session)| (id.clone(), session.pid))
+            .collect::<std::collections::BTreeMap<_, _>>())
+    }
     pub fn stop_all(&self) {
         let sessions: Vec<_> = self
             .sessions

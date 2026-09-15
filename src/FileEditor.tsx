@@ -140,7 +140,7 @@ function DocumentEditor({
   };
   return (
     <section className="file-editor" aria-label={`Editor for ${tab.title}`}>
-      <header className="editor-heading">
+      <header className="editor-heading" data-pane-drag-handle>
         <FileCode size={15} />
         <span className="editor-path" title={document.path}>
           {tab.untitled ? tab.title : tab.relative}

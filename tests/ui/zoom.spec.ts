@@ -234,7 +234,9 @@ test("queued zoom shortcuts respect limits, composition and native failures", as
   });
   expect(await zoom(page)).toBe(1);
   await page.keyboard.press("Control+Minus");
-  await expect(page.getByRole("alert")).toContainText("Could not change zoom");
+  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toContainText(
+    "Could not change zoom",
+  );
   expect(await zoom(page)).toBe(1);
   expect(
     await page.evaluate(() => localStorage.getItem("simplebench.zoom.main")),

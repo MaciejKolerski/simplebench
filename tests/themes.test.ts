@@ -3,10 +3,10 @@ import assert from "node:assert/strict";
 import { newSession, restoreSession } from "../src/model.ts";
 import {
   builtinPreferences,
-  parseTheme,
+  parseLegacyTheme as parseTheme,
   relativeAsset,
   resolveAppearance,
-} from "../src/themes.ts";
+} from "../src/theme/format.ts";
 
 test("theme-sized sidebars retain widths outside the built-in drag limits", () => {
   const info = {
@@ -33,7 +33,7 @@ test("system appearance follows either OS mode while explicit choices take prece
   }
 });
 
-test("partial themes preserve alpha colors, local resources, and JSON component styles", () => {
+test("legacy migration inputs preserve alpha colors, local resources, and JSON component styles", () => {
   const theme = {
     version: 1,
     name: "Example",
@@ -51,7 +51,7 @@ test("partial themes preserve alpha colors, local resources, and JSON component 
     name: "Minimal",
   });
 });
-test("invalid versions, options, and misspelled sections are rejected before applying", () => {
+test("invalid legacy versions, options, and misspelled sections are rejected before applying", () => {
   for (const patch of [
     { version: 2 },
     { name: "" },

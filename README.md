@@ -74,7 +74,7 @@ AUR publication, and the optional Flathub handoff.
   committer, dates, hashes, changed files, line counts, and a selectable file
   diff. Merge commits are compared with their first parent; initial commits
   show the files they introduced. Reopening a commit selects its existing tab.
-- Settings opens a separate native window with Keybinds, Editor, Terminal, and Themes pages.
+- Settings opens a separate native window with Keybinds, Editor, Terminal, Themes, and Plugins pages.
   Record, clear, or reset shortcuts. Create/import JSON theme folders with local
   backgrounds, fonts, and CSS files declared in JSON. Changes apply to both
   windows immediately and persist across launches without restarting terminals.
@@ -426,7 +426,11 @@ The session layout file is limited to 8 MiB.
 Settings → Terminal customizes fonts, size, weight, spacing, the cursor, text
 and background colors, selection, the 16 ANSI colors, and search highlights.
 A terminal preview shows the applied appearance. Use an installed font or the
-bundled JetBrains Mono; unavailable fonts fall back to the browser's fonts.
+bundled JetBrains Mono. Bundled Noto Sans Symbols (1 and 2) and Symbols Nerd Font Mono
+provide Braille patterns, CLI symbols, and Nerd Font icons without installing
+system fonts or downloading them at runtime. These fallbacks also apply to
+custom terminal fonts and themes, before generic system families. Characters
+outside the bundled fonts' coverage still need a suitable system or theme font.
 Colors accept `#RRGGBB` and `#RRGGBBAA` (including opacity).
 
 On Windows, Default shell selects PowerShell or CMD for new tabs and workspaces.
@@ -541,6 +545,19 @@ Playwright tests run real CodeMirror and xterm in
 Chromium with a mocked Tauri command bridge; they do not replace native smoke
 checks. Set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` to use an existing Chromium binary.
 
+`pnpm test:ui` builds the required plugin fixture under `tests/fixtures/`.
+On Linux, native integration runs in isolated XDG folders with a real external
+plugin build, PTY, browser, theme watch and safe restart:
+
+```sh
+pnpm tauri build --no-bundle --features native-smoke
+node --experimental-strip-types tests/native/run-plugin-smoke.mjs
+```
+
+Native test support lives in `tests/native/` and is excluded from ordinary builds.
+The runner's isolation is Linux-specific; test WebView2 and WKWebView separately
+on their native operating systems.
+
 The desktop executable is written to `src-tauri/target/release/`. Run
 `pnpm tauri build` to also create the installers supported by the host OS.
 
@@ -563,12 +580,13 @@ src/SettingsWindow.tsx    Settings navigation and keybindings
 src/ThemesPage.tsx        Theme library, import, creation, and selection
 src/ThemeEditor.tsx       Theme token controls, layout presets, and JSON editing
 src/ThemeProvider.tsx     Theme persistence and cross-window synchronization
-src/themes.ts            Theme format and validation
-src/theme-runtime.ts     CSS application, local assets, and terminal appearance
+src/theme/format.ts            Theme format and validation
+src/theme/runtime.ts     CSS application, local assets, and terminal appearance
 src/SplitView.tsx         Recursive terminal layout and resize controls
 src/Explorer.tsx          File explorer and editor opening
 src/SourceControl.tsx     Git status, staging, and commit interface
-src/styles.css           Interface styles and DeepMono tokens
+src/styles.css           Interface styles
+src/theme/baseline.css   Startup DeepMono tokens
 src-tauri/src/terminal.rs Native PTY lifecycle and flow control
 src-tauri/src/shell.rs    Shell discovery, launch profiles, and path quoting
 src-tauri/shell/          Shell integration scripts
@@ -576,18 +594,45 @@ src-tauri/src/files.rs    Project files and session persistence
 src-tauri/src/files/editor.rs Scoped file editing, revisions, and native watches
 src-tauri/src/keybindings.rs Shortcut persistence and window access checks
 src-tauri/src/themes.rs   Theme packages, scoped assets, and preferences
-themes/                  Starter theme, JSON schema, and authoring guide
+themes/                  Built-in theme, JSON schema, and authoring guide
 src-tauri/src/git.rs      Git command backend
 src-tauri/capabilities/   Window-specific native API permissions
-tests/                   Model and interface tests
+tests/                   Model, interface, and native tests with required fixtures
 AGENTS.md                Project rules and commit conventions
 ```
 
+## Local plugins and docking
+
+Use **Settings → Plugins → Import plugin** to copy a prebuilt local package.
+Import inspects metadata only. **Enable… → Trust and enable** grants execution
+trust for that exact installed revision. Trusted plugins run with main-window
+application access; the SDK is not a sandbox. Settings never imports plugin code.
+
+Open declared commands/views through **Commands** (Ctrl+Shift+P), assign shortcuts
+in **Keybinds**, and place plugin sidebars independently of Explorer/Workspaces.
+Central plugin, terminal, editor and native-browser panels share Dockview inside
+terminal tabs. Ctrl-drag a pane's heading or drag an outer tab to dock it. Commands
+**Move active panel** and **Dock current tab** provide keyboard alternatives.
+The existing domain tree remains the only saved layout; Dockview renders it.
+
+Disable/uninstall resolves plugin-owned dirty views first. Cancel or failed saves
+leave the plugin working. Missing/disabled views keep their descriptor and state.
+Replacing evaluated code requires the explicit guarded restart in Settings.
+The [SDK guide](packages/plugin-sdk/README.md) includes public types/schema and
+the standalone build contract. Installing a prebuilt package requires no compiler
+or host rebuild. Package-supplied themes are available without enabling code.
+
+Session v1 migrates to v2 on a successful save, preserving `session.v1.json`.
+Theme v1 data migrates to JSONC while keeping its original file. Shortcut and
+terminal preference formats remain compatible. Start `simplebench --safe-mode`
+to skip third-party themes/code before loading. See the [recovery instructions](packages/plugin-sdk/README.md#limits-and-recovery).
+
 ## Themes and Linux graphics
 
-Use **Settings → Themes → Create theme** to create a complete starter package,
+Use **Settings → Themes → Create theme** to create a minimal adaptive theme
+with its JSON schema, inheriting DeepMono until you add overrides,
 or **Open folder** to open the theme library. Import/drop a folder containing
-`theme.json`, then select it. Themes control colors, typography, spacing, corners,
+`theme.jsonc`, then select it. Themes control colors, typography, spacing, corners,
 shadows, transparency, terminal appearance, and local image backgrounds. JSON
 styles and ordered CSS files declared in `stylesheets` provide element-level
 customization. All declared sheets load automatically.
@@ -597,7 +642,7 @@ editor. Section tokens independently control padding, gaps, borders, and corners
 Layout presets place tabs above/below the title controls, move the status bar,
 and position settings navigation on any edge. Saves update active themes in both
 windows, retain drafts on failure, and detect external changes before replacing
-the manifest. Create theme opens this editor for its new starter package.
+the manifest. Create theme opens this editor for its new package.
 
 The default **Color mode → System** follows the operating system at startup and
 when its appearance changes. Select **Light** or **Dark** for a persistent
@@ -606,19 +651,20 @@ themes without an explicit `appearance` follow this setting; themes that declare
 an appearance keep their own mode.
 
 The [theme authoring guide](themes/README.md) documents the format, tokens,
-resources, terminal options, limits, and recovery. It includes a
-[JSON schema](themes/theme.schema.json) and a
-[starter theme](themes/deepmono-custom/theme.json). Refresh reloads edited files
+resources, terminal options, limits, and recovery. The
+[JSON schema](themes/theme.schema.json) describes the supported fields.
+Refresh reloads edited files
 in both windows. Restore DeepMono recovers the default appearance. For a theme
 that hides the settings interface, launch with `SIMPLEBENCH_SAFE_THEME=1`.
 
 Colors come from DeepMono 1.1.0 by viewerofall, using the dark `mono` and light
 `mono-light` flavors with the `graphite` accent in
 `/home/woro/.config/DankMaterialShell/themes/deepmono/theme.json`.
-The palette is stored in `src/styles.css`; the app does not need the original
+The palette is stored in `src/theme/baseline.css` and `themes/deepmono.json`; the app does not need the original
 file at runtime. CSS paints the selected palette over a transparent native
 surface from startup. The SVG icon source is
-`public/app-icon.svg`; its transparent variant is `public/app-icon-transparent.svg`.
+`public/app-icon.svg`; the macOS source asset is
+`public/Simplebench.icon/Assets/app-icon-transparent.svg`.
 Regenerate desktop icons with
 `pnpm tauri icon public/app-icon.svg` after changing it.
 

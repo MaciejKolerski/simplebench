@@ -17,6 +17,9 @@ name = "simplebench_lib"
 debug = "line-tables-only"
 incremental = false
 
+[features]
+native-smoke = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
@@ -38,6 +41,8 @@ regex = "1"
 trash = "5"
 toml_edit = "0.25"
 tauri-plugin-updater = "2"
+tauri-plugin-fs = { version = "2", features = ["watch"] }
+jsonc-parser = { version = "0.33.1", features = ["serde"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 gtk = "0.18"

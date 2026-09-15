@@ -272,6 +272,17 @@ test("Lua files detect their language, highlight syntax, indent, comment, and sa
       ),
     )
     .toBe(edited);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const session = JSON.parse(localStorage.getItem("test-session")!);
+        const workspace = session.projects[0].workspaces[0];
+        return workspace.tabs.find(
+          (tab: any) => tab.id === workspace.activeTabId,
+        )?.relative;
+      }),
+    )
+    .toBe("main.LUA");
   await page.reload();
   await expect(languageButton(page)).toHaveText("Lua");
   expect(await editorText(page)).toBe(edited);

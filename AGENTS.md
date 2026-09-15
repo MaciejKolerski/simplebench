@@ -55,6 +55,28 @@ or acronym.
   buffer only. Keep these overrides across tab/workspace switches and let users
   restore the defaults; language selection must not rename the file. Load parsers
   on demand and ignore stale results after language switches or buffer disposal.
+- `src/plugins/` owns trusted local plugin metadata, lifecycle, view/command/fill
+  registries, placeholders and Settings management. `packages/plugin-sdk/` is the
+  external author contract. Only main imports executable ESM through the plugin
+  protocol; settings reads metadata and approves immutable revision trust.
+  `src-tauri/src/plugins.rs` serializes bounded installs/removals and checks
+  caller, path containment, content identity and close approvals. Themes supplied
+  by packages are data-only, available without code, immutable, and duplicable.
+  Disable/uninstall preserves unavailable descriptors after dirty-view guards.
+  Safe startup skips third-party code and themes before evaluation.
+- `src/DockviewLayout.tsx` and `src/dockview-layout.ts` render the actual mixed
+  central layout through Dockview core and stable React portals. The domain
+  tree is authoritative; do not independently persist Dockview state or dispose
+  runtimes on its transient remove/add events. Floating/popout/native DnD are
+  disabled; pointer and keyboard operations update the domain atomically.
+- Session v2 adds plugin tabs/panes and per-workspace plugin sidebars. Preserve
+  v1 compatibility and its atomic backup before upgrading the session file.
+  Unknown plugin views retain valid state; never interpret them as shells.
+- Theme v2 uses raw JSONC, common/light/dark surfaces and scoped resources.
+  Keep one effective runtime, native source revisions, cancelable resource
+  staging, local previews and scoped filesystem watches. Legacy JSON is a
+  bounded data converter only. Reconfigure CodeMirror compartments and retained
+  xterm instances from final computed tokens; never reset editor history or PTYs.
 - `src/keybindings.ts` defines shortcut actions, defaults, and validation;
   `src/KeybindingsProvider.tsx` synchronizes them between native windows.
   `src/SettingsWindow.tsx` edits them on the Keybinds page.
@@ -183,16 +205,16 @@ or acronym.
 - Use the DeepMono palette from
   `/home/woro/.config/DankMaterialShell/themes/deepmono/theme.json`.
 - The foundation uses the dark `mono` and light `mono-light` flavors with the
-  `graphite` accent from DeepMono 1.1.0. Their values are stored as CSS custom properties in
-  `src/styles.css`; reuse these tokens instead of inventing additional colors.
+  `graphite` accent from DeepMono 1.1.0. Their values are stored in `themes/deepmono.json` and CSS custom properties in
+  `src/theme/baseline.css`; reuse these tokens instead of inventing additional colors.
 - Follow system appearance by default, including startup and live changes.
   Persist manual Light/Dark overrides separately from the selected theme.
   Explicit theme appearances take precedence; adaptive themes inherit the
   chosen mode. Keep native windows transparent so CSS paints the background
   once. The app icon source is `public/app-icon.svg`.
 - User-selected themes may override the default appearance through versioned
-  `theme.json` files, scoped local assets, JSON styles, and optional CSS.
-  `src/themes.ts`, `src/theme-runtime.ts`, and `src/ThemeProvider.tsx` own theme
+  `theme.jsonc` files, scoped local assets, JSON styles, and optional CSS.
+  `src/theme/format.ts`, `src/theme/runtime.ts`, and `src/ThemeProvider.tsx` own theme
   validation and live application; `src-tauri/src/themes.rs` owns theme folders,
   the resource protocol, and atomic preferences. Keep the last working theme
   after load failures, and preserve invalid files until explicit recovery.

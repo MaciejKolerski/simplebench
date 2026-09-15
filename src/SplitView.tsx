@@ -1,5 +1,5 @@
+import { builtinViews } from "./plugins/builtins";
 import {
-  lazy,
   Suspense,
   useEffect,
   useLayoutEffect,
@@ -26,11 +26,10 @@ import type {
   Split,
   TabDropSide,
 } from "./model";
-import BrowserPane from "./BrowserPane";
-import TerminalPane from "./TerminalPane";
+import PluginPanel from "./plugins/PluginPanel";
+import type { Json } from "../packages/plugin-sdk/index";
+import DockviewLayout from "./DockviewLayout";
 import { usePaneDrag } from "./pane-drag";
-
-const FileEditor = lazy(() => import("./FileEditor"));
 
 interface Props {
   layout: Layout;
@@ -39,6 +38,7 @@ interface Props {
   activePaneId: string;
   overview: boolean;
   onFocus: (id: string) => void;
+  onPluginState: (id: string, state: Json) => void;
   onRestart: (id: string, useProjectDirectory?: boolean) => void;
   onResize: (id: string, ratio: number) => void;
   onMove: (id: string, targetId: string, side: TabDropSide) => void;
@@ -67,7 +67,7 @@ export default function SplitView({
   const { beginDrag, controlHeld, suppressClick } = usePaneDrag({
     layout: props.layout,
     root,
-    enabled: showTitles && !props.overview && !maximizedPane,
+    enabled: allPanes.length > 1 && !props.overview && !maximizedPane,
     onMove: props.onMove,
   });
   useEffect(() => {
@@ -120,83 +120,106 @@ export default function SplitView({
         size.width > 0 &&
         size.height > 0 &&
         (positions ? (
-          // Stable sibling keys keep terminal hosts and WebGL contexts mounted as the tree changes.
-          positions.map(({ layout, bounds }) =>
-            layout.type === "terminal" ? (
-              <div key={layout.id} className="split-child" style={bounds}>
-                <TerminalPane
-                  pane={layout}
-                  profile={
-                    layout.profileId !== undefined
-                      ? props.profiles.find(
-                          (profile) => profile.id === layout.profileId,
-                        )
-                      : props.profile
-                  }
-                  active={props.activePaneId === layout.id}
-                  overview={props.overview}
-                  showTitle={showTitles}
-                  canMove={controlHeld}
-                  canMaximize={props.layout.type === "split"}
-                  maximized={maximizedPane?.id === layout.id}
-                  onToggleMaximize={() => {
-                    props.onFocus(layout.id);
-                    setMaximizedPaneId(maximizedPane ? null : layout.id);
-                  }}
-                  onFocus={() => props.onFocus(layout.id)}
-                  onRestart={(useProjectDirectory) =>
-                    props.onRestart(layout.id, useProjectDirectory)
-                  }
+          <>
+            <DockviewLayout
+              layout={visibleLayout}
+              size={size}
+              activePaneId={props.activePaneId}
+              onResize={props.onResize}
+              render={(id) => {
+                const layout = allPanes.find((pane) => pane.id === id)!;
+                return layout.type === "terminal" ? (
+                  <div key={layout.id} className="split-child">
+                    <builtinViews.terminal
+                      pane={layout}
+                      profile={
+                        layout.profileId !== undefined
+                          ? props.profiles.find(
+                              (profile) => profile.id === layout.profileId,
+                            )
+                          : props.profile
+                      }
+                      active={props.activePaneId === layout.id}
+                      overview={props.overview}
+                      showTitle={showTitles}
+                      canMove={controlHeld}
+                      canMaximize={props.layout.type === "split"}
+                      maximized={maximizedPane?.id === layout.id}
+                      onToggleMaximize={() => {
+                        props.onFocus(layout.id);
+                        setMaximizedPaneId(maximizedPane ? null : layout.id);
+                      }}
+                      onFocus={() => props.onFocus(layout.id)}
+                      onRestart={(useProjectDirectory) =>
+                        props.onRestart(layout.id, useProjectDirectory)
+                      }
+                    />
+                  </div>
+                ) : layout.type === "browser" ? (
+                  <div key={layout.id} className="split-child">
+                    <builtinViews.browser
+                      tab={layout}
+                      overview={props.overview}
+                      onFocus={() => props.onFocus(layout.id)}
+                      onClose={() => props.onClosePane(layout.id)}
+                    />
+                  </div>
+                ) : layout.type === "plugin" ? (
+                  <div className="split-child">
+                    <PluginPanel
+                      panel={layout}
+                      active={props.activePaneId === layout.id}
+                      setState={(state) =>
+                        props.onPluginState(layout.id, state)
+                      }
+                      onFocus={() => props.onFocus(layout.id)}
+                      onClose={() => props.onClosePane(layout.id)}
+                    />
+                  </div>
+                ) : (
+                  <div
+                    key={layout.id}
+                    className="split-child"
+
+                    data-file-pane-id={layout.id}
+                    onPointerDownCapture={() => props.onFocus(layout.id)}
+                    onFocusCapture={() => props.onFocus(layout.id)}
+                  >
+                    <Suspense
+                      fallback={
+                        <div className="empty-message" role="status">
+                          Loading editor…
+                        </div>
+                      }
+                    >
+                      <builtinViews.file
+                        tab={layout}
+                        onOpenFile={props.onOpenFile}
+                        onMarkdownView={(view) =>
+                          props.onMarkdownView(layout.id, view)
+                        }
+                        active={props.activePaneId === layout.id}
+                        onClose={() => props.onClosePane(layout.id)}
+                        onPosition={(position) =>
+                          props.onFilePosition(layout.id, position)
+                        }
+                      />
+                    </Suspense>
+                  </div>
+                );
+              }}
+            />
+            {positions
+              .filter((position) => position.layout.type === "split")
+              .map(({ layout, bounds }) => (
+                <Divider
+                  key={layout.id}
+                  layout={layout as Split}
+                  bounds={bounds}
+                  onResize={props.onResize}
                 />
-              </div>
-            ) : layout.type === "browser" ? (
-              <div key={layout.id} className="split-child" style={bounds}>
-                <BrowserPane
-                  tab={layout}
-                  overview={props.overview}
-                  onFocus={() => props.onFocus(layout.id)}
-                  onClose={() => props.onClosePane(layout.id)}
-                />
-              </div>
-            ) : layout.type === "file" ? (
-              <div
-                key={layout.id}
-                className="split-child"
-                style={bounds}
-                data-file-pane-id={layout.id}
-                onPointerDownCapture={() => props.onFocus(layout.id)}
-                onFocusCapture={() => props.onFocus(layout.id)}
-              >
-                <Suspense
-                  fallback={
-                    <div className="empty-message" role="status">
-                      Loading editor…
-                    </div>
-                  }
-                >
-                  <FileEditor
-                    tab={layout}
-                    onOpenFile={props.onOpenFile}
-                    onMarkdownView={(view) =>
-                      props.onMarkdownView(layout.id, view)
-                    }
-                    active={props.activePaneId === layout.id}
-                    onClose={() => props.onClosePane(layout.id)}
-                    onPosition={(position) =>
-                      props.onFilePosition(layout.id, position)
-                    }
-                  />
-                </Suspense>
-              </div>
-            ) : (
-              <Divider
-                key={layout.id}
-                layout={layout}
-                bounds={bounds}
-                onResize={props.onResize}
-              />
-            ),
-          )
+              ))}
+          </>
         ) : (
           <div className="layout-recovery" role="status">
             <h2>This panel layout needs more space</h2>

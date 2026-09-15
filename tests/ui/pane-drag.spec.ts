@@ -294,8 +294,11 @@ for (const side of ["left", "right", "top", "bottom"] as const) {
     await expect(preview).toHaveCount(0);
     await expect(async () => {
       const actual = (await pane.locator("..").boundingBox())!;
+      // Dockview rounds proportional group sizes to CSS pixels.
       for (const dimension of ["x", "y", "width", "height"] as const)
-        expect(actual[dimension]).toBeCloseTo(expected![dimension], 0);
+        expect(
+          Math.abs(actual[dimension] - expected![dimension]),
+        ).toBeLessThanOrEqual(1);
     }).toPass();
     await expect(pane).toHaveClass(/is-active/);
     await expect(pane.locator(".xterm-helper-textarea")).toBeFocused();

@@ -132,6 +132,17 @@ export async function mockDesktop(
         },
       };
       window.addEventListener("storage", (event) => {
+        if (event.key === "test-plugins") void emitEvent("plugins-changed");
+        if (
+          event.key === "test-plugin-request" &&
+          !location.search.includes("settings")
+        )
+          void emitEvent("plugin-close-request", JSON.parse(event.newValue!));
+        if (event.key === "test-plugin-finished")
+          void emitEvent(
+            "plugin-operation-finished",
+            JSON.parse(event.newValue!),
+          );
         if (
           event.key === "test-update-check" &&
           !location.search.includes("settings")
@@ -436,6 +447,114 @@ export async function mockDesktop(
             return JSON.parse(
               localStorage.getItem("test-editor-preferences") ?? "null",
             );
+          const themeBundle = async (id: string, manifest: any) => {
+            const { migrateTheme } = await import("/src/theme/format.ts");
+            const modern =
+              manifest.version === 1
+                ? migrateTheme(manifest).manifest
+                : manifest;
+            const raw =
+              JSON.parse(localStorage.getItem("test-theme-raw") ?? "{}")[id] ??
+              JSON.stringify(modern, null, 2);
+            return { id, raw, revision: raw, directory: `/app/themes/${id}` };
+          };
+          if (command === "plugin:fs|watch") return 1;
+          if (command === "plugin:resources|close") return;
+          if (command === "report_plugin_status") return;
+          if (command === "list_plugins")
+            return {
+              directory: "/app/plugins",
+              entries: JSON.parse(localStorage.getItem("test-plugins") ?? "[]"),
+              safeMode: !!desktop.__nativeTest.pluginSafeMode,
+            };
+          if (command === "import_plugin") {
+            const entry = desktop.__nativeTest.pluginImport;
+            if (!entry) throw new Error("Invalid plugin fixture");
+            const entries = JSON.parse(
+              localStorage.getItem("test-plugins") ?? "[]",
+            );
+            localStorage.setItem(
+              "test-plugins",
+              JSON.stringify([
+                ...entries.filter((e: any) => e.id !== entry.id),
+                entry,
+              ]),
+            );
+            await emitEvent("plugins-changed");
+            return entry.id;
+          }
+          if (command === "enable_plugin") {
+            const entries = JSON.parse(
+              localStorage.getItem("test-plugins") ?? "[]",
+            );
+            const entry = entries.find((e: any) => e.id === args.id);
+            if (!entry || entry.revision !== args.expected)
+              throw new Error("Plugin changed");
+            entry.enabled = true;
+            entry.trustedRevision = entry.revision;
+            localStorage.setItem("test-plugins", JSON.stringify(entries));
+            await emitEvent("plugins-changed");
+            return;
+          }
+          if (command === "prepare_plugin") {
+            if (location.search.includes("settings"))
+              throw new Error("Wrong caller");
+            const entry = JSON.parse(
+              localStorage.getItem("test-plugins") ?? "[]",
+            ).find((e: any) => e.id === args.id);
+            if (
+              !entry?.enabled ||
+              entry.trustedRevision !== args.expected ||
+              desktop.__nativeTest.pluginSafeMode
+            )
+              throw new Error("Not trusted");
+            return entry.manifest;
+          }
+          if (command === "request_plugin_removal") {
+            const token = crypto.randomUUID();
+            const request = { ...args, token };
+            localStorage.setItem(
+              "test-plugin-request",
+              JSON.stringify(request),
+            );
+            await emitEvent("plugin-close-request", request);
+            return token;
+          }
+          if (command === "finish_plugin_removal") {
+            const request = JSON.parse(
+              localStorage.getItem("test-plugin-request")!,
+            );
+            if (args.approved) {
+              let entries = JSON.parse(
+                localStorage.getItem("test-plugins") ?? "[]",
+              );
+              if (request.uninstall)
+                entries = entries.filter((e: any) => e.id !== request.id);
+              else
+                entries.find((e: any) => e.id === request.id).enabled = false;
+              localStorage.setItem("test-plugins", JSON.stringify(entries));
+              await emitEvent("plugins-changed");
+            }
+            const result = { token: args.token, approved: args.approved };
+            localStorage.setItem(
+              "test-plugin-finished",
+              JSON.stringify(result),
+            );
+            await emitEvent("plugin-operation-finished", result);
+            return;
+          }
+          if (command === "duplicate_theme") {
+            const manifests = JSON.parse(
+              localStorage.getItem("test-theme-manifests") ?? "{}",
+            );
+            const { builtinTheme } = await import("/src/theme/format.ts");
+            manifests.copy = args.id ? manifests[args.id] : builtinTheme;
+            localStorage.setItem(
+              "test-theme-manifests",
+              JSON.stringify(manifests),
+            );
+            return "copy";
+          }
           if (command === "list_themes") {
             const manifests = JSON.parse(
               localStorage.getItem("test-theme-manifests") ?? "{}",
@@ -449,8 +568,9 @@ export async function mockDesktop(
                   name: value.name ?? id,
                   description: value.description ?? "",
                   author: value.author ?? "",
-                  error:
-                    value.version === 1 ? null : "Unsupported theme version",
+                  error: [1, 2].includes(value.version)
+                    ? null
+                    : "Unsupported theme version",
                 }),
               ),
             };
@@ -460,7 +580,7 @@ export async function mockDesktop(
               localStorage.getItem("test-theme-manifests") ?? "{}",
             )[args.id];
             if (!manifest) throw new Error("Theme folder is missing.");
-            return { id: args.id, manifest };
+            return themeBundle(args.id, manifest);
           }
           if (command === "load_theme_preferences") {
             if (desktop.__nativeTest.themeLoadError)
@@ -486,7 +606,10 @@ export async function mockDesktop(
               throw new Error("Theme folder is missing.");
             return {
               preferences,
-              theme: manifest ? { id: preferences.active, manifest } : null,
+              theme: manifest
+                ? await themeBundle(preferences.active, manifest)
+                : null,
+              revision: 1,
               safeMode: false,
             };
           }
@@ -507,20 +630,28 @@ export async function mockDesktop(
               localStorage.getItem("test-theme-manifests") ?? "{}",
             );
             if (
-              JSON.stringify(manifests[args.id]) !==
-              JSON.stringify(args.expected)
+              (await themeBundle(args.id, manifests[args.id])).revision !==
+              args.expected
             )
               throw new Error(
                 "This theme changed on disk. Reopen the editor before saving; your draft is still available.",
               );
-            manifests[args.id] = args.data;
+            const { readThemeDraft } = await import("/src/theme/format.ts");
+            manifests[args.id] = readThemeDraft(args.raw);
+            localStorage.setItem(
+              "test-theme-raw",
+              JSON.stringify({
+                ...JSON.parse(localStorage.getItem("test-theme-raw") ?? "{}"),
+                [args.id]: args.raw,
+              }),
+            );
             localStorage.setItem(
               "test-theme-manifests",
               JSON.stringify(manifests),
             );
             localStorage.setItem("test-theme-refresh", String(Date.now()));
             await emitEvent("theme-changed");
-            return;
+            return themeBundle(args.id, manifests[args.id]);
           }
           if (command === "refresh_themes") {
             localStorage.setItem("test-theme-refresh", String(Date.now()));
@@ -533,16 +664,25 @@ export async function mockDesktop(
             const manifests = JSON.parse(
               localStorage.getItem("test-theme-manifests") ?? "{}",
             );
-            manifests.imported = {
-              version: 1,
-              name: "Imported theme",
-              tokens: { "--radius-control": "12px" },
-            };
+            const id = command === "create_theme" ? "my-theme" : "imported";
+            manifests[id] =
+              command === "create_theme"
+                ? {
+                    version: 2,
+                    name: "My theme",
+                    appearance: "adaptive",
+                    common: {},
+                  }
+                : {
+                    version: 1,
+                    name: "Imported theme",
+                    tokens: { "--radius-control": "12px" },
+                  };
             localStorage.setItem(
               "test-theme-manifests",
               JSON.stringify(manifests),
             );
-            return "imported";
+            return id;
           }
           if (["sync_theme_window", "open_themes_folder"].includes(command))
             return;

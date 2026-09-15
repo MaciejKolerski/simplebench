@@ -77,7 +77,8 @@ test("settings update visible and hidden terminals without restarting PTYs and s
       .poll(() => options(page, id))
       .toMatchObject({
         fontSize: 22,
-        fontFamily: "monospace",
+        fontFamily:
+          '"JetBrains Mono", "Noto Sans Symbols", "Noto Sans Symbols 2", "Symbols Nerd Font Mono", monospace',
         cursorStyle: "block",
         scrollback: 12000,
         theme: {
@@ -178,19 +179,35 @@ test("appearance overrides survive theme changes and resetting follows the activ
     .getAttribute("data-pane-id"))!;
   for (const target of [page, main])
     await target.evaluate(async () => {
-      const { prepareTheme } = await import("/src/theme-runtime.ts");
+      localStorage.setItem(
+        "test-theme-manifests",
+        JSON.stringify({
+          test: {
+            version: 2,
+            name: "Test",
+            common: { terminal: { fontSize: 17, colors: { red: "#aabbcc" } } },
+          },
+        }),
+      );
+      localStorage.setItem(
+        "test-theme-settings",
+        JSON.stringify({ version: 1, active: "test", appearance: "dark" }),
+      );
+      const { prepareTheme } = await import("/src/theme/runtime.ts");
       const prepared = await prepareTheme(
         {
           id: "test",
-          manifest: {
-            version: 1,
+          revision: "test",
+          directory: "/app/themes/test",
+          raw: JSON.stringify({
+            version: 2,
             name: "Test",
-            terminal: { fontSize: 17, colors: { red: "#aabbcc" } },
-          },
+            common: { terminal: { fontSize: 17, colors: { red: "#aabbcc" } } },
+          }),
         },
         { version: 1, active: "test", appearance: "dark" },
       );
-      prepared.commit();
+      await prepared.commit();
     });
   await expect
     .poll(() => options(main, id))

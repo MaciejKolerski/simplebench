@@ -14,7 +14,7 @@ import {
   restoreTerminalPreferences,
 } from "./terminal-preferences";
 import type { TerminalPreferences } from "./terminal-preferences";
-import { applyTerminalPreferences } from "./theme-runtime";
+import { applyTerminalPreferences } from "./theme/runtime";
 
 interface Preferences {
   value: TerminalPreferences;

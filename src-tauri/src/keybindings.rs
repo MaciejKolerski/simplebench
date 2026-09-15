@@ -2,7 +2,58 @@ use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fs, io::Read, path::Path, sync::Mutex};
 use tauri::{Emitter, Manager, State, Window};
 
-const LIMIT: u64 = 64 * 1024;
+const LIMIT: u64 = 256 * 1024;
+
+pub(crate) fn valid_shortcut(value: &str) -> bool {
+    let mut parts: Vec<_> = value.split('+').collect();
+    let code = parts.pop().unwrap_or("");
+    let function = code
+        .strip_prefix('F')
+        .and_then(|n| n.parse::<u8>().ok())
+        .is_some_and(|n| (1..=24).contains(&n) && code == format!("F{n}"));
+    let ordinary = (code.len() == 4
+        && code.starts_with("Key")
+        && code.as_bytes()[3].is_ascii_uppercase())
+        || (code.len() == 6 && code.starts_with("Digit") && code.as_bytes()[5].is_ascii_digit())
+        || [
+            "Comma",
+            "Period",
+            "Slash",
+            "Backslash",
+            "Semicolon",
+            "Quote",
+            "BracketLeft",
+            "BracketRight",
+            "Minus",
+            "Equal",
+            "NumpadAdd",
+            "NumpadSubtract",
+            "Backquote",
+            "Space",
+            "Tab",
+            "Enter",
+            "Escape",
+            "Backspace",
+            "Delete",
+            "Insert",
+            "Home",
+            "End",
+            "PageUp",
+            "PageDown",
+            "ArrowLeft",
+            "ArrowRight",
+            "ArrowUp",
+            "ArrowDown",
+        ]
+        .contains(&code);
+    let canonical: Vec<_> = ["Ctrl", "Alt", "Meta", "Shift"]
+        .into_iter()
+        .filter(|p| parts.contains(p))
+        .collect();
+    (function || ordinary)
+        && parts == canonical
+        && (function || parts.iter().any(|p| *p != "Shift"))
+}
 
 #[derive(Default)]
 pub struct KeybindingsFile(pub Mutex<()>);
@@ -27,7 +78,7 @@ fn read(path: &Path) -> Result<Option<serde_json::Value>, String> {
         .read_to_end(&mut bytes)
         .map_err(|error| error.to_string())?;
     if bytes.len() as u64 > LIMIT {
-        return Err("The keybindings file exceeds 64 KiB and has been left intact.".into());
+        return Err("The keybindings file exceeds 256 KiB and has been left intact.".into());
     }
     serde_json::from_slice(&bytes).map(Some).map_err(|error| {
         format!(
@@ -39,9 +90,11 @@ fn read(path: &Path) -> Result<Option<serde_json::Value>, String> {
 
 fn save(path: &Path, data: &Keybindings) -> Result<(), String> {
     if data.version != 1
-        || data.bindings.len() > 64
+        || data.bindings.len() > 2048
         || data.bindings.iter().any(|(id, value)| {
-            id.len() > 80 || value.as_ref().is_some_and(|value| value.len() > 80)
+            id.is_empty()
+                || id.len() > 160
+                || value.as_ref().is_some_and(|value| !valid_shortcut(value))
         })
     {
         return Err("Invalid keybindings settings.".into());

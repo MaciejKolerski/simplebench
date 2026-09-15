@@ -21,16 +21,19 @@ for (const renderer of ["WebGL", "DOM"] as const) {
     const pending = new Promise<void>((resolve) => {
       release = resolve;
     });
-    let requested = false;
-    await page.route("**/JetBrainsMono-BoldItalic.woff2", async (route) => {
-      requested = true;
-      await pending;
-      await route.continue();
-    });
+    const requested = new Set<string>();
+    await page.route(
+      /(?:JetBrainsMono-BoldItalic|NotoSansSymbols|NotoSansSymbols2-Regular|SymbolsNerdFontMono-Regular)\.woff2$/,
+      async (route) => {
+        requested.add(new URL(route.request().url()).pathname);
+        await pending;
+        await route.continue();
+      },
+    );
     await mockDesktop(page, false);
     try {
       await page.goto("/", { waitUntil: "domcontentloaded" });
-      await expect.poll(() => requested).toBe(true);
+      await expect.poll(() => requested.size).toBe(4);
       await expect(page.locator(".terminal-host")).toHaveCSS("opacity", "0");
       expect(
         await page.evaluate(() =>
@@ -71,34 +74,91 @@ for (const renderer of ["WebGL", "DOM"] as const) {
               "┌────────────┐",
               "│ Terminal   │",
               "└────────────┘",
+              "Braille: ⠀ ⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏ ⣿",
+              "Symbols: ⚙ ✓ ✗ ▶ \u{1fb00}  Nerd: \ue0b0 \uf013 \uf121 \u{f0001}",
             ].join("\r\n"),
           resolve,
         ),
       );
       return {
         renderer: runtime.getSnapshot().renderer,
-        fonts: [...document.fonts]
-          .filter((face) => face.family.includes("JetBrains Mono"))
-          .map((face) => face.status),
+        fonts: [...document.fonts].map((face) => face.status),
         initial: { cols: start.cols, rows: start.rows },
         current: { cols: runtime.terminal.cols, rows: runtime.terminal.rows },
         fitted: runtime.fitAddon.proposeDimensions(),
       };
     });
     expect(result.renderer).toBe(renderer);
-    expect(result.fonts).toEqual(["loaded", "loaded", "loaded", "loaded"]);
+    expect(result.fonts).toEqual(Array(7).fill("loaded"));
     expect(result.initial).toEqual(result.current);
     expect(result.current).toEqual(result.fitted);
     await page.locator(".terminal-pane").screenshot({
       path: testInfo.outputPath(`terminal-fonts-${renderer}.png`),
     });
+    const glyphs = await page.evaluate(async () => {
+      const {
+        applyTerminalPreferences,
+        terminalAppearance,
+        themeAppliedEvent,
+      } = await import("/src/theme/runtime.ts");
+      const { defaultTerminalPreferences } =
+        await import("/src/terminal-preferences.ts");
+      const updated = new Promise<void>((resolve) =>
+        window.addEventListener(themeAppliedEvent, () => resolve(), {
+          once: true,
+        }),
+      );
+      applyTerminalPreferences({
+        ...defaultTerminalPreferences,
+        appearance: { fontFamily: '"Missing, Font", monospace' },
+      });
+      await updated;
+      const family = terminalAppearance().fontFamily!;
+      const canvas = document.createElement("canvas");
+      canvas.width = canvas.height = 64;
+      const context = canvas.getContext("2d", { willReadFrequently: true })!;
+      const pixels = (font: string, text: string, style: string) => {
+        context.clearRect(0, 0, 64, 64);
+        context.font = `${style} 32px ${font}`;
+        context.fillText(text, 8, 48);
+        return [...context.getImageData(0, 0, 64, 64).data];
+      };
+      return {
+        family,
+        blankBraille: pixels(family, "\u2800", "normal").every(
+          (byte) => byte === 0,
+        ),
+        symbols: ["normal", "bold italic"].flatMap((style) =>
+          [
+            ["⚙", '"Noto Sans Symbols"'],
+            ["⠋", '"Noto Sans Symbols 2"'],
+            ["⣿", '"Noto Sans Symbols 2"'],
+            ["\u{1fb00}", '"Noto Sans Symbols 2"'],
+            ["\uf013", '"Symbols Nerd Font Mono"'],
+            ["\u{f0001}", '"Symbols Nerd Font Mono"'],
+          ].map(([symbol, fallback]) => {
+            const actual = pixels(family, symbol, style);
+            const expected = pixels(fallback, symbol, style);
+            return (
+              actual.some((byte) => byte !== 0) &&
+              actual.every((byte, index) => byte === expected[index])
+            );
+          }),
+        ),
+      };
+    });
+    expect(glyphs.family).toBe(
+      '"Missing, Font", "JetBrains Mono", "Noto Sans Symbols", "Noto Sans Symbols 2", "Symbols Nerd Font Mono", monospace',
+    );
+    expect(glyphs.blankBraille).toBe(true);
+    expect(glyphs.symbols).toEqual(Array(12).fill(true));
   });
 }
 
 test("a font loading failure keeps the terminal usable with a fallback", async ({
   page,
 }) => {
-  await page.route("**/fonts/jetbrains-mono/*.woff2", (route) => route.abort());
+  await page.route("**/fonts/**/*.woff2", (route) => route.abort());
   await mockDesktop(page, false);
   await page.goto("/");
   await expect(page.locator(".terminal-host")).toHaveCSS("opacity", "1");

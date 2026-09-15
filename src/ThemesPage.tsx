@@ -1,3 +1,4 @@
+import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Check,
@@ -15,8 +16,8 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { api, errorMessage, native } from "./api";
 import { useThemes } from "./ThemeProvider";
-import { builtinTheme, parseTheme } from "./themes";
-import type { ThemeBundle, ThemeCatalog, ThemeManifest } from "./themes";
+import { builtinTheme } from "./theme/format";
+import type { ThemeBundle, ThemeCatalog } from "./theme/format";
 import ThemeEditor from "./ThemeEditor";
 
 export default function ThemesPage() {
@@ -26,13 +27,11 @@ export default function ThemesPage() {
     themes: [],
   });
   const [busy, setBusy] = useState(false);
+  const [appearanceDraft, setAppearanceDraft] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [dragging, setDragging] = useState(false);
-  const [editing, setEditing] = useState<{
-    id: string;
-    manifest: ThemeManifest;
-  } | null>(null);
+  const [editing, setEditing] = useState<ThemeBundle | null>(null);
   const working = useRef(false);
   const mounted = useRef(false);
   const refreshCatalog = useCallback(async () => {
@@ -77,6 +76,8 @@ export default function ThemesPage() {
         if (mounted.current) setError(errorMessage(error));
       });
     window.addEventListener("focus", focused);
+    const changes = listen("plugins-changed", focused);
+    void changes.catch((error) => setError(errorMessage(error)));
     const unlisten = native
       ? getCurrentWebviewWindow().onDragDropEvent(({ payload }) => {
           if (!mounted.current) return;
@@ -93,15 +94,19 @@ export default function ThemesPage() {
     });
     return () => {
       mounted.current = false;
+      void changes.then((stop) => stop()).catch(() => {});
       window.removeEventListener("focus", focused);
       void unlisten.then((stop) => stop()).catch(() => {});
     };
   }, [refreshCatalog, importFolder]);
   const select = (id: string | null) =>
-    void run(() => themes.select(id), "Theme applied to all windows.");
+    void run(
+      () => themes.select(id),
+      "Theme selected. Open windows have been notified.",
+    );
   const edit = async (id: string) => {
     const bundle = await api<ThemeBundle>("load_theme", { id });
-    setEditing({ id, manifest: parseTheme(bundle.manifest) });
+    setEditing(bundle);
   };
   return (
     <main
@@ -141,15 +146,17 @@ export default function ThemesPage() {
                 name="appearance"
                 value={appearance}
                 checked={
-                  (themes.fixedAppearance ?? themes.preferences.appearance) ===
-                  appearance
+                  (themes.fixedAppearance ??
+                    appearanceDraft ??
+                    themes.preferences.appearance) === appearance
                 }
-                onChange={() =>
+                onChange={() => {
+                  setAppearanceDraft(appearance);
                   void run(
                     () => themes.select(themes.preferences.active, appearance),
                     "Color mode saved for all windows.",
-                  )
-                }
+                  ).finally(() => setAppearanceDraft(null));
+                }}
               />
               <Icon size={16} aria-hidden="true" />
               {label}
@@ -264,6 +271,7 @@ export default function ThemesPage() {
             name: builtinTheme.name,
             description: builtinTheme.description,
             author: "Built in",
+            owner: null,
             error: null,
           },
           ...catalog.themes,
@@ -298,11 +306,31 @@ export default function ThemesPage() {
                   </span>
                 )}
               </button>
+              <button
+                className="text-button theme-edit"
+                disabled={busy || !!entry.error}
+                onClick={() =>
+                  void run(async () => {
+                    const id = await api<string>("duplicate_theme", {
+                      id: entry.id,
+                    });
+                    await refreshCatalog();
+                    await edit(id);
+                  }, "Theme copied.")
+                }
+              >
+                Duplicate theme
+              </button>
+              {entry.owner && (
+                <p className="settings-help">
+                  Data-only theme from {entry.owner}. Duplicate to edit.
+                </p>
+              )}
               {entry.id && (
                 <div className="theme-card-actions">
                   <button
                     className="text-button theme-edit"
-                    disabled={busy || !!entry.error}
+                    disabled={busy}
                     onClick={() => void run(() => edit(entry.id!), "")}
                   >
                     Edit theme
@@ -328,8 +356,7 @@ export default function ThemesPage() {
       {editing && (
         <ThemeEditor
           key={editing.id}
-          id={editing.id}
-          initial={editing.manifest}
+          initial={editing}
           onClose={() => setEditing(null)}
           onSaved={refreshCatalog}
         />

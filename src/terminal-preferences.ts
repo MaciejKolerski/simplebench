@@ -1,5 +1,5 @@
-import { parseTheme } from "./themes.ts";
-import type { ThemeTerminal } from "./themes.ts";
+import { parseLegacyTheme as parseTheme } from "./theme/format.ts";
+import type { ThemeTerminal } from "./theme/format.ts";
 import type { AppInfo } from "./model.ts";
 
 export const terminalBehaviorDefaults = {

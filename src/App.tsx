@@ -1,3 +1,4 @@
+import { PluginsProvider } from "./plugins/PluginsProvider";
 import { lazy, Suspense } from "react";
 import { KeybindingsProvider } from "./KeybindingsProvider";
 import { ThemeProvider } from "./ThemeProvider";
@@ -16,28 +17,30 @@ export default function App() {
     new URLSearchParams(window.location.search).get("window") === "settings";
   return (
     <ThemeProvider>
-      <KeybindingsProvider>
-        <EditorPreferencesProvider>
-          <TerminalPreferencesProvider>
-            <Suspense
-              fallback={
-                <main className="empty-message">
-                  {settings ? "Opening settings…" : "Opening workspace…"}
-                </main>
-              }
-            >
-              {settings ? (
-                <SettingsWindow />
-              ) : (
-                <>
-                  <Workbench />
-                  <ReadyWindow />
-                </>
-              )}
-            </Suspense>
-          </TerminalPreferencesProvider>
-        </EditorPreferencesProvider>
-      </KeybindingsProvider>
+      <PluginsProvider>
+        <KeybindingsProvider>
+          <EditorPreferencesProvider>
+            <TerminalPreferencesProvider>
+              <Suspense
+                fallback={
+                  <main className="empty-message">
+                    {settings ? "Opening settings…" : "Opening workspace…"}
+                  </main>
+                }
+              >
+                {settings ? (
+                  <SettingsWindow />
+                ) : (
+                  <>
+                    <Workbench />
+                    <ReadyWindow />
+                  </>
+                )}
+              </Suspense>
+            </TerminalPreferencesProvider>
+          </EditorPreferencesProvider>
+        </KeybindingsProvider>
+      </PluginsProvider>
     </ThemeProvider>
   );
 }

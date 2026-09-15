@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef } from "react";
 import type { RefObject } from "react";
 import { isTextInput } from "./keybindings";
 
-const panels = ".terminal-pane[data-pane-id], [data-file-pane-id]";
+const panels =
+  ".terminal-pane[data-pane-id], [data-file-pane-id], [data-plugin-pane-id]";
 
 export function usePointerFocus(
   enabled: boolean,
@@ -27,13 +28,16 @@ export function usePointerFocus(
     const hovered = pointer.current
       ? document.elementFromPoint(pointer.current.x, pointer.current.y)
       : container.querySelector(
-          ".terminal-pane[data-pane-id]:hover, [data-file-pane-id]:hover",
+          ".terminal-pane[data-pane-id]:hover, [data-file-pane-id]:hover, [data-plugin-pane-id]:hover",
         );
     const panel = hovered?.closest(panels);
     if (!panel || !container.contains(panel) || panel.contains(active)) return;
-    panel
-      .querySelector<HTMLElement>(".xterm-helper-textarea, .cm-content")
-      ?.focus({ preventScroll: true });
+    (
+      panel.querySelector<HTMLElement>(
+        ".xterm-helper-textarea, .cm-content, [data-plugin-focus]",
+      ) ??
+      (panel.matches("[data-plugin-pane-id]") ? (panel as HTMLElement) : null)
+    )?.focus({ preventScroll: true });
   }, [enabled, root]);
 
   useEffect(() => {

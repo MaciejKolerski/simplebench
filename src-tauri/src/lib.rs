@@ -7,6 +7,10 @@ mod git;
 mod keybindings;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(feature = "native-smoke")]
+#[path = "../../tests/native/support.rs"]
+mod native_smoke;
+mod plugins;
 mod settings_window;
 mod shell;
 mod terminal;
@@ -106,6 +110,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -119,9 +124,15 @@ pub fn run() {
         .manage(editor_preferences::EditorPreferencesFile::default())
         .manage(terminal_preferences::TerminalPreferencesFile::default())
         .manage(themes::Themes::default())
+        .manage(plugins::Plugins::default())
         .manage(settings_window::SettingsWindow::default())
         .on_window_event(settings_window::on_window_event)
+        .on_page_load(|_view, _payload| {
+            #[cfg(feature = "native-smoke")]
+            native_smoke::page(_view, _payload);
+        })
         .register_asynchronous_uri_scheme_protocol("theme", themes::protocol)
+        .register_asynchronous_uri_scheme_protocol("plugin", plugins::protocol)
         .setup(|app| {
             #[cfg(target_os = "macos")]
             macos::setup_menu(app)?;
@@ -149,6 +160,12 @@ pub fn run() {
                     .resolver
                     .reject("Web pages cannot call application commands.");
                 return true;
+            }
+            #[cfg(feature = "native-smoke")]
+            if invoke.message.command() == "plugin_smoke_result" {
+                let smoke: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool =
+                    tauri::generate_handler![native_smoke::plugin_smoke_result];
+                return smoke(invoke);
             }
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
                 browser::sync_browsers,
@@ -193,7 +210,17 @@ pub fn run() {
                 themes::open_themes_folder,
                 themes::import_theme,
                 themes::create_theme,
+                themes::duplicate_theme,
                 themes::sync_theme_window,
+                plugins::list_plugins,
+                plugins::import_plugin,
+                plugins::enable_plugin,
+                plugins::prepare_plugin,
+                plugins::request_plugin_removal,
+                plugins::finish_plugin_removal,
+                plugins::request_plugin_restart,
+                plugins::restart_plugins,
+                plugins::report_plugin_status,
                 git::git_status,
                 git::git_fetch,
                 git::git_remotes,

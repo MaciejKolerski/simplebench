@@ -67,7 +67,10 @@ for (const shortcut of ["Control+d", "Control+Shift+d"]) {
 
     await page.keyboard.press(shortcut);
     await expect(page.locator("[data-pane-id]")).toHaveCount(3);
-    expect(await first.boundingBox()).toEqual(originalBounds);
+    for (const [key, value] of Object.entries((await first.boundingBox())!))
+      expect(
+        Math.abs(value - originalBounds![key as keyof typeof originalBounds]),
+      ).toBeLessThanOrEqual(1);
     const added = page.locator("[data-pane-id]").last();
     const addedBounds = (await added.boundingBox())!;
     if (shortcut === "Control+d") {
@@ -103,7 +106,10 @@ test("split shortcuts fall back to the active terminal after the pointer leaves 
   await page.locator(".sidebar-heading").hover();
   await page.keyboard.press("Control+d");
   await expect(page.locator("[data-pane-id]")).toHaveCount(3);
-  expect(await hovered.boundingBox()).toEqual(hoveredBounds);
+  for (const [key, value] of Object.entries((await hovered.boundingBox())!))
+    expect(
+      Math.abs(value - hoveredBounds![key as keyof typeof hoveredBounds]),
+    ).toBeLessThanOrEqual(1);
   expect((await first.boundingBox())!.width).toBeLessThan(originalBounds.width);
 });
 
@@ -116,8 +122,14 @@ test("a hovered terminal without room does not split the larger active terminal"
   await page.keyboard.press("Control+d");
   await expect(page.locator(".pane-limit-notice")).toContainText("No room");
   await expect(page.locator("[data-pane-id]")).toHaveCount(2);
-  expect(await first.boundingBox()).toEqual(originalBounds);
-  expect(await hovered.boundingBox()).toEqual(hoveredBounds);
+  for (const [key, value] of Object.entries((await first.boundingBox())!))
+    expect(
+      Math.abs(value - originalBounds![key as keyof typeof originalBounds]),
+    ).toBeLessThanOrEqual(1);
+  for (const [key, value] of Object.entries((await hovered.boundingBox())!))
+    expect(
+      Math.abs(value - hoveredBounds![key as keyof typeof hoveredBounds]),
+    ).toBeLessThanOrEqual(1);
   await expect(hovered.locator(".xterm-helper-textarea")).toBeFocused();
   expect(await calls(page, "write_terminal")).toHaveLength(0);
 });

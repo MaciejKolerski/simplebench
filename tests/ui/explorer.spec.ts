@@ -578,7 +578,9 @@ test("creates inline in nested folders and retains the name after errors and IME
   await expect(folder).toBeFocused();
   await folder.fill("main.ts");
   await folder.press("Enter");
-  await expect(page.getByRole("alert")).toContainText("already exists");
+  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toContainText(
+    "already exists",
+  );
   await expect(folder).toHaveValue("main.ts");
   await expect(folder).toBeFocused();
   await folder.fill("docs");
@@ -699,7 +701,9 @@ test("context menus fit small windows and inline renames retain errors and suppo
   ).toEqual([0, "README.md".length]);
   await input.fill("src");
   await input.press("Enter");
-  await expect(page.getByRole("alert")).toContainText("already exists");
+  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toContainText(
+    "already exists",
+  );
   await expect(input).toHaveValue("src");
   await expect(input).toBeFocused();
   await input.fill("草稿.md");
@@ -951,7 +955,7 @@ test("navigates and collapses results, applies search options and recovers from 
   await input.fill("ne{2}dle");
   await expect(page.locator(".search-match")).toHaveCount(3);
   await input.fill("[");
-  await expect(page.getByRole("alert")).toContainText(
+  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toContainText(
     "Invalid regular expression",
   );
   await expect(page.locator(".search-match")).toHaveCount(0);

@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import PluginsPage from "./plugins/PluginsPage";
 import ThemesPage from "./ThemesPage";
 import TerminalSettingsPage from "./TerminalSettingsPage";
 import EditorSettingsPage from "./EditorSettingsPage";
@@ -17,7 +18,6 @@ import { IconButton, WindowControls } from "./ui";
 import { api, errorMessage, macOS, native } from "./api";
 import { version } from "../package.json";
 import {
-  actions,
   bindingConflict,
   formatShortcut,
   shortcutFromEvent,
@@ -30,7 +30,8 @@ import { useWindowZoom } from "./useWindowZoom";
 export default function SettingsWindow() {
   const [page, setPage] = useState(() => {
     const requested = new URLSearchParams(window.location.search).get("page");
-    return requested === "editor" ||
+    return requested === "plugins" ||
+      requested === "editor" ||
       requested === "themes" ||
       requested === "terminal" ||
       requested === "about"
@@ -52,7 +53,14 @@ export default function SettingsWindow() {
     const unlisten = listen<string>("settings-page-changed", ({ payload }) => {
       if (
         current &&
-        ["keybinds", "editor", "themes", "terminal", "about"].includes(payload)
+        [
+          "keybinds",
+          "editor",
+          "themes",
+          "terminal",
+          "about",
+          "plugins",
+        ].includes(payload)
       ) {
         setRecording(null);
         setPage(payload);
@@ -185,6 +193,13 @@ export default function SettingsWindow() {
             <Info size={16} />
             About
           </button>
+          <button
+            className="settings-nav-item"
+            aria-current={page === "plugins" ? "page" : undefined}
+            onClick={() => setPage("plugins")}
+          >
+            Plugins
+          </button>
         </nav>
         {page === "about" ? (
           <main className="keybindings-page">
@@ -216,6 +231,8 @@ export default function SettingsWindow() {
               </p>
             )}
           </main>
+        ) : page === "plugins" ? (
+          <PluginsPage />
         ) : page === "terminal" ? (
           <TerminalSettingsPage />
         ) : page === "themes" ? (
@@ -296,14 +313,16 @@ export default function SettingsWindow() {
                 />
               </div>
             </section>
-            {(["Terminals", "Tabs", "Workspace"] as const).map((group) => (
+            {[
+              ...new Set(preferences.actions.map((action) => action.group)),
+            ].map((group) => (
               <section
                 className="keybindings-group"
                 key={group}
                 aria-label={group}
               >
                 <h2>{group}</h2>
-                {actions
+                {preferences.actions
                   .filter((action) => action.group === group)
                   .map((action) => (
                     <div className="keybinding-row" key={action.id}>

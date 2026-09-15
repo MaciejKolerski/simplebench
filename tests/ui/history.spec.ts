@@ -347,7 +347,9 @@ test("history preserves the Changes draft, handles retries and empty repositorie
     (window as any).__nativeTest.failHistory = true;
   });
   await page.getByRole("tab", { name: "History", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("History is unavailable");
+  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toContainText(
+    "History is unavailable",
+  );
   await page.evaluate((fixture) => {
     (window as any).__nativeTest.failHistory = false;
     (window as any).__nativeTest.gitHistory = fixture;
@@ -371,7 +373,9 @@ test("history preserves the Changes draft, handles retries and empty repositorie
     .getByRole("button")
     .first()
     .click();
-  await expect(page.getByRole("alert")).toContainText("Commit is unavailable");
+  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toContainText(
+    "Commit is unavailable",
+  );
   await page.evaluate(() => {
     (window as any).__nativeTest.failCommitDetails = false;
   });
@@ -407,7 +411,9 @@ test("commit diffs ignore late responses and remain usable in the minimum window
     (window as any).__nativeTest.failCommitDiff = true;
   });
   await files.getByRole("button", { name: /src\/ProjectList.tsx/ }).click();
-  await expect(page.getByRole("alert")).toContainText("Diff is unavailable");
+  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toContainText(
+    "Diff is unavailable",
+  );
   await page.evaluate(() => {
     (window as any).__nativeTest.failCommitDiff = false;
     (window as any).__nativeTest.gitHistory.diffs[

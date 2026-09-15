@@ -87,7 +87,7 @@ pub async fn open_settings(
     if page.as_deref().is_some_and(|page| {
         !matches!(
             page,
-            "keybinds" | "themes" | "editor" | "terminal" | "about"
+            "keybinds" | "themes" | "plugins" | "editor" | "terminal" | "about"
         )
     }) {
         return Err("Unknown settings page.".into());

@@ -192,6 +192,31 @@ pub fn save_session(
     main_window(&window)?;
     let _guard = state.0.lock().map_err(|error| error.to_string())?;
     let path = session_path(&app)?;
+    if data["version"] == 2 && path.exists() {
+        use std::io::{Read, Write};
+        let mut previous = Vec::new();
+        fs::File::open(&path)
+            .map_err(|e| e.to_string())?
+            .take(8 * 1024 * 1024 + 1)
+            .read_to_end(&mut previous)
+            .map_err(|e| e.to_string())?;
+        if previous.len() > 8 * 1024 * 1024 {
+            return Err("The previous session exceeds its size limit.".into());
+        }
+        if serde_json::from_slice::<serde_json::Value>(&previous)
+            .is_ok_and(|saved| saved["version"] == 1)
+        {
+            let mut backup = tempfile::NamedTempFile::new_in(path.parent().unwrap())
+                .map_err(|e| e.to_string())?;
+            backup.write_all(&previous).map_err(|e| e.to_string())?;
+            backup.as_file().sync_all().map_err(|e| e.to_string())?;
+            match backup.persist_noclobber(path.with_file_name("session.v1.json")) {
+                Ok(_) => {}
+                Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => {}
+                Err(error) => return Err(error.to_string()),
+            }
+        }
+    }
     write_json(&path, &data, 8 * 1024 * 1024)
 }
 

@@ -203,7 +203,9 @@ test("fetch and pull run explicitly, report progress and errors, and refresh his
     state.remoteError = "Cannot fast-forward: branches have diverged.";
     state.releaseRemote();
   });
-  await expect(page.getByRole("alert")).toContainText("Cannot fast-forward");
+  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toContainText(
+    "Cannot fast-forward",
+  );
   await expect(fetch).toBeEnabled();
   await expect(page.getByText("Pull complete.", { exact: true })).toHaveCount(
     0,
@@ -927,7 +929,7 @@ test("source control preserves an exact commit draft after failed Git actions", 
   await page
     .getByRole("checkbox", { name: "Stage README.md", exact: true })
     .click();
-  await expect(page.getByRole("alert")).toContainText(
+  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toContainText(
     "Cannot update the index",
   );
   await expect(
@@ -942,7 +944,7 @@ test("source control preserves an exact commit draft after failed Git actions", 
     .getByRole("checkbox", { name: "Stage README.md", exact: true })
     .click();
   await commit.click();
-  await expect(page.getByRole("alert")).toContainText(
+  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toContainText(
     "Commit hook rejected the message",
   );
   await expect(input).toHaveValue(draft);

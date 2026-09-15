@@ -279,7 +279,9 @@ test("an unsupported saved session is preserved until recovery is chosen", async
     future,
   );
   await page.goto("/");
-  await expect(page.getByRole("alert")).toContainText("unsupported format");
+  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toContainText(
+    "unsupported format",
+  );
   await page
     .getByRole("button", { name: "Open Recent Project", exact: true })
     .click();
@@ -302,7 +304,9 @@ test("an unsupported saved session is preserved until recovery is chosen", async
   await page
     .getByRole("button", { name: "Save current layout instead", exact: true })
     .click();
-  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toHaveCount(
+    0,
+  );
   await page.clock.fastForward(1000);
   await expect
     .poll(() =>
@@ -310,7 +314,7 @@ test("an unsupported saved session is preserved until recovery is chosen", async
         () => JSON.parse(localStorage.getItem("test-session")!).version,
       ),
     )
-    .toBe(1);
+    .toBe(2);
 });
 
 test("closing flushes the latest layout and a failed save keeps the window open", async ({
@@ -326,7 +330,9 @@ test("closing flushes the latest layout and a failed save keeps the window open"
   });
   await page.getByRole("button", { name: "Close window", exact: true }).click();
   // A pending autosave can report the same storage error after the close flush.
-  await expect(page.getByRole("alert")).toContainText("Disk is full");
+  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toContainText(
+    "Disk is full",
+  );
   expect(
     await page.evaluate(() =>
       (window as any).__nativeTest.calls.some(

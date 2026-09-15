@@ -36,7 +36,7 @@ export function usePaneMotion(
       finishMotion.current?.();
       const panels = [
         ...container.querySelectorAll<HTMLElement>(
-          ".split-container > .split-child, .split-container > .split-divider",
+          ".dock-pane-host > .split-child, .split-container > .split-divider",
         ),
       ];
       if (!panels.length) {
@@ -57,7 +57,7 @@ export function usePaneMotion(
         if (finishMotion.current !== cancel) return;
         // New panels and dividers join the transition instead of appearing behind it.
         for (const panel of container.querySelectorAll<HTMLElement>(
-          ".split-container > .split-child, .split-container > .split-divider",
+          ".dock-pane-host > .split-child, .split-container > .split-divider",
         )) {
           if (panels.includes(panel)) continue;
           names.push(panel.style.viewTransitionName);

@@ -1,5 +1,12 @@
 export const actions = [
   {
+    id: "commandPicker",
+    label: "Show commands",
+    description: "Find and run a workspace or plugin command.",
+    group: "Workspace",
+    shortcut: "Ctrl+Shift+KeyP",
+  },
+  {
     id: "saveFile",
     label: "Save file",
     description: "Save the active editor file.",
@@ -183,9 +190,32 @@ export const actions = [
     group: "Workspace",
     shortcut: "Ctrl+Digit0",
   },
+  {
+    id: "movePanel",
+    label: "Move active panel",
+    description: "Choose another panel and a docking side in this tab.",
+    group: "Workspace",
+    shortcut: null,
+  },
+  {
+    id: "dockTab",
+    label: "Dock current tab",
+    description: "Dock this tab into another terminal tab.",
+    group: "Workspace",
+    shortcut: null,
+  },
 ] as const;
 
-export type ActionId = (typeof actions)[number]["id"];
+export type BuiltinActionId = (typeof actions)[number]["id"];
+export type ActionId = BuiltinActionId | `${string}.${string}`;
+export interface ShortcutAction {
+  id: ActionId;
+  label: string;
+  description: string;
+  group: string;
+  shortcut: string | null;
+}
+
 export type Keybindings = Record<ActionId, string | null>;
 export interface KeybindingSettings {
   version: 1;
@@ -230,9 +260,12 @@ const supportedCode = (code: string) =>
   isFunctionKey(code) ||
   Object.hasOwn(keyNames, code);
 
-export function defaultKeybindings(mac = false): Keybindings {
+export function defaultKeybindings(
+  mac = false,
+  contributions: ShortcutAction[] = [],
+): Keybindings {
   return Object.fromEntries(
-    actions.map(({ id, shortcut }) => [
+    [...actions, ...contributions].map(({ id, shortcut }) => [
       id,
       mac && id !== "terminalOverview"
         ? (shortcut?.replace("Ctrl", "Meta") ?? null)
@@ -290,7 +323,9 @@ export function actionForEvent(
 ): ActionId | undefined {
   const shortcut = shortcutFromEvent(event);
   if (!shortcut) return;
-  const exact = actions.find(({ id }) => bindings[id] === shortcut)?.id;
+  const exact = Object.entries(bindings).find(
+    ([, binding]) => binding === shortcut,
+  )?.[0] as ActionId | undefined;
   if (exact) return exact;
   // Plus may require Shift or a different physical key on the user's layout.
   // Explicit assignments take precedence over these standard zoom aliases.
@@ -336,15 +371,24 @@ export function bindingConflict(
   shortcut: string | null,
 ): string | undefined {
   if (!shortcut) return;
-  return actions.find(
-    (action) => action.id !== id && bindings[action.id] === shortcut,
-  )?.label;
+  const other = Object.entries(bindings).find(
+    ([key, value]) => key !== id && value === shortcut,
+  )?.[0];
+  return other
+    ? (actions.find((action) => action.id === other)?.label ?? other)
+    : undefined;
 }
 
-export function restoreKeybindings(value: unknown, mac = false): Keybindings {
-  const result = defaultKeybindings(mac);
-  if (value === null || value === undefined) return result;
+export function restoreKeybindings(
+  value: unknown,
+  mac = false,
+  contributions: ShortcutAction[] = [],
+): Keybindings {
+  const result = defaultKeybindings(mac, contributions);
+  if (value === null || value === undefined)
+    value = { version: 1, bindings: {} };
   if (
+    !value ||
     typeof value !== "object" ||
     !("version" in value) ||
     value.version !== 1 ||
@@ -359,8 +403,24 @@ export function restoreKeybindings(value: unknown, mac = false): Keybindings {
       "The saved keybindings use an unsupported format. The file has been left intact.",
     );
   }
-  for (const { id } of actions) {
-    if (!Object.hasOwn(value.bindings, id)) continue;
+  const savedEntries = Object.entries(value.bindings);
+  if (
+    savedEntries.length > 2048 ||
+    new TextEncoder().encode(JSON.stringify(value)).length > 256 * 1024
+  )
+    throw new Error(
+      "Keybindings exceed the extension settings limit. The file was preserved.",
+    );
+  for (const [key] of savedEntries) {
+    if (!actions.some((action) => action.id === key) && !key.includes("."))
+      continue;
+    if (
+      key.length > 160 ||
+      (!actions.some((action) => action.id === key) &&
+        !/^[a-z][a-z0-9-]*(?:\.[a-z][a-z0-9-]*)+$/.test(key))
+    )
+      throw new Error(`Invalid saved command ID: ${key}`);
+    const id = key as ActionId;
     const shortcut = (value.bindings as Record<string, unknown>)[id];
     if (
       shortcut !== null &&
@@ -388,7 +448,12 @@ export function restoreKeybindings(value: unknown, mac = false): Keybindings {
   for (const { id, group } of actions) {
     if (
       (((group === "Editor" ||
-        ["terminalOverview", "nextTab", "previousTab"].includes(id) ||
+        [
+          "commandPicker",
+          "terminalOverview",
+          "nextTab",
+          "previousTab",
+        ].includes(id) ||
         isZoomAction(id)) &&
         !Object.hasOwn(value.bindings, id)) ||
         migrated.has(id)) &&
@@ -396,7 +461,16 @@ export function restoreKeybindings(value: unknown, mac = false): Keybindings {
     )
       result[id] = null;
   }
-  for (const { id, label } of actions) {
+  for (const { id } of contributions)
+    if (
+      !Object.hasOwn(value.bindings, id) &&
+      bindingConflict(result, id, result[id])
+    )
+      result[id] = null;
+  for (const [id] of Object.entries(result) as [ActionId, string | null][]) {
+    const label =
+      [...actions, ...contributions].find((action) => action.id === id)
+        ?.label ?? id;
     const conflict = bindingConflict(result, id, result[id]);
     if (conflict)
       throw new Error(

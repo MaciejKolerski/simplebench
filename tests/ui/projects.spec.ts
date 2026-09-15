@@ -213,7 +213,9 @@ test("an unavailable recent folder leaves the current project and history intact
   });
   await page.locator(".project-switcher").click();
   await page.getByRole("menuitem", { name: "missing", exact: true }).click();
-  await expect(page.getByRole("alert")).toContainText("Cannot open directory");
+  await expect(page.getByRole("alert").filter({ hasText: /\S/ })).toContainText(
+    "Cannot open directory",
+  );
   await expect(page.locator(".project-switcher")).toHaveText("simplebench");
   await expect(page.locator("[data-pane-id]")).toHaveAttribute(
     "data-pane-id",

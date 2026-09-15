@@ -46,11 +46,25 @@ export function usePaneDrag({ layout, root, enabled, onMove }: Props) {
     if (!enabled || !event.ctrlKey || event.button !== 0 || !event.isPrimary)
       return;
     const element = event.target as Element;
-    const handle = element.closest<HTMLElement>(".terminal-title-box");
-    const source = handle?.closest<HTMLElement>("[data-pane-id]");
-    const id = source?.dataset.paneId;
+    const handle = element.closest<HTMLElement>(
+      ".terminal-title-box, [data-pane-drag-handle]",
+    );
+    const source = handle?.closest<HTMLElement>(
+      "[data-pane-id], [data-plugin-pane-id], [data-file-pane-id], [data-browser-pane-id]",
+    );
+    const id =
+      source?.dataset.paneId ??
+      source?.dataset.pluginPaneId ??
+      source?.dataset.filePaneId ??
+      source?.dataset.browserPaneId;
     const container = root.current;
-    if (!handle || !id || !container || element.closest("button")) return;
+    if (
+      !handle ||
+      !id ||
+      !container ||
+      element.closest("button, input, textarea, select")
+    )
+      return;
     cleanup.current?.();
     event.preventDefault();
     const pointerId = event.pointerId;
@@ -115,7 +129,7 @@ export function usePaneDrag({ layout, root, enabled, onMove }: Props) {
       indicator.className = `pane-drop-preview${allowed ? "" : " is-blocked"}`;
       indicator.dataset.side = side;
       indicator.textContent = allowed
-        ? "Move terminal here"
+        ? "Move panel here"
         : "Not enough room for these panels";
       Object.assign(indicator.style, {
         left: `${area.left + proposed.left}px`,
