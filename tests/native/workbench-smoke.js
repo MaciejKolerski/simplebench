@@ -17,6 +17,34 @@
     );
   try {
     const { before, terminal } = globalThis.__simplebenchSmoke;
+    phase = "Explorer native directory watch without Git";
+    await wait(() => document.querySelector(".file-tree"));
+    await invoke("write_terminal", {
+      id: terminal,
+      data: "mkdir explorer-watch\n",
+    });
+    await wait(() => button("explorer-watch"));
+    button("explorer-watch").click();
+    await invoke("write_terminal", {
+      id: terminal,
+      data: "for i in $(seq 1 100); do touch explorer-watch/file-$i; done; touch explorer-watch/.hidden\n",
+    });
+    await wait(() => button("file-100") && button(".hidden"));
+    await invoke("write_terminal", {
+      id: terminal,
+      data: "mv explorer-watch/file-100 explorer-watch/renamed; rm explorer-watch/.hidden\n",
+    });
+    await wait(
+      () => button("renamed") && !button("file-100") && !button(".hidden"),
+    );
+    button("explorer-watch").click();
+    await invoke("write_terminal", {
+      id: terminal,
+      data: "touch explorer-watch/while-collapsed\n",
+    });
+    button("explorer-watch").click();
+    await wait(() => button("while-collapsed"));
+    phase = "theme selection";
     await wait(() => document.documentElement.dataset.theme === "theme-copy");
     const canvasCount = document.querySelectorAll(".xterm canvas").length;
     phase = "active theme watch";
@@ -199,6 +227,7 @@
           "relative chunk/CSS/image/Unicode path",
           "keyboard Dockview move retains state and shell PID",
           "native PTY input during plugin work",
+          "Explorer follows mkdir, file bursts, renames, removals and collapsed folders without Git",
           "active-folder native watch",
           "main/settings light theme convergence",
           "native child browser resize/zoom geometry/overlay hide/restore",

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Channel, Resource } from "@tauri-apps/api/core";
 import {
   ChevronDown,
   ChevronRight,
@@ -44,6 +45,52 @@ export default function Explorer(props: Props) {
   );
   const gitRevision = JSON.stringify(props.gitStatus?.changes);
   const [revision, setRevision] = useState(0);
+  const [watched, setWatched] = useState(new Set<string>());
+  const [directoryRevisions, setDirectoryRevisions] = useState<
+    Record<string, number>
+  >({});
+  const watchDirectory = useCallback((relative: string, watch: boolean) => {
+    setWatched((previous) => {
+      const next = new Set(previous);
+      if (watch) next.add(relative);
+      else next.delete(relative);
+      return next;
+    });
+  }, []);
+  const watchPaths = JSON.stringify([...watched].sort());
+  useEffect(() => {
+    const relatives: string[] = JSON.parse(watchPaths);
+    if (!relatives.length) return;
+    let current = true;
+    const changed = (directories: string[]) => {
+      const dirty = new Set(directories);
+      if (current)
+        setDirectoryRevisions((previous) =>
+          Object.fromEntries(
+            relatives.map((relative) => [
+              relative,
+              (previous[relative] ?? 0) + (dirty.has(relative) ? 1 : 0),
+            ]),
+          ),
+        );
+    };
+    const watcher = api<number>("watch_explorer_directories", {
+      root: props.root,
+      relatives,
+      onChange: new Channel<string[]>(changed),
+    }).then((rid) => new Resource(rid));
+    void watcher
+      // Catch changes between listing directories and registering the watch.
+      .then(() => changed(relatives))
+      .catch((error) => {
+        if (current)
+          props.onError(`Explorer auto-refresh failed: ${errorMessage(error)}`);
+      });
+    return () => {
+      current = false;
+      void watcher.then((watcher) => watcher.close()).catch(() => {});
+    };
+  }, [props.root, props.onError, watchPaths, revision]);
   const [searchScope, setSearchScope] = useState<string>();
   const [searchOpen, setSearchOpen] = useState(false);
   const search = (relative: string) => {
@@ -149,6 +196,8 @@ export default function Explorer(props: Props) {
               relative=""
               depth={0}
               revision={revision}
+              directoryRevisions={directoryRevisions}
+              watchDirectory={watchDirectory}
               gitStatuses={gitStatuses}
               gitRevision={gitRevision}
               showHidden={showHidden}
@@ -179,6 +228,8 @@ interface DirectoryProps extends Props {
   relative: string;
   depth: number;
   revision: number;
+  directoryRevisions: Record<string, number>;
+  watchDirectory: (relative: string, watch: boolean) => void;
   showHidden: boolean;
   expanded: Set<string>;
   toggle: (path: string) => void;
@@ -190,6 +241,7 @@ function Directory(props: DirectoryProps) {
     depth,
     revision,
     gitRevision,
+    watchDirectory,
     showHidden,
     expanded,
     toggle,
@@ -200,24 +252,45 @@ function Directory(props: DirectoryProps) {
   const [entries, setEntries] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const reload = useRef(() => {});
   useEffect(() => {
     let current = true;
-    setLoading(true);
-    setError("");
-    void api<FileEntry[]>("list_directory", { root, relative })
-      .then((entries) => {
-        if (current) setEntries(entries);
-      })
-      .catch((error) => {
-        if (current) setError(errorMessage(error));
-      })
-      .finally(() => {
-        if (current) setLoading(false);
-      });
+    let busy = false;
+    let dirty = false;
+    const update = async () => {
+      busy = true;
+      do {
+        dirty = false;
+        setLoading(true);
+        setError("");
+        try {
+          const entries = await api<FileEntry[]>("list_directory", {
+            root,
+            relative,
+          });
+          if (current) setEntries(entries);
+        } catch (error) {
+          if (current) setError(errorMessage(error));
+        } finally {
+          if (current) setLoading(false);
+        }
+      } while (current && dirty);
+      busy = false;
+    };
+    reload.current = () => {
+      dirty = true;
+      if (!busy) void update();
+    };
+    watchDirectory(relative, true);
     return () => {
       current = false;
+      watchDirectory(relative, false);
     };
-  }, [root, relative, revision, gitRevision]);
+  }, [root, relative, watchDirectory]);
+  const directoryRevision = props.directoryRevisions[relative];
+  useEffect(() => {
+    reload.current();
+  }, [root, relative, revision, gitRevision, directoryRevision]);
   const creation =
     props.creation?.relative === relative ? props.creation : undefined;
   const visible = error

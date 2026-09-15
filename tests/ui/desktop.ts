@@ -310,6 +310,7 @@ export async function mockDesktop(
           }
           if (command === "resolve_editor_file") return args.relative;
           if (command === "watch_editor_files") return;
+          if (command === "watch_explorer_directories") return 2;
           if (command === "save_new_editor_file") {
             if (desktop.__nativeTest.fileSaveDelay)
               await new Promise((resolve) =>

@@ -29,10 +29,33 @@ async function setup(
     const native = (window as any).__nativeTest;
     native.operationError = "";
     native.searchDelays = {};
+    native.directoryDelay = 0;
+    native.directoryReads = 0;
+    native.maxDirectoryReads = 0;
+    native.explorerWatchers = new Map();
+    let watcherId = 1000;
     let entries = initialEntries;
+    native.setExplorerEntries = (next: typeof initialEntries) => {
+      entries = next;
+    };
+    native.changeExplorerDirectories = (relatives: string[]) => {
+      for (const watcher of native.explorerWatchers.values())
+        watcher.onChange.onmessage(relatives);
+    };
     const bridge = (window as any).__TAURI_INTERNALS__;
     const invoke = bridge.invoke;
     bridge.invoke = async (command: string, args: any = {}) => {
+      if (command === "watch_explorer_directories") {
+        native.calls.push({ command, args });
+        const id = watcherId++;
+        native.explorerWatchers.set(id, args);
+        return id;
+      }
+      if (
+        command === "plugin:resources|close" &&
+        native.explorerWatchers.delete(args.rid)
+      )
+        return;
       if (
         ![
           "list_directory",
@@ -48,8 +71,12 @@ async function setup(
       native.calls.push({ command, args });
       if (command === "resolve_project_entry")
         return `${args.root}/${args.relative}`.replace(/\/$/, "");
-      if (command === "list_directory")
-        return entries
+      if (command === "list_directory") {
+        native.maxDirectoryReads = Math.max(
+          native.maxDirectoryReads,
+          ++native.directoryReads,
+        );
+        const result = entries
           .filter(
             (entry) =>
               entry.relative.split("/").slice(0, -1).join("/") ===
@@ -62,6 +89,13 @@ async function setup(
             isDirectory: entry.directory,
             isSymlink: false,
           }));
+        if (native.directoryDelay)
+          await new Promise((resolve) =>
+            setTimeout(resolve, native.directoryDelay),
+          );
+        native.directoryReads--;
+        return result;
+      }
       if (command === "search_project") {
         const result = { matches: [] as any[], limited: false, skipped: 0 };
         for (const [path, file] of Object.entries(native.editorFiles) as [
@@ -181,6 +215,148 @@ async function menu(page: Page, name: string, item: string) {
     .click({ button: "right" });
   await page.getByRole("menuitem", { name: item, exact: true }).click();
 }
+
+test("automatically refreshes visible directories without Git and releases collapsed watches", async ({
+  page,
+}, testInfo) => {
+  await setup(page, false);
+  const tree = page.locator(".file-tree");
+  await tree.getByRole("button", { name: "src", exact: true }).click();
+  await expect(
+    tree.getByRole("button", { name: "main.ts", exact: true }),
+  ).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const native = (window as any).__nativeTest;
+        return [...native.explorerWatchers.values()].map(
+          (watcher: any) => watcher.relatives,
+        );
+      }),
+    )
+    .toEqual([["", "src"]]);
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as any).__nativeTest.directoryReads),
+    )
+    .toBe(0);
+  await page.evaluate(() => {
+    const native = (window as any).__nativeTest;
+    native.calls.length = 0;
+    native.setExplorerEntries([
+      { relative: "src", directory: true },
+      { relative: "src/main.ts", directory: false },
+      { relative: "src/ignored.log", directory: false },
+      { relative: "README.md", directory: false },
+      { relative: "new folder", directory: true },
+    ]);
+    native.changeExplorerDirectories(["src"]);
+  });
+  await expect(
+    tree.getByRole("button", { name: "ignored.log", exact: true }),
+  ).toBeVisible();
+  await expect(
+    tree.getByRole("button", { name: "new folder", exact: true }),
+  ).toHaveCount(0);
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.calls
+        .filter((call: any) => call.command === "list_directory")
+        .map((call: any) => call.args.relative),
+    ),
+  ).toEqual(["src"]);
+  await page.evaluate(() =>
+    (window as any).__nativeTest.changeExplorerDirectories([""]),
+  );
+  await expect(
+    tree.getByRole("button", { name: "new folder", exact: true }),
+  ).toBeVisible();
+  await expect(
+    tree.getByRole("button", { name: "src", exact: true }),
+  ).toHaveAttribute("aria-expanded", "true");
+  await page.screenshot({
+    path: testInfo.outputPath("explorer-auto-refresh.png"),
+  });
+  await tree.getByRole("button", { name: "src", exact: true }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        [...(window as any).__nativeTest.explorerWatchers.values()].map(
+          (watcher: any) => watcher.relatives,
+        ),
+      ),
+    )
+    .toEqual([[""]]);
+  await page
+    .getByRole("button", { name: "Search in project", exact: true })
+    .click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as any).__nativeTest.explorerWatchers.size),
+    )
+    .toBe(0);
+  await page
+    .getByRole("button", { name: "Back to Explorer", exact: true })
+    .click();
+  await expect(
+    tree.getByRole("button", { name: "new folder", exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    const native = (window as any).__nativeTest;
+    native.setExplorerEntries([{ relative: "renamed.txt", directory: false }]);
+    native.changeExplorerDirectories([""]);
+  });
+  await expect(
+    tree.getByRole("button", { name: "renamed.txt", exact: true }),
+  ).toBeVisible();
+  await expect(
+    tree.getByRole("button", { name: "new folder", exact: true }),
+  ).toHaveCount(0);
+});
+
+test("coalesces updates during a slow directory read without losing the final change", async ({
+  page,
+}) => {
+  await setup(page, false);
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as any).__nativeTest.directoryReads),
+    )
+    .toBe(0);
+  await page.evaluate(() => {
+    const native = (window as any).__nativeTest;
+    native.maxDirectoryReads = 0;
+    native.directoryDelay = 300;
+    native.calls.length = 0;
+    native.changeExplorerDirectories([""]);
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as any).__nativeTest.directoryReads),
+    )
+    .toBe(1);
+  await page.evaluate(() => {
+    const native = (window as any).__nativeTest;
+    native.setExplorerEntries([{ relative: "last.txt", directory: false }]);
+    for (let i = 0; i < 100; i++) native.changeExplorerDirectories([""]);
+  });
+  await expect(
+    page
+      .locator(".file-tree")
+      .getByRole("button", { name: "last.txt", exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() => (window as any).__nativeTest.maxDirectoryReads),
+  ).toBe(1);
+  expect(
+    await page.evaluate(
+      () =>
+        (window as any).__nativeTest.calls.filter(
+          (call: any) => call.command === "list_directory",
+        ).length,
+    ),
+  ).toBe(2);
+});
 
 test("Explorer colors files and ancestor folders and refreshes new files and clean states", async ({
   page,

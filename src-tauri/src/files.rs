@@ -11,6 +11,7 @@ pub mod editor;
 pub mod markdown;
 pub mod operations;
 pub mod search;
+pub mod watch;
 
 #[derive(Default)]
 pub struct SessionFile(pub Mutex<()>);

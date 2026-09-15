@@ -179,6 +179,7 @@ pub fn run() {
                 finish_window_startup,
                 settings_window::open_settings,
                 files::list_directory,
+                files::watch::watch_explorer_directories,
                 files::search::search_project,
                 files::search::cancel_project_search,
                 files::operations::file_operation,
