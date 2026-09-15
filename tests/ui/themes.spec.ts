@@ -93,6 +93,190 @@ async function terminal(page: Page, pane: string) {
   }, pane);
 }
 
+test("theme cards filter local and package themes and preserve selection and immutable sources", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 920, height: 680 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await mockDesktop(page);
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "test-theme-manifests",
+      JSON.stringify({
+        linen: {
+          version: 2,
+          name: "Linen",
+          description: "Soft contrast for a brighter workspace.",
+          author: "Local author",
+          appearance: "light",
+          common: {},
+        },
+        graphite: {
+          version: 2,
+          name: "Graphite",
+          description: "A restrained palette that follows your color mode.",
+          appearance: "adaptive",
+          common: {},
+        },
+        packaged: {
+          version: 2,
+          name: "Quiet graphite",
+          description: "A shared theme from an installed package.",
+          author: "Theme collection",
+          appearance: "adaptive",
+          common: {},
+        },
+        broken: {
+          version: 99,
+          name: "Unfinished theme",
+          description: "A theme that needs attention before it can be used.",
+        },
+      }),
+    );
+    localStorage.setItem(
+      "test-plugins",
+      JSON.stringify([
+        {
+          id: "local.colors",
+          source: "/external/colors",
+          revision: "a".repeat(64),
+          enabled: false,
+          trustedRevision: null,
+          error: null,
+          evaluated: false,
+          restartRequired: false,
+          themeIds: ["packaged"],
+          manifest: {
+            schemaVersion: 1,
+            hostApi: 1,
+            id: "local.colors",
+            name: "Quiet graphite",
+            version: "1.0.0",
+            description: "A theme collection.",
+            contributes: {
+              themes: [{ id: "local.colors.graphite", path: "graphite" }],
+            },
+          },
+        },
+      ]),
+    );
+  });
+  await page.goto("/?window=settings&page=themes");
+  const cards = page.getByRole("article");
+  await expect(cards).toHaveCount(5);
+  const first = await cards.nth(0).boundingBox();
+  const second = await cards.nth(1).boundingBox();
+  const list = await page.locator(".theme-list").boundingBox();
+  expect(first!.width).toBe(list!.width);
+  expect(first!.x).toBe(second!.x);
+  expect(second!.y).toBeGreaterThanOrEqual(first!.y + first!.height);
+  await page.screenshot({
+    path: test.info().outputPath("themes-cards-dark.png"),
+  });
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-appearance",
+    "light",
+  );
+  await page.screenshot({
+    path: test.info().outputPath("themes-cards-light.png"),
+  });
+
+  const search = page.getByRole("searchbox", { name: "Search themes" });
+  const status = page.getByRole("combobox", { name: "Theme status" });
+  const sources = page.getByRole("group", { name: "Theme sources" });
+  await search.fill("  LOCAL AUTHOR  ");
+  await expect(cards).toHaveCount(1);
+  await expect(cards).toHaveAttribute("aria-label", "Linen");
+  await chooseOption(status, "Active");
+  await expect(cards).toHaveCount(0);
+  await expect(
+    page.getByText("No matching themes", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Clear filters" }).click();
+  await expect(search).toBeFocused();
+  await expect(cards).toHaveCount(5);
+
+  await sources.getByRole("button", { name: "Packages", exact: true }).click();
+  await expect(cards).toHaveCount(1);
+  await expect(cards).toHaveAttribute("aria-label", "Quiet graphite");
+  await cards.getByRole("button", { name: "Use Quiet graphite theme" }).click();
+  await expect(
+    cards.getByRole("button", { name: "Use Quiet graphite theme" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await cards.getByRole("button", { name: "View theme" }).click();
+  const editor = page.getByRole("dialog");
+  await expect(editor).toContainText("immutable plugin package");
+  await expect(
+    editor.getByRole("button", { name: "Show controls" }),
+  ).toBeDisabled();
+  await expect(
+    editor.getByRole("button", { name: "Save theme" }),
+  ).toBeDisabled();
+  await editor.getByRole("button", { name: "Close", exact: true }).click();
+  await cards.getByRole("button", { name: "Duplicate theme" }).click();
+  await expect(editor.getByRole("button", { name: "Edit JSON" })).toBeEnabled();
+  await expect(
+    editor.getByText("immutable plugin package", { exact: false }),
+  ).toHaveCount(0);
+  await editor.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(cards).toHaveCount(6);
+  await expect(
+    sources.getByRole("button", { name: "All sources" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await chooseOption(status, "Needs attention");
+  await expect(cards).toHaveCount(1);
+  await expect(
+    cards.getByRole("button", { name: "Use Unfinished theme theme" }),
+  ).toBeDisabled();
+  await expect(cards.getByRole("button", { name: "Edit theme" })).toBeEnabled();
+  await expect(cards.getByRole("alert")).toContainText(
+    "Unsupported theme version",
+  );
+
+  await page
+    .getByRole("button", { name: "Import folder", exact: true })
+    .click();
+  await expect(cards).toHaveCount(7);
+  expect(await calls(page, "save_theme_preferences")).toHaveLength(1);
+  expect(await calls(page, "prepare_plugin")).toHaveLength(0);
+  expect(await calls(page, "enable_plugin")).toHaveLength(0);
+  await chooseOption(status, "Active");
+  await expect(cards).toHaveCount(1);
+  await chooseOption(status, "All themes");
+  await page.getByRole("button", { name: "Use DeepMono theme" }).click();
+  await expect(cards).toHaveCount(7);
+  await expect(
+    page.getByRole("button", { name: "Use DeepMono theme" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.setViewportSize({ width: 560, height: 420 });
+  await page.locator(".themes-page").evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  expect(
+    await page
+      .locator(".themes-page")
+      .evaluate((element) => element.scrollWidth <= element.clientWidth),
+  ).toBe(true);
+  const narrowFirst = await cards.nth(0).boundingBox();
+  const narrowSecond = await cards.nth(1).boundingBox();
+  expect(narrowFirst!.x).toBe(narrowSecond!.x);
+  expect(narrowSecond!.y).toBeGreaterThan(narrowFirst!.y);
+  await page.screenshot({
+    path: test.info().outputPath("themes-cards-minimum.png"),
+  });
+  await page.getByRole("button", { name: "Plugins", exact: true }).click();
+  await expect(page.getByRole("article")).toHaveCount(0);
+  await expect(
+    page.getByText("No plugins installed.", { exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => JSON.parse(localStorage.getItem("test-plugins")!).length,
+    ),
+  ).toBe(1);
+});
+
 test("a theme updates both windows and hidden terminals without replacing PTYs", async ({
   page,
   context,
@@ -189,7 +373,7 @@ test("a theme updates both windows and hidden terminals without replacing PTYs",
       .locator(".theme-library")
       .evaluate((node) => getComputedStyle(node).backgroundImage),
   ).toContain("/images/wall%20paper.svg");
-  await preferences.getByRole("button", { name: "Restore DeepMono" }).click();
+  await preferences.getByRole("button", { name: "Use DeepMono theme" }).click();
   await expect
     .poll(async () => (await terminal(page, first)).fontSize)
     .toBe(16);
@@ -226,7 +410,7 @@ test("invalid edits and failed saves preserve the previous theme, and reset reco
   await page.evaluate(() => {
     (window as any).__nativeTest.failThemeSave = true;
   });
-  await page.getByRole("button", { name: "Restore DeepMono" }).click();
+  await page.getByRole("button", { name: "Use DeepMono theme" }).click();
   await expect(page.getByRole("alert")).toContainText("Disk is full");
   await expect(page.locator("h1")).toHaveCSS("letter-spacing", "3px");
   await page.evaluate(() => {
@@ -240,7 +424,7 @@ test("invalid edits and failed saves preserve the previous theme, and reset reco
   await page.getByRole("button", { name: "Themes", exact: true }).click();
   await expect(page.getByRole("alert")).toContainText("left intact");
   expect(await calls(page, "save_theme_preferences")).toHaveLength(0);
-  await page.getByRole("button", { name: "Restore DeepMono" }).click();
+  await page.getByRole("button", { name: "Use DeepMono theme" }).click();
   await expect(page.getByRole("alert")).toHaveCount(0);
   expect(
     JSON.parse(
@@ -381,7 +565,7 @@ test("legacy CSS preferences cannot disable a stylesheet declared by JSON", asyn
   expect(
     await page.evaluate(() => localStorage.getItem("test-theme-settings")),
   ).toBe(saved);
-  await page.getByRole("button", { name: "Restore DeepMono" }).click();
+  await page.getByRole("button", { name: "Use DeepMono theme" }).click();
   await expect(page.locator('link[data-theme-layer="css"]')).toHaveCount(0);
   expect(
     JSON.parse(
@@ -507,7 +691,7 @@ test("theme controls save section spacing and layouts in both windows without re
     "flex-direction",
     "row-reverse",
   );
-  await preferences.getByRole("button", { name: "Restore DeepMono" }).click();
+  await preferences.getByRole("button", { name: "Use DeepMono theme" }).click();
   await expect(page.locator(".work-area")).toHaveCSS("padding", "0px");
   await expect(page.locator(".tab-bar")).toHaveCSS("order", "0");
   await expect(page.locator(".terminal-pane").first()).toHaveCSS(

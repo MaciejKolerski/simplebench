@@ -2,15 +2,18 @@ import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Check,
+  Copy,
   FolderOpen,
   Import,
   Monitor,
   Moon,
   Palette,
   Plus,
+  Pencil,
   RefreshCw,
-  RotateCcw,
+  Search,
   Sun,
+  X,
 } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
@@ -19,6 +22,8 @@ import { useThemes } from "./ThemeProvider";
 import { builtinTheme } from "./theme/format";
 import type { ThemeBundle, ThemeCatalog } from "./theme/format";
 import ThemeEditor from "./ThemeEditor";
+import Select from "./Select";
+import { IconButton } from "./ui";
 
 export default function ThemesPage() {
   const themes = useThemes();
@@ -32,6 +37,15 @@ export default function ThemesPage() {
   const [status, setStatus] = useState("");
   const [dragging, setDragging] = useState(false);
   const [editing, setEditing] = useState<ThemeBundle | null>(null);
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [source, setSource] = useState("all");
+  const searchInput = useRef<HTMLInputElement>(null);
+  const clearFilters = useCallback(() => {
+    setSearch("");
+    setFilter("all");
+    setSource("all");
+  }, []);
   const working = useRef(false);
   const mounted = useRef(false);
   const refreshCatalog = useCallback(async () => {
@@ -63,8 +77,9 @@ export default function ThemesPage() {
       run(async () => {
         await api<string>("import_theme", { path });
         await refreshCatalog();
+        clearFilters();
       }, "Theme imported. Select it below to apply it."),
-    [run, refreshCatalog],
+    [run, refreshCatalog, clearFilters],
   );
   useEffect(() => {
     mounted.current = true;
@@ -108,250 +123,372 @@ export default function ThemesPage() {
     const bundle = await api<ThemeBundle>("load_theme", { id });
     setEditing(bundle);
   };
+  const allEntries = [
+    {
+      id: null,
+      name: builtinTheme.name,
+      description: builtinTheme.description,
+      author: "Built in",
+      owner: null,
+      error: null,
+    },
+    ...catalog.themes,
+  ];
+  const query = search.trim().toLowerCase();
+  const entries = allEntries.filter(
+    (entry) =>
+      (filter === "all" ||
+        (filter === "active" && entry.id === themes.preferences.active) ||
+        (filter === "attention" && entry.error)) &&
+      (source === "all" ||
+        (source === "builtin" && entry.id === null) ||
+        (source === "local" && entry.id !== null && !entry.owner) ||
+        (source === "package" && entry.owner)) &&
+      `${entry.name} ${entry.description ?? ""} ${entry.author} ${entry.id ?? "deepmono"} ${entry.owner ?? ""}`
+        .toLowerCase()
+        .includes(query),
+  );
   return (
     <main
-      className={`themes-page${dragging ? " theme-dragging" : ""}`}
+      className={`themes-page catalog-page${dragging ? " theme-dragging" : ""}`}
       aria-busy={busy}
     >
-      <header className="settings-page-heading">
-        <div>
-          <h1>Themes</h1>
-          <p>Make SimpleBench feel like your workspace.</p>
-        </div>
-        <button
-          className="button"
-          disabled={busy || !themes.ready}
-          onClick={() => select(null)}
-        >
-          <RotateCcw size={14} />
-          Restore DeepMono
-        </button>
-      </header>
-      <fieldset
-        className="theme-appearance"
-        disabled={busy || !themes.ready || !!themes.fixedAppearance}
-      >
-        <legend>Color mode</legend>
-        <div className="theme-appearance-options">
-          {(
-            [
-              ["system", "System", Monitor],
-              ["light", "Light", Sun],
-              ["dark", "Dark", Moon],
-            ] as const
-          ).map(([appearance, label, Icon]) => (
-            <label key={appearance}>
-              <input
-                type="radio"
-                name="appearance"
-                value={appearance}
-                checked={
-                  (themes.fixedAppearance ??
-                    appearanceDraft ??
-                    themes.preferences.appearance) === appearance
-                }
-                onChange={() => {
-                  setAppearanceDraft(appearance);
-                  void run(
-                    () => themes.select(themes.preferences.active, appearance),
-                    "Color mode saved for all windows.",
-                  ).finally(() => setAppearanceDraft(null));
-                }}
-              />
-              <Icon size={16} aria-hidden="true" />
-              {label}
-            </label>
-          ))}
-        </div>
-        <p className="settings-help">
-          {themes.fixedAppearance
-            ? `This theme defines its own ${themes.fixedAppearance} appearance. Choose DeepMono to use the color mode setting.`
-            : "System follows your computer’s appearance at startup and whenever it changes."}
-        </p>
-      </fieldset>
-      <section className="theme-library" aria-label="Theme library">
-        <div className="theme-library-heading">
-          <FolderOpen size={19} />
+      <div className="catalog-content">
+        <header className="settings-page-heading">
           <div>
-            <h2>Your theme folder</h2>
-            <p>Manage colors, spacing, borders, layouts, styles, and images.</p>
+            <h1>Themes</h1>
+            <p>Make SimpleBench feel like your workspace.</p>
           </div>
-        </div>
-        {catalog.directory && (
-          <code className="theme-directory">{catalog.directory}</code>
-        )}
-        <div className="theme-actions">
-          <button
-            className="button"
-            disabled={busy || !native}
-            onClick={() =>
-              void run(() => api("open_themes_folder", { id: null }), "")
-            }
-          >
-            <FolderOpen size={14} />
-            Open folder
-          </button>
-          <button
-            className="button"
-            disabled={busy || !native}
-            onClick={() =>
-              void run(async () => {
-                const path = await open({
-                  directory: true,
-                  multiple: false,
-                  title: "Import a SimpleBench theme folder",
-                });
-                if (!path) return;
-                await api("import_theme", { path });
-                await refreshCatalog();
-                setStatus("Theme imported. Select it below to apply it.");
-              }, "")
-            }
-          >
-            <Import size={14} />
-            Import folder
-          </button>
-          <button
-            className="button"
-            disabled={busy || !native}
-            onClick={() =>
-              void run(async () => {
-                await refreshCatalog();
-                await api("refresh_themes");
-                await themes.reload();
-              }, "Theme files refreshed.")
-            }
-          >
-            <RefreshCw size={14} />
-            Refresh
-          </button>
-          <button
-            className="button"
-            disabled={busy || !native}
-            onClick={() =>
-              void run(async () => {
-                const id = await api<string>("create_theme");
-                await refreshCatalog();
-                await edit(id);
-              }, "Starter theme created. Customize it, then select it below.")
-            }
-          >
-            <Plus size={14} />
-            Create theme
-          </button>
-        </div>
-        <p className="settings-help">
-          You can also drop a theme folder into this page. After editing files,
-          use Refresh.
-        </p>
-      </section>
-      {(error || themes.error) && (
-        <div className="keybindings-error" role="alert">
-          {error || themes.error}
-        </div>
-      )}
-      {themes.safeMode && (
-        <p className="settings-help" role="status">
-          Safe theme mode is active. Remove SIMPLEBENCH_SAFE_THEME when you next
-          launch the app to restore your saved selection.
-        </p>
-      )}
-      {!native && (
-        <p className="settings-help">
-          Theme folders are available in the desktop application.
-        </p>
-      )}
-      <div className="keybindings-status" role="status">
-        {busy ? "Updating themes…" : !themes.ready ? "Loading themes…" : status}
-      </div>
-      <div className="theme-list" aria-label="Available themes">
-        {[
-          {
-            id: null,
-            name: builtinTheme.name,
-            description: builtinTheme.description,
-            author: "Built in",
-            owner: null,
-            error: null,
-          },
-          ...catalog.themes,
-        ].map((entry) => {
-          const active = entry.id === themes.preferences.active;
-          return (
-            <article
-              className={`theme-card${active ? " active-theme" : ""}`}
-              key={entry.id ? `theme:${entry.id}` : "builtin"}
+          <div className="catalog-heading-actions">
+            <IconButton
+              title="Refresh"
+              disabled={busy || !native}
+              onClick={() =>
+                void run(async () => {
+                  await refreshCatalog();
+                  await api("refresh_themes");
+                  await themes.reload();
+                }, "Theme files refreshed.")
+              }
             >
-              <button
-                className="theme-choice"
-                aria-pressed={active}
-                aria-label={`Use ${entry.name} theme`}
-                disabled={busy || !themes.ready || !!entry.error}
-                onClick={() => select(entry.id)}
+              <RefreshCw size={16} />
+            </IconButton>
+            <button
+              className="button"
+              disabled={busy || !native}
+              onClick={() =>
+                void run(async () => {
+                  const id = await api<string>("create_theme");
+                  await refreshCatalog();
+                  clearFilters();
+                  await edit(id);
+                }, "Starter theme created. Customize it, then select it below.")
+              }
+            >
+              <Plus size={15} aria-hidden="true" /> Create theme
+            </button>
+            <button
+              className="button button-primary"
+              disabled={busy || !native}
+              onClick={() =>
+                void run(async () => {
+                  const path = await open({
+                    directory: true,
+                    multiple: false,
+                    title: "Import a SimpleBench theme folder",
+                  });
+                  if (typeof path !== "string") return;
+                  await api("import_theme", { path });
+                  await refreshCatalog();
+                  clearFilters();
+                  setStatus("Theme imported. Select it below to apply it.");
+                }, "")
+              }
+            >
+              <Import size={15} aria-hidden="true" /> Import folder
+            </button>
+          </div>
+        </header>
+        {(error || themes.error) && (
+          <div className="catalog-notice text-error" role="alert">
+            {error || themes.error}
+          </div>
+        )}
+        {themes.safeMode && (
+          <p className="catalog-notice" role="status">
+            Safe startup is active. Third-party themes are skipped. Restart
+            normally to restore your saved selection.
+          </p>
+        )}
+        {!native && (
+          <p className="settings-help">
+            Theme folders are available in the desktop application.
+          </p>
+        )}
+        <fieldset
+          className="theme-appearance theme-mode-row"
+          disabled={busy || !themes.ready || !!themes.fixedAppearance}
+        >
+          <legend>Color mode</legend>
+          <div className="theme-appearance-options">
+            {(
+              [
+                ["system", "System", Monitor],
+                ["light", "Light", Sun],
+                ["dark", "Dark", Moon],
+              ] as const
+            ).map(([appearance, label, Icon]) => (
+              <label key={appearance}>
+                <input
+                  type="radio"
+                  name="appearance"
+                  value={appearance}
+                  checked={
+                    (themes.fixedAppearance ??
+                      appearanceDraft ??
+                      themes.preferences.appearance) === appearance
+                  }
+                  onChange={() => {
+                    setAppearanceDraft(appearance);
+                    void run(
+                      () =>
+                        themes.select(themes.preferences.active, appearance),
+                      "Color mode saved for all windows.",
+                    ).finally(() => setAppearanceDraft(null));
+                  }}
+                />
+                <Icon size={16} aria-hidden="true" />
+                {label}
+              </label>
+            ))}
+          </div>
+          {themes.fixedAppearance && (
+            <p className="settings-help">
+              This theme defines its own {themes.fixedAppearance} appearance.
+              Choose DeepMono to use the color mode setting.
+            </p>
+          )}
+        </fieldset>
+
+        <div className="catalog-toolbar">
+          <div className="catalog-search">
+            <Search size={16} aria-hidden="true" />
+            <input
+              ref={searchInput}
+              type="search"
+              aria-label="Search themes"
+              placeholder="Search themes…"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            {search && (
+              <IconButton
+                title="Clear search"
+                onClick={() => {
+                  setSearch("");
+                  searchInput.current?.focus();
+                }}
               >
-                <span className="theme-symbol">
-                  <Palette size={19} />
-                </span>
-                <span className="theme-details">
-                  <strong>{entry.name}</strong>
-                  {entry.author && <small>{entry.author}</small>}
-                  <span>
-                    {entry.error ?? entry.description ?? "Custom theme"}
-                  </span>
-                </span>
-                {active && (
-                  <span className="theme-active-label">
-                    <Check size={14} />
-                    Active
-                  </span>
-                )}
-              </button>
+                <X size={14} />
+              </IconButton>
+            )}
+          </div>
+          <Select
+            aria-label="Theme status"
+            value={filter}
+            onChange={setFilter}
+            options={[
+              { value: "all", label: "All themes" },
+              { value: "active", label: "Active" },
+              { value: "attention", label: "Needs attention" },
+            ]}
+          />
+        </div>
+        <div className="catalog-filter-row">
+          <div
+            className="catalog-categories"
+            role="group"
+            aria-label="Theme sources"
+          >
+            {[
+              { value: "all", label: "All sources" },
+              { value: "builtin", label: "Built in" },
+              { value: "local", label: "Local" },
+              { value: "package", label: "Packages" },
+            ].map(({ value, label }) => (
               <button
-                className="text-button theme-edit"
-                disabled={busy || !!entry.error}
-                onClick={() =>
-                  void run(async () => {
-                    const id = await api<string>("duplicate_theme", {
-                      id: entry.id,
-                    });
-                    await refreshCatalog();
-                    await edit(id);
-                  }, "Theme copied.")
-                }
+                key={value}
+                aria-pressed={source === value}
+                onClick={() => setSource(value)}
               >
-                Duplicate theme
+                {label}
               </button>
-              {entry.owner && (
-                <p className="settings-help">
-                  Data-only theme from {entry.owner}. Duplicate to edit.
-                </p>
-              )}
-              {entry.id && (
-                <div className="theme-card-actions">
-                  <button
-                    className="text-button theme-edit"
-                    disabled={busy}
-                    onClick={() => void run(() => edit(entry.id!), "")}
-                  >
-                    Edit theme
-                  </button>
-                  <button
-                    className="text-button theme-edit"
-                    disabled={busy}
-                    onClick={() =>
-                      void run(
-                        () => api("open_themes_folder", { id: entry.id }),
-                        "",
-                      )
-                    }
-                  >
-                    Open theme folder
-                  </button>
-                </div>
-              )}
-            </article>
-          );
-        })}
+            ))}
+          </div>
+          <span className="catalog-count" role="status">
+            {entries.length === allEntries.length
+              ? `${entries.length} available`
+              : `${entries.length} of ${allEntries.length}`}
+          </span>
+        </div>
+        {(busy || !themes.ready || status) && (
+          <p className="settings-help theme-status" role="status">
+            {busy
+              ? "Updating themes…"
+              : !themes.ready
+                ? "Loading themes…"
+                : status}
+          </p>
+        )}
+        {entries.length === 0 ? (
+          <div className="catalog-empty">
+            <Search size={30} aria-hidden="true" />
+            <h2>No matching themes</h2>
+            <p>Try a different search or reset your filters.</p>
+            <button
+              className="button"
+              onClick={() => {
+                clearFilters();
+                searchInput.current?.focus();
+              }}
+            >
+              Clear filters
+            </button>
+          </div>
+        ) : (
+          <div
+            className="catalog-list theme-list"
+            aria-label="Available themes"
+          >
+            {entries.map((entry) => {
+              const active = entry.id === themes.preferences.active;
+              return (
+                <article
+                  className={`catalog-card theme-card${active ? " active-theme" : ""}`}
+                  key={entry.id ?? "builtin"}
+                  aria-label={entry.name}
+                >
+                  <header className="catalog-card-heading">
+                    <span className="theme-symbol" aria-hidden="true">
+                      <Palette size={19} />
+                    </span>
+                    <div className="catalog-card-title">
+                      <h2>{entry.name}</h2>
+                      <span>
+                        {entry.author ||
+                          (entry.owner ? "Package theme" : "Local theme")}
+                      </span>
+                    </div>
+                    <button
+                      className={`button theme-choice${active ? " button-primary" : ""}`}
+                      aria-pressed={active}
+                      aria-label={`Use ${entry.name} theme`}
+                      disabled={busy || !themes.ready || !!entry.error}
+                      onClick={() => select(entry.id)}
+                    >
+                      {active && <Check size={13} aria-hidden="true" />}
+                      {active ? "Active" : "Use theme"}
+                    </button>
+                  </header>
+                  <p className="catalog-description">
+                    {entry.description ||
+                      (entry.owner
+                        ? "A theme supplied by an installed package."
+                        : "A custom theme for your workspace.")}
+                  </p>
+                  <div className="catalog-tags">
+                    <span>
+                      {entry.id === null
+                        ? "Built in"
+                        : entry.owner
+                          ? "Package"
+                          : "Local"}
+                    </span>
+                    {(entry.id === null || entry.owner) && (
+                      <span>Read only</span>
+                    )}
+                  </div>
+                  {entry.error && (
+                    <p className="text-error" role="alert">
+                      {entry.error}
+                    </p>
+                  )}
+                  {entry.owner && (
+                    <p className="settings-help theme-package-owner">
+                      From {entry.owner}. Duplicate to customize.
+                    </p>
+                  )}
+                  <footer className="catalog-card-footer theme-card-actions">
+                    {entry.id && (
+                      <button
+                        className="theme-action"
+                        disabled={busy}
+                        onClick={() => void run(() => edit(entry.id!), "")}
+                      >
+                        <Pencil size={13} aria-hidden="true" />
+                        {entry.owner ? "View theme" : "Edit theme"}
+                      </button>
+                    )}
+                    <button
+                      className="theme-action"
+                      aria-label="Duplicate theme"
+                      disabled={busy || !!entry.error}
+                      onClick={() =>
+                        void run(async () => {
+                          const id = await api<string>("duplicate_theme", {
+                            id: entry.id,
+                          });
+                          await refreshCatalog();
+                          clearFilters();
+                          await edit(id);
+                        }, "Theme copied.")
+                      }
+                    >
+                      <Copy size={13} aria-hidden="true" /> Duplicate
+                    </button>
+                    {entry.id && (
+                      <IconButton
+                        title="Open theme folder"
+                        disabled={busy}
+                        onClick={() =>
+                          void run(
+                            () => api("open_themes_folder", { id: entry.id }),
+                            "",
+                          )
+                        }
+                      >
+                        <FolderOpen size={14} />
+                      </IconButton>
+                    )}
+                  </footer>
+                </article>
+              );
+            })}
+          </div>
+        )}
+        <section className="theme-library" aria-label="Theme library">
+          <div className="theme-library-heading">
+            <div>
+              <h2>Your theme folder</h2>
+              <p>
+                Drop a theme folder here to import it. Refresh after editing
+                files.
+              </p>
+            </div>
+            <button
+              className="button"
+              disabled={busy || !native}
+              onClick={() =>
+                void run(() => api("open_themes_folder", { id: null }), "")
+              }
+            >
+              <FolderOpen size={14} aria-hidden="true" /> Open folder
+            </button>
+          </div>
+          {catalog.directory && (
+            <code className="theme-directory">{catalog.directory}</code>
+          )}
+        </section>
       </div>
       {editing && (
         <ThemeEditor

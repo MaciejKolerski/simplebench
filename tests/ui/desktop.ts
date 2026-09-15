@@ -447,6 +447,10 @@ export async function mockDesktop(
             return JSON.parse(
               localStorage.getItem("test-editor-preferences") ?? "null",
             );
+          const themeOwner = (id: string) =>
+            JSON.parse(localStorage.getItem("test-plugins") ?? "[]").find(
+              (entry: any) => entry.themeIds?.includes(id),
+            )?.id;
           const themeBundle = async (id: string, manifest: any) => {
             const { migrateTheme } = await import("/src/theme/format.ts");
             const modern =
@@ -456,7 +460,13 @@ export async function mockDesktop(
             const raw =
               JSON.parse(localStorage.getItem("test-theme-raw") ?? "{}")[id] ??
               JSON.stringify(modern, null, 2);
-            return { id, raw, revision: raw, directory: `/app/themes/${id}` };
+            return {
+              id,
+              raw,
+              revision: raw,
+              directory: `/app/themes/${id}`,
+              readOnly: !!themeOwner(id),
+            };
           };
           if (command === "plugin:fs|watch") return 1;
           if (command === "plugin:resources|close") return;
@@ -568,6 +578,7 @@ export async function mockDesktop(
                   name: value.name ?? id,
                   description: value.description ?? "",
                   author: value.author ?? "",
+                  owner: themeOwner(id) ?? null,
                   error: [1, 2].includes(value.version)
                     ? null
                     : "Unsupported theme version",

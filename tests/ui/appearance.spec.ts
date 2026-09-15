@@ -271,7 +271,7 @@ test("adaptive custom themes follow the mode and fixed themes retain their palet
     "background-color",
     "rgb(250, 250, 250)",
   );
-  await page.getByRole("button", { name: "Restore DeepMono" }).click();
+  await page.getByRole("button", { name: "Use DeepMono theme" }).click();
   await expect(
     page.getByRole("radio", { name: "System", exact: true }),
   ).toBeChecked();

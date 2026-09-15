@@ -1,7 +1,7 @@
 # JSONC themes
 
 Settings → Themes offers **Create theme**, **Import folder**, **Duplicate theme**,
-**Edit theme**, **Preview**, and **Restore DeepMono**. Preview changes only that
+**Edit theme**, **Preview**, and theme selection. Preview changes only that
 window; cancel/close restores its previous working layers. Save checks the file
 revision, writes atomically, and notifies every window. Unsaved drafts remain
 available after validation, resource, revision, or disk errors.
@@ -132,7 +132,7 @@ existing `theme-settings.json` format. Terminal preference files are unchanged.
 Start `simplebench --safe-mode` (or `SIMPLEBENCH_SAFE_MODE=1 simplebench`) to skip
 third-party code and themes before evaluation. `--disable-plugins` also selects
 the baseline; legacy `SIMPLEBENCH_SAFE_THEME=1` skips only custom themes. In this
-mode use Settings → Themes → Restore DeepMono, then restart normally. Invalid
+mode use Settings → Themes and select DeepMono, then restart normally. Invalid
 files stay intact until an explicit recovery/save. Plugin-supplied themes are
 available without enabling code, remain immutable, and can be duplicated before
 editing. Uninstalling their owner requires selecting a fallback first.

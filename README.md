@@ -654,7 +654,7 @@ The [theme authoring guide](themes/README.md) documents the format, tokens,
 resources, terminal options, limits, and recovery. The
 [JSON schema](themes/theme.schema.json) describes the supported fields.
 Refresh reloads edited files
-in both windows. Restore DeepMono recovers the default appearance. For a theme
+in both windows. Selecting DeepMono restores the default appearance. For a theme
 that hides the settings interface, launch with `SIMPLEBENCH_SAFE_THEME=1`.
 
 Colors come from DeepMono 1.1.0 by viewerofall, using the dark `mono` and light

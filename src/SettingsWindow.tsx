@@ -4,6 +4,7 @@ import {
   Info,
   Keyboard,
   Palette,
+  Puzzle,
   Terminal,
   RotateCcw,
   X,
@@ -187,18 +188,19 @@ export default function SettingsWindow() {
           </button>
           <button
             className="settings-nav-item"
+            aria-current={page === "plugins" ? "page" : undefined}
+            onClick={() => setPage("plugins")}
+          >
+            <Puzzle size={16} />
+            Plugins
+          </button>
+          <button
+            className="settings-nav-item"
             aria-current={page === "about" ? "page" : undefined}
             onClick={() => setPage("about")}
           >
             <Info size={16} />
             About
-          </button>
-          <button
-            className="settings-nav-item"
-            aria-current={page === "plugins" ? "page" : undefined}
-            onClick={() => setPage("plugins")}
-          >
-            Plugins
           </button>
         </nav>
         {page === "about" ? (

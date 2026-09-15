@@ -599,7 +599,12 @@ fn read_preferences(path: &Path) -> Result<Preferences, String> {
         }
         Ok(value)
     })();
-    result.map_err(|error: String| format!("{error} Theme settings have been left intact at {}. Select Restore DeepMono to recover.", path.display()))
+    result.map_err(|error: String| {
+        format!(
+            "{error} Theme settings have been left intact at {}. Select DeepMono to recover.",
+            path.display()
+        )
+    })
 }
 
 #[tauri::command]

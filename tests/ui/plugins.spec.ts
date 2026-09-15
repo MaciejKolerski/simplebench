@@ -38,6 +38,205 @@ async function commands(page: Page, label: string) {
   await dialog.getByLabel("Find command").fill(label);
   await dialog.getByRole("button", { name: new RegExp("^" + label) }).click();
 }
+test("plugin search and filters combine without enabling code and remain usable at minimum size", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 920, height: 680 });
+  await page.emulateMedia({ colorScheme: "dark" });
+  await mockDesktop(page);
+  const catalog = [
+    entry,
+    {
+      ...entry,
+      id: "local.notes",
+      enabled: true,
+      trustedRevision: revision,
+      manifest: {
+        ...manifest,
+        id: "local.notes",
+        name: "Project notes",
+        description: "Keep project notes close to your terminals and editors.",
+        contributes: {
+          themes: [{ id: "local.notes.theme", path: "theme" }],
+          views: [
+            {
+              id: "local.notes.view",
+              title: "Notes",
+              placement: "central",
+              multiple: false,
+              stateVersion: 1,
+            },
+          ],
+        },
+      },
+    },
+    {
+      ...entry,
+      id: "local.actions",
+      enabled: true,
+      trustedRevision: revision,
+      manifest: {
+        ...manifest,
+        id: "local.actions",
+        name: "Quick actions",
+        description: "Keep frequently used workspace actions within reach.",
+        contributes: {
+          commands: [
+            {
+              id: "local.actions.open",
+              label: "Quick actions",
+              description: "Open workspace actions.",
+            },
+          ],
+        },
+      },
+    },
+    {
+      ...entry,
+      id: "local.themes",
+      manifest: {
+        schemaVersion: 1,
+        id: "local.themes",
+        name: "Warm graphite",
+        version: "1.2.0",
+        description:
+          "A quiet pair of light and dark themes for your workspace.",
+        hostApi: 1,
+        contributes: {
+          themes: [{ id: "local.themes.graphite", path: "graphite" }],
+        },
+      },
+    },
+    {
+      ...entry,
+      id: "local.unavailable",
+      manifest: null,
+      source: "/external/" + "very-long-package-folder-".repeat(15),
+      error: "This package requires a newer version of SimpleBench.",
+    },
+  ];
+  await page.addInitScript((entries) => {
+    localStorage.setItem("test-plugins", JSON.stringify(entries));
+  }, catalog);
+  await page.goto("/?window=settings&page=plugins");
+  const cards = page.getByRole("article");
+  await expect(cards).toHaveCount(4);
+  const first = await cards.nth(0).boundingBox();
+  const second = await cards.nth(1).boundingBox();
+  expect(first!.y).toBe(second!.y);
+  expect(second!.x).toBeGreaterThan(first!.x);
+  await page.screenshot({ path: test.info().outputPath("plugins-dark.png") });
+  await page.emulateMedia({ colorScheme: "light" });
+  await expect(page.locator("html")).toHaveAttribute(
+    "data-appearance",
+    "light",
+  );
+  await page.screenshot({ path: test.info().outputPath("plugins-light.png") });
+
+  const toggle = page.getByRole("switch", { name: "Enable Workspace context" });
+  await toggle.focus();
+  await toggle.press("Space");
+  await expect(page.getByRole("dialog")).toContainText(entry.source);
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(toggle).not.toBeChecked();
+  await expect(toggle).toBeFocused();
+
+  const search = page.getByRole("searchbox", { name: "Search plugins" });
+  await search.fill("  FOLDER  ");
+  await expect(cards).toHaveCount(1);
+  await expect(cards).toHaveAttribute("aria-label", "Workspace context");
+  await chooseOption(
+    page.getByRole("combobox", { name: "Plugin status" }),
+    "Enabled",
+  );
+  await expect(cards).toHaveCount(0);
+  await expect(
+    page.getByText("No matching plugins", { exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Clear filters" }).click();
+  await expect(cards).toHaveCount(4);
+  await expect(search).toBeFocused();
+
+  await chooseOption(
+    page.getByRole("combobox", { name: "Plugin status" }),
+    "Disabled",
+  );
+  await expect(cards).toHaveCount(1);
+  await expect(cards).toHaveAttribute("aria-label", "Workspace context");
+  await chooseOption(
+    page.getByRole("combobox", { name: "Plugin status" }),
+    "All plugins",
+  );
+  const categories = page.getByRole("group", { name: "Plugin categories" });
+  await expect(
+    categories.getByRole("button", { name: "Themes", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("article", { name: "Warm graphite" }),
+  ).toHaveCount(0);
+  await expect(page.locator(".catalog-count")).toHaveText("4 installed");
+  await search.fill("local.themes");
+  await expect(cards).toHaveCount(0);
+  await page.evaluate((entry) => {
+    (window as any).__nativeTest.folder = entry.source;
+    (window as any).__nativeTest.pluginImport = entry;
+  }, entry);
+  await page
+    .getByRole("button", { name: "Import plugin", exact: true })
+    .click();
+  await expect(cards).toHaveCount(4);
+  await expect(
+    categories.getByRole("button", { name: "All types" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await categories
+    .getByRole("button", { name: "Commands", exact: true })
+    .click();
+  await expect(cards).toHaveCount(2);
+  await chooseOption(
+    page.getByRole("combobox", { name: "Plugin status" }),
+    "Enabled",
+  );
+  await expect(cards).toHaveAttribute("aria-label", "Quick actions");
+
+  await categories.getByRole("button", { name: "All types" }).click();
+  await chooseOption(
+    page.getByRole("combobox", { name: "Plugin status" }),
+    "Needs attention",
+  );
+  await expect(cards).toHaveCount(1);
+  await expect(cards.getByRole("alert")).toContainText("newer version");
+  await cards.locator("summary").click();
+  await expect(cards.getByText(catalog[4].source)).toBeVisible();
+  await page.setViewportSize({ width: 560, height: 420 });
+  expect(
+    await page
+      .locator(".plugins-page")
+      .evaluate((element) => element.scrollWidth <= element.clientWidth),
+  ).toBe(true);
+  await page.getByRole("button", { name: "Refresh plugins" }).click();
+  await expect(cards).toHaveCount(1);
+  await chooseOption(
+    page.getByRole("combobox", { name: "Plugin status" }),
+    "All plugins",
+  );
+  await expect(cards).toHaveCount(4);
+  const narrowFirst = await cards.nth(0).boundingBox();
+  const narrowSecond = await cards.nth(1).boundingBox();
+  expect(narrowFirst!.x).toBe(narrowSecond!.x);
+  expect(narrowSecond!.y).toBeGreaterThan(narrowFirst!.y);
+  await page.screenshot({
+    path: test.info().outputPath("plugins-minimum.png"),
+  });
+  expect(
+    await page.evaluate(() =>
+      (window as any).__nativeTest.calls.filter((call: any) =>
+        ["enable_plugin", "prepare_plugin", "request_plugin_removal"].includes(
+          call.command,
+        ),
+      ),
+    ),
+  ).toEqual([]);
+});
 test("installed external ESM stays inert until trust, opens once, persists state and cleans contributions on disable", async ({
   page,
   context,
@@ -58,8 +257,8 @@ test("installed external ESM stays inert until trust, opens once, persists state
     .getByRole("button", { name: "Import plugin", exact: true })
     .click();
   await expect(
-    settings.getByText("Not trusted", { exact: false }),
-  ).toBeVisible();
+    settings.getByRole("switch", { name: "Enable Workspace context" }),
+  ).not.toBeChecked();
   expect(
     await page.evaluate(
       () =>
@@ -68,12 +267,14 @@ test("installed external ESM stays inert until trust, opens once, persists state
         ).length,
     ),
   ).toBe(0);
-  await settings.getByRole("button", { name: "Enable…", exact: true }).click();
+  await settings
+    .getByRole("switch", { name: "Enable Workspace context" })
+    .click();
   await expect(settings.getByRole("dialog")).toContainText(entry.source);
   await settings.getByRole("button", { name: "Trust and enable" }).click();
   await expect(
-    settings.getByText("Enabled · Trusted revision", { exact: false }),
-  ).toBeVisible();
+    settings.getByRole("switch", { name: "Enable Workspace context" }),
+  ).toBeChecked();
   await settings.setViewportSize({ width: 800, height: 420 });
   await settings.screenshot({
     path: test.info().outputPath("plugin-management-minimum.png"),
@@ -99,7 +300,9 @@ test("installed external ESM stays inert until trust, opens once, persists state
       ),
     )
     .toBeTruthy();
-  await settings.getByRole("button", { name: "Disable", exact: true }).click();
+  await settings
+    .getByRole("switch", { name: "Enable Workspace context" })
+    .click();
   await expect(
     panel.getByRole("heading", { name: "Plugin view unavailable" }),
   ).toBeVisible();
@@ -107,7 +310,9 @@ test("installed external ESM stays inert until trust, opens once, persists state
     page.getByRole("button", { name: "Context", exact: true }),
   ).toHaveCount(0);
   await expect(page.locator("link[data-plugin]")).toHaveCount(0);
-  await settings.getByRole("button", { name: "Enable…", exact: true }).click();
+  await settings
+    .getByRole("switch", { name: "Enable Workspace context" })
+    .click();
   await settings.getByRole("button", { name: "Trust and enable" }).click();
   await expect(
     panel.getByRole("button", { name: "Hide details" }),
@@ -172,7 +377,9 @@ test("dirty plugin views stop disable on cancel and failed save, then retain the
   await mockDesktop(settings);
   await settings.goto("/?window=settings");
   await settings.getByRole("button", { name: "Plugins", exact: true }).click();
-  await settings.getByRole("button", { name: "Disable", exact: true }).click();
+  await settings
+    .getByRole("switch", { name: "Enable Workspace context" })
+    .click();
   const guard = page.getByRole("dialog", {
     name: "Save changes before closing?",
   });
