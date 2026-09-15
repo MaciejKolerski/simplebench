@@ -697,7 +697,7 @@ mod tests {
         use std::time::Duration;
 
         let directory = tempfile::tempdir().unwrap();
-        let config = directory.path().join("shell config");
+        let config = directory.path().join("shell config #50%? żółć");
         let integration = directory.path().join("integration");
         fs::create_dir(&config).unwrap();
         fs::write(
@@ -752,7 +752,7 @@ mod tests {
             let _ = send.send(String::from_utf8_lossy(&output).into_owned());
         });
         writer
-            .write_all(b"printf '\\nORDER=%s\\n' \"$SIMPLEBENCH_TEST_ORDER\"; exit\r")
+            .write_all(b"printf '\\nORDER=%s\\n' \"$SIMPLEBENCH_TEST_ORDER\"; cd ..\rexit\r")
             .unwrap();
         let output = receive.recv_timeout(Duration::from_secs(10));
         let _ = child.kill();
@@ -762,7 +762,22 @@ mod tests {
         assert!(output.contains("ORDER=env,profile,rc,login"), "{output:?}");
         assert!(output.contains("\u{1b}]133;A"), "{output:?}");
         assert!(output.contains("\u{1b}]133;C"), "{output:?}");
-        assert!(output.contains("\u{1b}]7;file://localhost"), "{output:?}");
+        let reported: Vec<_> = output
+            .split("\x1b]7;")
+            .skip(1)
+            .map(|part| {
+                let url = part.split('\x07').next().unwrap();
+                tauri::Url::parse(url).unwrap().to_file_path().unwrap()
+            })
+            .collect();
+        assert_eq!(
+            reported,
+            [
+                fs::canonicalize(config).unwrap(),
+                fs::canonicalize(directory.path()).unwrap()
+            ],
+            "{output:?}"
+        );
     }
 
     #[cfg(unix)]

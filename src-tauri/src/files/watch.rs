@@ -143,7 +143,12 @@ mod tests {
         while receive.recv_timeout(Duration::from_millis(200)).is_ok() {}
         fs::write(root.path().join("collapsed/hidden.txt"), "test").unwrap();
         fs::write(root.path().join("expanded/0.txt"), "content only").unwrap();
-        assert!(receive.recv_timeout(Duration::from_millis(250)).is_err());
+        // FSEvents can coalesce creation and content writes into another Create event.
+        // Such refreshes may name the visible folder, but never the collapsed folder.
+        // The synthetic event test below verifies that Data events are ignored.
+        while let Ok(changed) = receive.recv_timeout(Duration::from_millis(250)) {
+            assert_eq!(changed, ["expanded"]);
+        }
         fs::create_dir(root.path().join("new folder")).unwrap();
         assert_eq!(receive.recv_timeout(Duration::from_secs(5)).unwrap(), [""]);
         fs::rename(root.path().join("new folder"), root.path().join("renamed")).unwrap();

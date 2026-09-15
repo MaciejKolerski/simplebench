@@ -45,7 +45,7 @@ impl Session {
                 return true;
             }
         }
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         if self.foreground_program().is_some() {
             // exec can replace the shell without changing its PID or process group.
             return true;
@@ -75,6 +75,33 @@ impl Session {
         std::fs::read_to_string(format!("/proc/{pid}/comm"))
             .ok()
             .map(|name| name.trim_end_matches('\n').to_owned())
+    }
+
+    #[cfg(target_os = "macos")]
+    fn foreground_program(&self) -> Option<String> {
+        use std::{ffi::c_void, os::unix::ffi::OsStringExt};
+
+        #[link(name = "proc")]
+        unsafe extern "C" {
+            fn proc_pidpath(pid: i32, buffer: *mut c_void, size: u32) -> i32;
+        }
+
+        let pid = self.master.lock().ok()?.process_group_leader()?;
+        // libproc requires at most PROC_PIDPATHINFO_MAXSIZE (4 * MAXPATHLEN).
+        // Read only the executable path, never the process's arguments or environment.
+        let mut buffer = vec![0u8; 4096];
+        let count = unsafe { proc_pidpath(pid, buffer.as_mut_ptr().cast(), buffer.len() as u32) };
+        if count <= 0 {
+            return None;
+        }
+        buffer.truncate(buffer.iter().position(|byte| *byte == 0)?);
+        let executable = PathBuf::from(std::ffi::OsString::from_vec(buffer));
+        if Some(pid as u32) == self.pid
+            && executable == std::fs::canonicalize(&self.profile.program).ok()?
+        {
+            return None;
+        }
+        Some(executable.file_name()?.to_string_lossy().into_owned())
     }
 
     fn stop(&self) {
@@ -668,7 +695,7 @@ mod tests {
             .unwrap()
             .resize(size(101, 31).unwrap())
             .unwrap();
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         {
             let session = manager.get("test").unwrap();
             manager.write("test", "sleep 30\r").unwrap();
@@ -701,6 +728,10 @@ mod tests {
                 thread::sleep(Duration::from_millis(10));
             }
             assert!(manager.busy(&["test".into()]).unwrap().is_empty());
+        }
+        #[cfg(target_os = "linux")]
+        {
+            let session = manager.get("test").unwrap();
             use crate::cli_titles::TitleCli;
             for (name, cli) in [
                 ("codex", TitleCli::Codex),
@@ -749,7 +780,7 @@ mod tests {
                 "printf 'UTF8: zażółć\\n'; stty size; exec sleep 1\r",
             )
             .unwrap();
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         {
             let session = manager.get("test").unwrap();
             let deadline = Instant::now() + Duration::from_secs(5);
