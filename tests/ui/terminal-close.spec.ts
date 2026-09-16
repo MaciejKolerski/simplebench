@@ -13,6 +13,10 @@ async function calls(page: Page, command: string) {
 }
 
 async function markBusy(page: Page, index = 0) {
+  // xterm mounts before font loading finishes and the native session starts.
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__nativeTest.sessions.size))
+    .toBeGreaterThan(index);
   return page.evaluate((index) => {
     const native = (window as any).__nativeTest;
     const id = [...native.sessions.keys()][index] as string;
