@@ -70,6 +70,78 @@
           "description": "Local CSS files relative to the theme folder, loaded automatically in this order after JSON styles. Omit or use an empty array for JSON-only themes."
         }
       }
+    },
+    "vscode": {
+      "type": "object",
+      "description": "Resolved VS Code color-theme data. Import resolves include and TextMate file paths. Unmapped colors and semantic rules remain available for export. SimpleBench common/light/dark values override this layer.",
+      "properties": {
+        "type": {
+          "enum": ["dark", "light", "hcDark", "hcLight"]
+        },
+        "colors": {
+          "type": "object",
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^(#[0-9a-fA-F]{3,4}|#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?|default)$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "tokenColors": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["settings"],
+            "properties": {
+              "scope": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              },
+              "settings": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "semanticHighlighting": {
+          "type": "boolean"
+        },
+        "semanticTokenColors": {
+          "type": "object"
+        }
+      },
+      "not": {
+        "required": ["include"]
+      }
+    },
+    "iconTheme": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "path"],
+      "properties": {
+        "kind": {
+          "enum": ["file", "product"]
+        },
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        }
+      }
     }
   },
   "not": {
@@ -2572,5 +2644,33 @@
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": ["iconTheme"]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            {
+              "required": ["common"]
+            },
+            {
+              "required": ["light"]
+            },
+            {
+              "required": ["dark"]
+            },
+            {
+              "required": ["resources"]
+            },
+            {
+              "required": ["vscode"]
+            }
+          ]
+        }
+      }
+    }
+  ]
 }

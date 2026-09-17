@@ -1,13 +1,13 @@
+import ResourceIcon from "./ResourceIcon";
 import { useRef, useState } from "react";
 import {
   FileDiff,
   ChevronRight,
-  FileCode,
   GitCommitHorizontal,
   Layers,
   Plus,
   Terminal,
-} from "lucide-react";
+} from "./icons";
 import type { Project, Workspace } from "./model";
 import { basename, tabTitle } from "./model";
 import ContextMenu from "./ContextMenu";
@@ -149,9 +149,16 @@ export default function Workspaces({
                       {tab.type === "commit" ? (
                         <GitCommitHorizontal size={14} aria-hidden="true" />
                       ) : tab.type === "diff" ? (
-                        <FileDiff size={14} aria-hidden="true" />
+                        <ResourceIcon
+                          path={`${tab.root}/${tab.relative}`}
+                          size={14}
+                          fallback={FileDiff}
+                        />
                       ) : tab.type === "file" ? (
-                        <FileCode size={14} aria-hidden="true" />
+                        <ResourceIcon
+                          path={`${tab.root}/${tab.relative}`}
+                          size={14}
+                        />
                       ) : (
                         <Terminal size={14} aria-hidden="true" />
                       )}

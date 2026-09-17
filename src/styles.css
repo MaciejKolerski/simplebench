@@ -4038,6 +4038,10 @@ select {
 .catalog-heading-actions {
   gap: var(--space-8);
 }
+.themes-page .catalog-heading-actions {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
 .catalog-toolbar {
   margin-bottom: var(--space-12);
 }
@@ -4359,4 +4363,14 @@ select {
 }
 .theme-editor-json .theme-editor-controls {
   display: contents;
+}
+
+/* Preserve folder expansion controls while respecting icon themes' twisties. */
+html[data-hide-explorer-arrows="true"] .tree-entry > .lucide:first-child {
+  visibility: hidden;
+}
+.resource-icon,
+.product-icon {
+  flex-shrink: 0;
+  overflow: visible;
 }

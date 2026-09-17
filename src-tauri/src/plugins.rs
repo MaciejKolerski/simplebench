@@ -602,8 +602,8 @@ pub async fn import_plugin(
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<Plugins>();
         let _guard = state.inner.lock().map_err(|e| e.to_string())?;
-        let selected=crate::themes::selected_theme(&app)?;
-        if let Some(selected)=selected{
+        let selected=crate::themes::selected_themes(&app)?;
+        for selected in selected{
             let source=Path::new(&path);let next=manifest(&read(&inside(source,"plugin.json")?,JSON_LIMIT)?)?;
             if crate::plugins::theme_directories(&app)?.iter().any(|theme|theme.id==selected&&theme.owner==next.id) && !next.contributes.themes.iter().any(|theme|theme_id(&theme.id)==selected){return Err("Choose another theme before replacing the package that supplies the selected theme.".into());}
         }
@@ -757,7 +757,7 @@ pub fn finish_plugin_removal(
         let themes = app.state::<crate::themes::Themes>();
         let _theme_guard = themes.lock.lock().map_err(|e| e.to_string())?;
         if operation == "uninstall" {
-            if let Some(selected) = crate::themes::selected_theme(&app)? {
+            for selected in crate::themes::selected_themes(&app)? {
                 if theme_directories(&app)?
                     .iter()
                     .any(|theme| theme.owner == id && theme.id == selected)

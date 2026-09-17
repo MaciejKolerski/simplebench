@@ -14,7 +14,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { Folder, GitBranch, Layers, Settings, Terminal, X } from "lucide-react";
+import { Folder, GitBranch, Layers, Settings, Terminal, X } from "./icons";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";

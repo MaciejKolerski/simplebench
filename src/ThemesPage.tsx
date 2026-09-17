@@ -1,8 +1,10 @@
+import type { IconKind } from "./theme/icon-theme";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Check,
   Copy,
+  Download,
   FolderOpen,
   Import,
   Monitor,
@@ -14,12 +16,12 @@ import {
   Search,
   Sun,
   X,
-} from "lucide-react";
+} from "./icons";
 import { open } from "@tauri-apps/plugin-dialog";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { api, errorMessage, native } from "./api";
 import { useThemes } from "./ThemeProvider";
-import { builtinTheme } from "./theme/format";
+import { builtinTheme, parseThemeText } from "./theme/format";
 import type { ThemeBundle, ThemeCatalog } from "./theme/format";
 import ThemeEditor from "./ThemeEditor";
 import Select from "./Select";
@@ -38,6 +40,13 @@ export default function ThemesPage() {
   const [dragging, setDragging] = useState(false);
   const [editing, setEditing] = useState<ThemeBundle | null>(null);
   const [search, setSearch] = useState("");
+  const [kind, setKind] = useState<"color" | IconKind>("color");
+  const selectedId =
+    (kind === "color"
+      ? themes.preferences.active
+      : kind === "file"
+        ? themes.preferences.fileIcons
+        : themes.preferences.productIcons) ?? null;
   const [filter, setFilter] = useState("all");
   const [source, setSource] = useState("all");
   const searchInput = useRef<HTMLInputElement>(null);
@@ -99,7 +108,7 @@ export default function ThemesPage() {
           setDragging(payload.type === "enter" || payload.type === "over");
           if (payload.type === "drop") {
             if (payload.paths.length !== 1)
-              setError("Drop one theme folder at a time.");
+              setError("Drop one theme file or folder at a time.");
             else void importFolder(payload.paths[0]);
           }
         })
@@ -116,7 +125,8 @@ export default function ThemesPage() {
   }, [refreshCatalog, importFolder]);
   const select = (id: string | null) =>
     void run(
-      () => themes.select(id),
+      () =>
+        kind === "color" ? themes.select(id) : themes.selectIcons(kind, id),
       "Theme selected. Open windows have been notified.",
     );
   const edit = async (id: string) => {
@@ -126,19 +136,27 @@ export default function ThemesPage() {
   const allEntries = [
     {
       id: null,
-      name: builtinTheme.name,
-      description: builtinTheme.description,
+      name:
+        kind === "color"
+          ? builtinTheme.name
+          : kind === "file"
+            ? "SimpleBench file icons"
+            : "SimpleBench interface icons",
+      description:
+        kind === "color"
+          ? builtinTheme.description
+          : "Built-in Lucide icons. Export or duplicate to create a portable VS Code icon theme.",
       author: "Built in",
       owner: null,
       error: null,
     },
-    ...catalog.themes,
+    ...catalog.themes.filter((entry) => (entry.kind ?? "color") === kind),
   ];
   const query = search.trim().toLowerCase();
   const entries = allEntries.filter(
     (entry) =>
       (filter === "all" ||
-        (filter === "active" && entry.id === themes.preferences.active) ||
+        (filter === "active" && entry.id === selectedId) ||
         (filter === "attention" && entry.error)) &&
       (source === "all" ||
         (source === "builtin" && entry.id === null) ||
@@ -178,14 +196,51 @@ export default function ThemesPage() {
               disabled={busy || !native}
               onClick={() =>
                 void run(async () => {
-                  const id = await api<string>("create_theme");
+                  const id =
+                    kind === "color"
+                      ? await api<string>("create_theme")
+                      : await api<string>("duplicate_theme", {
+                          id: null,
+                          kind,
+                        });
                   await refreshCatalog();
                   clearFilters();
-                  await edit(id);
+                  if (kind === "color") await edit(id);
+                  else await api("open_themes_folder", { id });
                 }, "Starter theme created. Customize it, then select it below.")
               }
             >
-              <Plus size={15} aria-hidden="true" /> Create theme
+              <Plus size={15} aria-hidden="true" />{" "}
+              {kind === "color" ? "Create theme" : "Create icon theme"}
+            </button>
+            <button
+              className="button"
+              disabled={busy || !native}
+              onClick={() =>
+                void run(async () => {
+                  const path = await open({
+                    multiple: false,
+                    title: "Import a VS Code theme, package.json, or VSIX",
+                    filters: [
+                      {
+                        name: "VS Code themes",
+                        extensions: ["json", "jsonc", "tmTheme", "vsix"],
+                      },
+                    ],
+                  });
+                  if (typeof path !== "string") return;
+                  const ids = await api<string[]>("import_vscode_themes", {
+                    path,
+                  });
+                  await refreshCatalog();
+                  clearFilters();
+                  setStatus(
+                    `${ids.length} VS Code theme${ids.length === 1 ? "" : "s"} imported. Select a theme below to apply it.`,
+                  );
+                }, "")
+              }
+            >
+              <Import size={15} aria-hidden="true" /> Import VS Code
             </button>
             <button
               className="button button-primary"
@@ -195,7 +250,8 @@ export default function ThemesPage() {
                   const path = await open({
                     directory: true,
                     multiple: false,
-                    title: "Import a SimpleBench theme folder",
+                    title:
+                      "Import a SimpleBench theme or VS Code extension folder",
                   });
                   if (typeof path !== "string") return;
                   await api("import_theme", { path });
@@ -270,6 +326,30 @@ export default function ThemesPage() {
           )}
         </fieldset>
 
+        <div
+          className="catalog-categories"
+          role="group"
+          aria-label="Theme types"
+        >
+          {(
+            [
+              ["color", "Colors"],
+              ["file", "File icons"],
+              ["product", "Interface icons"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              aria-pressed={kind === value}
+              onClick={() => {
+                setKind(value);
+                clearFilters();
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         <div className="catalog-toolbar">
           <div className="catalog-search">
             <Search size={16} aria-hidden="true" />
@@ -361,7 +441,7 @@ export default function ThemesPage() {
             aria-label="Available themes"
           >
             {entries.map((entry) => {
-              const active = entry.id === themes.preferences.active;
+              const active = entry.id === selectedId;
               return (
                 <article
                   className={`catalog-card theme-card${active ? " active-theme" : ""}`}
@@ -419,14 +499,78 @@ export default function ThemesPage() {
                     </p>
                   )}
                   <footer className="catalog-card-footer theme-card-actions">
+                    <button
+                      className="theme-action"
+                      disabled={busy || !native || !!entry.error}
+                      onClick={() =>
+                        void run(async () => {
+                          const directory = await open({
+                            directory: true,
+                            multiple: false,
+                            title: "Choose a folder for the VS Code extension",
+                          });
+                          if (typeof directory !== "string") return;
+                          if (kind !== "color") {
+                            const path = await api<string>(
+                              "export_vscode_icon_theme",
+                              { directory, id: entry.id, kind },
+                            );
+                            setStatus(
+                              `Exported to ${path}. In VS Code, run “Extensions: Install from VSIX”.`,
+                            );
+                            return;
+                          }
+                          const bundle = entry.id
+                            ? await api<ThemeBundle>("load_theme", {
+                                id: entry.id,
+                              })
+                            : null;
+                          const manifest = bundle
+                            ? parseThemeText(bundle.raw)
+                            : builtinTheme;
+                          const { exportVSCodeThemes } =
+                            await import("./theme/vscode-export");
+                          const exported = await exportVSCodeThemes(
+                            manifest,
+                            bundle,
+                          );
+                          const path = await api<string>(
+                            "export_vscode_theme",
+                            {
+                              directory,
+                              name: manifest.name,
+                              themes: exported,
+                            },
+                          );
+                          setStatus(
+                            `Exported to ${path}. In VS Code, run “Extensions: Install from VSIX”.`,
+                          );
+                        }, "")
+                      }
+                    >
+                      <Download size={13} aria-hidden="true" /> Export to VS
+                      Code
+                    </button>
                     {entry.id && (
                       <button
                         className="theme-action"
                         disabled={busy}
-                        onClick={() => void run(() => edit(entry.id!), "")}
+                        onClick={() =>
+                          void run(
+                            () =>
+                              kind === "color"
+                                ? edit(entry.id!)
+                                : api("open_themes_folder", { id: entry.id }),
+                            "",
+                          )
+                        }
                       >
                         <Pencil size={13} aria-hidden="true" />
-                        {entry.owner ? "View theme" : "Edit theme"}
+                        {kind !== "color"
+                          ? "Open icon definitions"
+                          : entry.owner
+                            ? "View theme"
+                            : "Edit theme"}
                       </button>
                     )}
                     <button
@@ -437,10 +581,12 @@ export default function ThemesPage() {
                         void run(async () => {
                           const id = await api<string>("duplicate_theme", {
                             id: entry.id,
+                            kind,
                           });
                           await refreshCatalog();
                           clearFilters();
-                          await edit(id);
+                          if (kind === "color") await edit(id);
+                          else await api("open_themes_folder", { id });
                         }, "Theme copied.")
                       }
                     >
@@ -471,8 +617,14 @@ export default function ThemesPage() {
             <div>
               <h2>Your theme folder</h2>
               <p>
-                Drop a theme folder here to import it. Refresh after editing
-                files.
+                Import SimpleBench folders, VS Code extension folders, color or
+                icon theme files, or VSIX packages. Refresh after editing files.
+              </p>
+              <p className="settings-help">
+                VS Code exchange includes colors, syntax rules, file icons and
+                interface icons with their images and fonts. Editor highlighting
+                may differ. Custom layouts, CSS and backgrounds remain
+                SimpleBench features.
               </p>
             </div>
             <button

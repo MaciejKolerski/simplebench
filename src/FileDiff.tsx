@@ -1,5 +1,6 @@
+import ResourceIcon from "./ResourceIcon";
 import { useEffect, useState } from "react";
-import { FileDiff as FileDiffIcon, RefreshCw } from "lucide-react";
+import { FileDiff as FileDiffIcon, RefreshCw } from "./icons";
 import { api, errorMessage } from "./api";
 import type { GitFileDiff } from "./api";
 import type { DiffTab } from "./model";
@@ -44,7 +45,11 @@ export default function FileDiff({
       aria-label={`Changes in ${tab.relative}`}
     >
       <header>
-        <FileDiffIcon size={15} />
+        <ResourceIcon
+          path={`${tab.root}/${tab.relative}`}
+          size={15}
+          fallback={FileDiffIcon}
+        />
         <span className="working-diff-path">{tab.relative}</span>
         <button type="button" className="button" onClick={onOpenFile}>
           Open file

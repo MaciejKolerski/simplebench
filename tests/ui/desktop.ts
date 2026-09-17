@@ -470,6 +470,9 @@ export async function mockDesktop(
             return {
               id,
               raw,
+              iconTheme: JSON.parse(
+                localStorage.getItem("test-icon-themes") ?? "{}",
+              )[id],
               revision: raw,
               directory: `/app/themes/${id}`,
               readOnly: !!themeOwner(id),
@@ -584,6 +587,7 @@ export async function mockDesktop(
               themes: Object.entries(manifests).map(
                 ([id, value]: [string, any]) => ({
                   id,
+                  kind: value.iconTheme?.kind ?? "color",
                   name: value.name ?? id,
                   description: value.description ?? "",
                   author: value.author ?? "",
@@ -628,6 +632,22 @@ export async function mockDesktop(
               preferences,
               theme: manifest
                 ? await themeBundle(preferences.active, manifest)
+                : null,
+              fileIcons: preferences.fileIcons
+                ? await themeBundle(
+                    preferences.fileIcons,
+                    JSON.parse(
+                      localStorage.getItem("test-theme-manifests") ?? "{}",
+                    )[preferences.fileIcons],
+                  )
+                : null,
+              productIcons: preferences.productIcons
+                ? await themeBundle(
+                    preferences.productIcons,
+                    JSON.parse(
+                      localStorage.getItem("test-theme-manifests") ?? "{}",
+                    )[preferences.productIcons],
+                  )
                 : null,
               revision: 1,
               safeMode: false,
@@ -679,6 +699,32 @@ export async function mockDesktop(
             localStorage.setItem("test-theme-refresh", String(Date.now()));
             await emitEvent("theme-changed");
             return;
+          }
+          if (
+            command === "export_vscode_theme" ||
+            command === "export_vscode_icon_theme"
+          ) {
+            if (desktop.__nativeTest.themeExportError)
+              throw new Error(desktop.__nativeTest.themeExportError);
+            return args.directory + "/simplebench-theme.vsix";
+          }
+          if (command === "import_vscode_themes") {
+            if (desktop.__nativeTest.themeImportError)
+              throw new Error(desktop.__nativeTest.themeImportError);
+            const manifests = JSON.parse(
+              localStorage.getItem("test-theme-manifests") ?? "{}",
+            );
+            const imported = desktop.__nativeTest.vscodeThemes ?? [];
+            const ids = imported.map((manifest: unknown, index: number) => {
+              const id = `vscode-theme-${index + 1}`;
+              manifests[id] = manifest;
+              return id;
+            });
+            localStorage.setItem(
+              "test-theme-manifests",
+              JSON.stringify(manifests),
+            );
+            return ids;
           }
           if (command === "import_theme" || command === "create_theme") {
             if (desktop.__nativeTest.themeImportError)

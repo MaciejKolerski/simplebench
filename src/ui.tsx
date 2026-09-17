@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef } from "react";
 import type { ButtonHTMLAttributes, ReactNode, RefObject } from "react";
-import { Minus, Square, X } from "lucide-react";
+import { Minus, Square, X } from "./icons";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { errorMessage, macOS, native } from "./api";
 
@@ -41,21 +41,21 @@ export function WindowControls({
         disabled={!native}
         onClick={() => act("minimize")}
       >
-        <Minus size={14} />
+        <Minus size={14} iconId="chrome-minimize" />
       </IconButton>
       <IconButton
         title="Maximize or restore window"
         disabled={!native}
         onClick={() => act("toggleMaximize")}
       >
-        <Square size={12} />
+        <Square size={12} iconId="chrome-maximize" />
       </IconButton>
       <IconButton
         title="Close window"
         disabled={!native}
         onClick={() => act("close")}
       >
-        <X size={15} />
+        <X size={15} iconId="chrome-close" />
       </IconButton>
     </div>
   );
@@ -105,7 +105,7 @@ export function Modal({
         <header>
           <h2 id={titleId}>{title}</h2>
           <IconButton title="Close dialog" onClick={onClose}>
-            <X size={16} />
+            <X size={16} iconId="dialog-close" />
           </IconButton>
         </header>
         {children}

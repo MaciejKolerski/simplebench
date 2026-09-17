@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { GitCommitHorizontal, History } from "lucide-react";
+import { GitCommitHorizontal, History } from "./icons";
 import { api, errorMessage } from "./api";
 import type { GitCommitSummary, GitHistoryPage } from "./api";
 

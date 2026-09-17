@@ -1,0 +1,263 @@
+{
+  "fonts": [
+    {
+      "id": "simplebench-lucide",
+      "src": [
+        {
+          "path": "lucide.woff2",
+          "format": "woff2"
+        }
+      ],
+      "weight": "normal",
+      "style": "normal"
+    }
+  ],
+  "iconDefinitions": {
+    "arrow-down": {
+      "fontCharacter": ""
+    },
+    "arrow-left": {
+      "fontCharacter": ""
+    },
+    "arrow-right": {
+      "fontCharacter": ""
+    },
+    "arrow-up": {
+      "fontCharacter": ""
+    },
+    "search-case-sensitive": {
+      "fontCharacter": ""
+    },
+    "case-sensitive": {
+      "fontCharacter": ""
+    },
+    "check": {
+      "fontCharacter": ""
+    },
+    "chevron-down": {
+      "fontCharacter": ""
+    },
+    "chevron-left": {
+      "fontCharacter": ""
+    },
+    "chevron-right": {
+      "fontCharacter": ""
+    },
+    "collapse-all": {
+      "fontCharacter": ""
+    },
+    "expand-all": {
+      "fontCharacter": ""
+    },
+    "error": {
+      "fontCharacter": ""
+    },
+    "code": {
+      "fontCharacter": ""
+    },
+    "split-horizontal": {
+      "fontCharacter": ""
+    },
+    "symbol-key": {
+      "fontCharacter": ""
+    },
+    "copy": {
+      "fontCharacter": ""
+    },
+    "cloud-download": {
+      "fontCharacter": ""
+    },
+    "more": {
+      "fontCharacter": ""
+    },
+    "link-external": {
+      "fontCharacter": ""
+    },
+    "eye": {
+      "fontCharacter": ""
+    },
+    "eye-closed": {
+      "fontCharacter": ""
+    },
+    "file": {
+      "fontCharacter": ""
+    },
+    "file-code": {
+      "fontCharacter": ""
+    },
+    "diff": {
+      "fontCharacter": ""
+    },
+    "json": {
+      "fontCharacter": ""
+    },
+    "explorer-new-file": {
+      "fontCharacter": ""
+    },
+    "new-file": {
+      "fontCharacter": ""
+    },
+    "file-text": {
+      "fontCharacter": ""
+    },
+    "folder": {
+      "fontCharacter": ""
+    },
+    "folder-opened": {
+      "fontCharacter": ""
+    },
+    "git-branch": {
+      "fontCharacter": ""
+    },
+    "git-commit": {
+      "fontCharacter": ""
+    },
+    "globe": {
+      "fontCharacter": ""
+    },
+    "history": {
+      "fontCharacter": ""
+    },
+    "import": {
+      "fontCharacter": ""
+    },
+    "info": {
+      "fontCharacter": ""
+    },
+    "keyboard": {
+      "fontCharacter": ""
+    },
+    "layers": {
+      "fontCharacter": ""
+    },
+    "layout": {
+      "fontCharacter": ""
+    },
+    "clear-all": {
+      "fontCharacter": ""
+    },
+    "screen-full": {
+      "fontCharacter": ""
+    },
+    "menu": {
+      "fontCharacter": ""
+    },
+    "screen-normal": {
+      "fontCharacter": ""
+    },
+    "remove": {
+      "fontCharacter": ""
+    },
+    "device-desktop": {
+      "fontCharacter": ""
+    },
+    "moon": {
+      "fontCharacter": ""
+    },
+    "color-mode": {
+      "fontCharacter": ""
+    },
+    "layout-sidebar-left": {
+      "fontCharacter": ""
+    },
+    "layout-sidebar-right": {
+      "fontCharacter": ""
+    },
+    "edit": {
+      "fontCharacter": ""
+    },
+    "play": {
+      "fontCharacter": ""
+    },
+    "add": {
+      "fontCharacter": ""
+    },
+    "extensions": {
+      "fontCharacter": ""
+    },
+    "redo": {
+      "fontCharacter": ""
+    },
+    "refresh": {
+      "fontCharacter": ""
+    },
+    "search-regex": {
+      "fontCharacter": ""
+    },
+    "regex": {
+      "fontCharacter": ""
+    },
+    "discard": {
+      "fontCharacter": ""
+    },
+    "save": {
+      "fontCharacter": ""
+    },
+    "search": {
+      "fontCharacter": ""
+    },
+    "settings-gear": {
+      "fontCharacter": ""
+    },
+    "gear": {
+      "fontCharacter": ""
+    },
+    "shield": {
+      "fontCharacter": ""
+    },
+    "primitive-square": {
+      "fontCharacter": ""
+    },
+    "sign-out": {
+      "fontCharacter": ""
+    },
+    "record-small": {
+      "fontCharacter": ""
+    },
+    "diff-removed": {
+      "fontCharacter": ""
+    },
+    "diff-added": {
+      "fontCharacter": ""
+    },
+    "lightbulb": {
+      "fontCharacter": ""
+    },
+    "terminal": {
+      "fontCharacter": ""
+    },
+    "trash": {
+      "fontCharacter": ""
+    },
+    "undo": {
+      "fontCharacter": ""
+    },
+    "search-whole-word": {
+      "fontCharacter": ""
+    },
+    "whole-word": {
+      "fontCharacter": ""
+    },
+    "word-wrap": {
+      "fontCharacter": ""
+    },
+    "close": {
+      "fontCharacter": ""
+    },
+    "chrome-minimize": {
+      "fontCharacter": ""
+    },
+    "chrome-maximize": {
+      "fontCharacter": ""
+    },
+    "chrome-close": {
+      "fontCharacter": ""
+    },
+    "dialog-close": {
+      "fontCharacter": ""
+    },
+    "tab-close": {
+      "fontCharacter": ""
+    }
+  }
+}

@@ -1,3 +1,4 @@
+import type { IconKind } from "./theme/icon-theme";
 import {
   createContext,
   useCallback,
@@ -37,6 +38,7 @@ interface Themes {
     id: string | null,
     appearance?: AppearancePreference,
   ) => Promise<void>;
+  selectIcons: (kind: IconKind, id: string | null) => Promise<void>;
   preview: (bundle: ThemeBundle) => Promise<void>;
   cancelPreview: () => Promise<void>;
 }
@@ -80,6 +82,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       prefs: ThemePreferences,
       request: number,
       sourceRevision?: number,
+      icons?: { file: ThemeBundle | null; product: ThemeBundle | null },
     ) => {
       abort.current?.abort();
       const controller = new AbortController();
@@ -89,6 +92,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         prefs,
         controller.signal,
         sourceRevision,
+        icons,
       );
       if (!mounted.current || request !== generation.current) {
         prepared.dispose();
@@ -131,11 +135,21 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
           current.preferences,
           request,
           current.revision,
+          {
+            file: current.fileIcons ?? null,
+            product: current.productIcons ?? null,
+          },
         )
       ) {
         setPreferences(current.preferences);
         setSafeMode(current.safeMode);
-        setDirectory(current.theme?.directory ?? "");
+        setDirectory(
+          JSON.stringify(
+            [current.theme, current.fileIcons, current.productIcons].flatMap(
+              (bundle) => (bundle?.directory ? [bundle.directory] : []),
+            ),
+          ),
+        );
         setError("");
       }
     } catch (error) {
@@ -193,11 +207,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     };
   }, [reload, apply]);
   useEffect(() => {
-    if (!native || !directory || safeMode) return;
+    if (!native || !directory || directory === "[]" || safeMode) return;
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const stop = watch(
-      directory,
+      JSON.parse(directory) as string[],
       (event) => {
         if (typeof event.type === "object" && "access" in event.type) return;
         clearTimeout(timer);
@@ -227,14 +241,31 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const select = async (
     id: string | null,
     appearance = preferences.appearance,
+    iconSelection?: { kind: IconKind; id: string | null },
   ) => {
     if (saving.current) return;
     saving.current = true;
     const request = ++generation.current;
     try {
-      const next: ThemePreferences = { version: 1, active: id, appearance };
+      const next: ThemePreferences = {
+        ...preferences,
+        version: 1,
+        active: id,
+        appearance,
+      };
+      if (iconSelection)
+        next[iconSelection.kind === "file" ? "fileIcons" : "productIcons"] =
+          iconSelection.id;
       const bundle = id ? await api<ThemeBundle>("load_theme", { id }) : null;
-      const prepared = await prepareTheme(bundle, next);
+      const [file, product] = await Promise.all(
+        [next.fileIcons, next.productIcons].map((id) =>
+          id ? api<ThemeBundle>("load_theme", { id }) : null,
+        ),
+      );
+      const prepared = await prepareTheme(bundle, next, undefined, undefined, {
+        file,
+        product,
+      });
       try {
         await sync(prepared.appearance);
         if (native) await api("save_theme_preferences", { data: next });
@@ -246,7 +277,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         await prepared.commit();
         applied.current = prepared.appearance;
         setPreferences(next);
-        setDirectory(bundle?.directory ?? "");
+        setDirectory(
+          JSON.stringify(
+            [bundle, file, product].flatMap((bundle) =>
+              bundle?.directory ? [bundle.directory] : [],
+            ),
+          ),
+        );
         setFixedAppearance(
           prepared.manifest.appearance === "light" ||
             prepared.manifest.appearance === "dark"
@@ -306,6 +343,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         snapshot,
         reload,
         select,
+        selectIcons: (kind, id) =>
+          select(preferences.active, preferences.appearance, { kind, id }),
         preview,
         cancelPreview,
       }}

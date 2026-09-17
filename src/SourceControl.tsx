@@ -10,7 +10,7 @@ import {
   SquareDot,
   SquareMinus,
   SquarePlus,
-} from "lucide-react";
+} from "./icons";
 import { api, errorMessage } from "./api";
 import type { GitChange, GitCommitSummary, GitStatus } from "./api";
 import GitHistory from "./GitHistory";

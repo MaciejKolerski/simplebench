@@ -1,3 +1,4 @@
+import ResourceIcon from "./ResourceIcon";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -7,13 +8,12 @@ import {
   ChevronsDownUp,
   ChevronsUpDown,
   Ellipsis,
-  File,
   ListX,
   RefreshCw,
   Regex,
   WholeWord,
   X,
-} from "lucide-react";
+} from "./icons";
 import { api, errorMessage } from "./api";
 import { basename } from "./model";
 import { IconButton } from "./ui";
@@ -382,7 +382,7 @@ export default function ProjectSearch({
                 ) : (
                   <ChevronDown size={12} />
                 )}
-                <File size={14} />
+                <ResourceIcon path={path} size={14} />
                 <span className="search-file-name">{basename(path)}</span>
                 <span className="search-file-directory">
                   {path.slice(0, -basename(path).length).replace(/[\\/]$/, "")}

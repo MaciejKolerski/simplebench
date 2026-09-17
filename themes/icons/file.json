@@ -1,0 +1,17 @@
+{
+  "iconDefinitions": {
+    "file": {
+      "iconPath": "file.svg"
+    },
+    "folder": {
+      "iconPath": "folder.svg"
+    },
+    "open": {
+      "iconPath": "folder-open.svg"
+    }
+  },
+  "file": "file",
+  "folder": "folder",
+  "folderExpanded": "open",
+  "usesCurrentColor": true
+}

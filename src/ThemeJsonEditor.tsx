@@ -5,7 +5,7 @@ import { isolateHistory, redo, undo } from "@codemirror/commands";
 import { indentUnit } from "@codemirror/language";
 import { json } from "@codemirror/lang-json";
 import { gotoLine, openSearchPanel } from "@codemirror/search";
-import { FileJson, Redo2, Search, Undo2 } from "lucide-react";
+import { FileJson, Redo2, Search, Undo2 } from "./icons";
 import { editorAppearance } from "./theme/editor";
 import { formatThemeText } from "./theme/format";
 import { codeEditorExtensions } from "./editor-extensions";

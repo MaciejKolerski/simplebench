@@ -147,3 +147,25 @@ The `xterm-theme` 1.1.0 npm manifest lists ISC, while its upstream license is MI
 and the npm tarball omits that license file. The upstream MIT notice is retained
 in `public/licenses/xterm-theme-MIT.txt`. The package supplies palette data only;
 SimpleBench uses a single `@xterm/xterm` runtime.
+
+## VS Code color-theme exchange
+
+Settings → Themes can import VS Code color files, TextMate themes, extension
+folders / `package.json`, and VSIX packages. Export creates an installable local
+VSIX with one fixed appearance or separate dark/light entries. Imported data is
+retained under the optional `vscode` field; common/light/dark overrides apply
+above its mapping. Extension code is never evaluated.
+
+See [the compatibility analysis](../docs/vscode-theme-compatibility.md) for the
+VS Code loading pipeline, supported mappings, import/export behavior and limits.
+CodeMirror syntax is an approximation of TextMate; semantic rules are retained
+for export. SimpleBench CSS, layouts and assets have no standard VS Code
+color-theme equivalent. This is not full visual or semantic parity.
+
+File and interface icon themes use separate selections in Settings → Themes.
+A version 2 wrapper references a standard VS Code icon document with
+`"iconTheme": { "kind": "file", "path": "icons.json" }` (or `"product"`).
+Create or duplicate an icon theme, then open its folder to edit its document and
+scoped assets. Export includes all referenced SVG/raster images and glyph fonts.
+See the [compatibility analysis](../docs/vscode-theme-compatibility.md#file-and-product-icon-themes)
+for matching rules, resource bounds and language-extension limitations.

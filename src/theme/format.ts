@@ -1,4 +1,6 @@
+import type { IconKind, IconTheme } from "./icon-theme";
 import deepmono from "../../themes/deepmono.json" with { type: "json" };
+import { parseVSCodeTheme, vscodeValues, type VSCodeTheme } from "./vscode.ts";
 import {
   parseTree,
   getNodeValue,
@@ -122,11 +124,14 @@ export function resolveAppearance(
 export interface ThemePreferences {
   version: 1;
   active: string | null;
+  fileIcons?: string | null;
+  productIcons?: string | null;
   appearance: AppearancePreference;
 }
 export interface ThemeBundle {
   id: string;
   raw: string;
+  iconTheme?: IconTheme;
   revision: string;
   directory: string;
   readOnly?: boolean;
@@ -135,10 +140,13 @@ export interface ThemeBundle {
 export interface ThemeCurrent {
   preferences: ThemePreferences;
   theme: ThemeBundle | null;
+  fileIcons?: ThemeBundle | null;
+  productIcons?: ThemeBundle | null;
   safeMode: boolean;
   revision: number;
 }
 export interface ThemeEntry {
+  kind?: "color" | IconKind;
   id: string;
   name: string;
   author: string;
@@ -428,6 +436,8 @@ export interface ThemeManifest {
   light?: ThemeValues;
   dark?: ThemeValues;
   resources?: { assets?: Record<string, string>; stylesheets?: string[] };
+  vscode?: VSCodeTheme;
+  iconTheme?: { kind: IconKind; path: string };
 }
 export type ResolvedTheme = ThemeValues & {
   assets?: Record<string, string>;
@@ -565,6 +575,8 @@ export function parseTheme(value: unknown): ThemeManifest {
       "light",
       "dark",
       "resources",
+      "vscode",
+      "iconTheme",
     ],
     "theme",
   );
@@ -582,6 +594,20 @@ export function parseTheme(value: unknown): ThemeManifest {
     throw new Error("appearance must be adaptive, light, or dark.");
   for (const field of ["common", "light", "dark"])
     if (data[field] !== undefined) validateValues(data[field], field);
+  if (data.iconTheme !== undefined) {
+    const icons = object(data.iconTheme, "iconTheme");
+    keys(icons, ["kind", "path"], "iconTheme");
+    if (icons.kind !== "file" && icons.kind !== "product")
+      throw new Error("Unknown icon theme kind.");
+    relativeAsset(icons.path);
+    if (
+      ["common", "light", "dark", "resources", "vscode"].some(
+        (field) => data[field] !== undefined,
+      )
+    )
+      throw new Error("Icon themes cannot also define color surfaces.");
+  }
+  if (data.vscode !== undefined) parseVSCodeTheme(data.vscode);
   const resources = object(data.resources ?? {}, "resources");
   keys(resources, ["assets", "stylesheets"], "resources");
   parseLegacyTheme({ version: 1, name: "Resources", ...resources });
@@ -758,6 +784,9 @@ export function resolveTheme(
   manifest: ThemeManifest,
   appearance: Appearance,
 ): ResolvedTheme {
-  const values = mergeValues(manifest.common, manifest[appearance]);
+  const values = mergeValues(
+    manifest.vscode ? vscodeValues(manifest.vscode) : {},
+    mergeValues(manifest.common, manifest[appearance]),
+  );
   return { ...values, ...manifest.resources };
 }

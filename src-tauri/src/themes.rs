@@ -12,6 +12,8 @@ use std::{
 };
 use tauri::{Emitter, Manager, State, Window};
 use tauri_plugin_opener::OpenerExt;
+mod icons;
+pub mod vscode;
 
 const JSON_LIMIT: u64 = 256 * 1024;
 const ASSET_LIMIT: u64 = 20 * 1024 * 1024;
@@ -47,6 +49,10 @@ impl Appearance {
 pub struct Preferences {
     version: u32,
     active: Option<String>,
+    #[serde(default)]
+    file_icons: Option<String>,
+    #[serde(default)]
+    product_icons: Option<String>,
     // Accept old settings without allowing them to disable manifest resources.
     #[serde(default, rename = "customCss", skip_serializing)]
     _legacy_custom_css: bool,
@@ -59,6 +65,8 @@ impl Preferences {
         Self {
             version: 1,
             active: None,
+            file_icons: None,
+            product_icons: None,
             _legacy_custom_css: false,
             appearance: Appearance::System,
         }
@@ -69,6 +77,8 @@ impl Preferences {
 pub struct Bundle {
     id: String,
     raw: String,
+    #[serde(rename = "iconTheme", skip_serializing_if = "Option::is_none")]
+    icon_theme: Option<Value>,
     revision: String,
     directory: String,
     migration: Vec<String>,
@@ -81,12 +91,15 @@ pub struct Bundle {
 pub struct Current {
     preferences: Preferences,
     theme: Option<Bundle>,
+    file_icons: Option<Bundle>,
+    product_icons: Option<Bundle>,
     safe_mode: bool,
     revision: u64,
 }
 
 #[derive(Serialize)]
 pub struct Entry {
+    kind: String,
     id: String,
     name: String,
     description: String,
@@ -351,6 +364,8 @@ fn validate_modern(root: &Path, data: &Value) -> Result<(), String> {
             "light",
             "dark",
             "resources",
+            "vscode",
+            "iconTheme",
         ]
         .contains(&key.as_str())
         {
@@ -367,6 +382,18 @@ fn validate_modern(root: &Path, data: &Value) -> Result<(), String> {
         if !matches!(value.as_str(), Some("adaptive" | "dark" | "light")) {
             return Err("Invalid theme appearance.".into());
         }
+    }
+    if data.get("iconTheme").is_some() {
+        if ["common", "light", "dark", "resources", "vscode"]
+            .iter()
+            .any(|field| data.get(field).is_some())
+        {
+            return Err("Icon theme packages cannot also define color surfaces.".into());
+        }
+        icons::load(root, data)?;
+    }
+    if let Some(value) = data.get("vscode") {
+        vscode::validate(value)?;
     }
     for field in ["common", "light", "dark"] {
         if let Some(values) = data.get(field) {
@@ -547,6 +574,7 @@ fn bundle(root: &Path, id: &str) -> Result<Bundle, String> {
     Ok(Bundle {
         id: id.into(),
         revision: hash(raw.as_bytes()),
+        icon_theme: icons::load(&folder, &parse_raw(&raw)?)?,
         raw,
         directory: folder.to_string_lossy().into_owned(),
         migration,
@@ -574,14 +602,23 @@ fn app_bundle(app: &tauri::AppHandle, id: &str) -> Result<Bundle, String> {
     Ok(Bundle {
         id: id.into(),
         revision: hash(raw.as_bytes()),
+        icon_theme: icons::load(&folder, &parse_raw(&raw)?)?,
         raw,
         directory: folder.to_string_lossy().into_owned(),
         migration,
         read_only: true,
     })
 }
-pub(crate) fn selected_theme(app: &tauri::AppHandle) -> Result<Option<String>, String> {
-    Ok(read_preferences(&data_dir(app)?.join("theme-settings.json"))?.active)
+pub(crate) fn selected_themes(app: &tauri::AppHandle) -> Result<Vec<String>, String> {
+    let preferences = read_preferences(&data_dir(app)?.join("theme-settings.json"))?;
+    Ok([
+        preferences.active,
+        preferences.file_icons,
+        preferences.product_icons,
+    ]
+    .into_iter()
+    .flatten()
+    .collect())
 }
 
 fn read_preferences(path: &Path) -> Result<Preferences, String> {
@@ -594,7 +631,10 @@ fn read_preferences(path: &Path) -> Result<Preferences, String> {
         if value.version != 1 {
             return Err("Unsupported theme settings version.".into());
         }
-        if let Some(id) = &value.active {
+        for id in [&value.active, &value.file_icons, &value.product_icons]
+            .into_iter()
+            .flatten()
+        {
             valid_id(id)?;
         }
         Ok(value)
@@ -627,8 +667,29 @@ pub fn load_theme_preferences(
         .as_ref()
         .map(|id| app_bundle(&app, id))
         .transpose()?;
+    let file_icons = preferences
+        .file_icons
+        .as_ref()
+        .map(|id| app_bundle(&app, id))
+        .transpose()?;
+    let product_icons = preferences
+        .product_icons
+        .as_ref()
+        .map(|id| app_bundle(&app, id))
+        .transpose()?;
+    for (bundle, expected) in [
+        (&theme, "color"),
+        (&file_icons, "file"),
+        (&product_icons, "product"),
+    ] {
+        if let Some(bundle) = bundle {
+            if icons::kind(&parse_raw(&bundle.raw)?) != expected {
+                return Err(format!("Expected a {expected} theme."));
+            }
+        }
+    }
     let mut identity = serde_json::to_string(&preferences).map_err(|e| e.to_string())?;
-    if let Some(bundle) = &theme {
+    for bundle in [&theme, &file_icons, &product_icons].into_iter().flatten() {
         identity.push_str(&bundle.revision);
         resource_identity(Path::new(&bundle.directory), &mut identity, &mut 0, 0)?;
     }
@@ -640,6 +701,8 @@ pub fn load_theme_preferences(
     Ok(Current {
         preferences,
         theme,
+        file_icons,
+        product_icons,
         safe_mode,
         revision: state.revision.load(Ordering::SeqCst),
     })
@@ -668,16 +731,24 @@ pub fn list_themes(window: Window, app: tauri::AppHandle) -> Result<Catalog, Str
             continue;
         }
         let result = inside(&directory, &id).and_then(|folder| manifest(&folder));
-        let (name, description, author, error) = match result {
+        let (name, description, author, error, kind) = match result {
             Ok(bundle) => (
                 bundle["name"].as_str().unwrap_or(&id).into(),
                 bundle["description"].as_str().unwrap_or("").into(),
                 bundle["author"].as_str().unwrap_or("").into(),
                 None,
+                icons::kind(&bundle).to_string(),
             ),
-            Err(error) => (id.clone(), String::new(), String::new(), Some(error)),
+            Err(error) => (
+                id.clone(),
+                String::new(),
+                String::new(),
+                Some(error),
+                "color".into(),
+            ),
         };
         themes.push(Entry {
+            kind,
             id,
             name,
             description,
@@ -688,16 +759,24 @@ pub fn list_themes(window: Window, app: tauri::AppHandle) -> Result<Catalog, Str
     }
     if let Ok(contributions) = crate::plugins::theme_directories(&app) {
         for theme in contributions {
-            let (name, description, author, error) = match manifest(&theme.directory) {
+            let (name, description, author, error, kind) = match manifest(&theme.directory) {
                 Ok(data) => (
                     data["name"].as_str().unwrap_or(&theme.id).into(),
                     data["description"].as_str().unwrap_or("").into(),
                     data["author"].as_str().unwrap_or("").into(),
                     None,
+                    icons::kind(&data).to_string(),
                 ),
-                Err(error) => (theme.id.clone(), String::new(), String::new(), Some(error)),
+                Err(error) => (
+                    theme.id.clone(),
+                    String::new(),
+                    String::new(),
+                    Some(error),
+                    "color".into(),
+                ),
             };
             themes.push(Entry {
+                kind,
                 id: theme.id,
                 name,
                 description,
@@ -726,8 +805,16 @@ pub fn save_theme_preferences(
     if data.version != 1 {
         return Err("Unsupported theme settings version.".into());
     }
-    if let Some(id) = &data.active {
-        manifest(&theme_root(&app, id)?)?;
+    for (id, expected) in [
+        (&data.active, "color"),
+        (&data.file_icons, "file"),
+        (&data.product_icons, "product"),
+    ] {
+        if let Some(id) = id {
+            if icons::kind(&manifest(&theme_root(&app, id)?)?) != expected {
+                return Err(format!("Expected a {expected} theme."));
+            }
+        }
     }
     let directory = data_dir(&app)?;
     fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
@@ -834,8 +921,8 @@ fn copy_package(
     for entry in fs::read_dir(source).map_err(|error| error.to_string())? {
         let entry = entry.map_err(|error| error.to_string())?;
         *count += 1;
-        if *count > 1024 {
-            return Err("Theme packages may contain at most 1024 entries.".into());
+        if *count > icons::ENTRY_LIMIT {
+            return Err("Theme packages may contain at most 8192 entries.".into());
         }
         let name = entry.file_name();
         relative(
@@ -869,6 +956,23 @@ fn import(root: &Path, source: &Path) -> Result<String, String> {
         return Err("Choose a theme folder, not a symbolic link.".into());
     }
     let source = source.canonicalize().map_err(|error| error.to_string())?;
+    let vscode_folder = !source.join("theme.jsonc").exists()
+        && source.join("package.json").exists()
+        && (!source.join("theme.json").exists()
+            || String::from_utf8(read_limited(&inside(&source, "theme.json")?, JSON_LIMIT)?)
+                .map_err(|e| e.to_string())
+                .and_then(|raw| parse_raw(&raw))?
+                .get("version")
+                .is_none());
+    if source.is_file()
+        || vscode_folder
+        || (!source.join("theme.jsonc").exists() && !source.join("theme.json").exists())
+    {
+        return vscode::install(root, &source)?
+            .into_iter()
+            .next()
+            .ok_or("No color themes were imported.".into());
+    }
     manifest(&source)?;
     let name = source
         .file_name()
@@ -1386,7 +1490,7 @@ fn resource_identity(
     entries.sort_by_key(|entry| entry.file_name());
     for entry in entries {
         *count += 1;
-        if *count > 1024 {
+        if *count > icons::ENTRY_LIMIT {
             return Err("Too many theme resources.".into());
         }
         let metadata = entry.metadata().map_err(|e| e.to_string())?;
@@ -1411,9 +1515,19 @@ pub fn duplicate_theme(
     app: tauri::AppHandle,
     state: State<'_, Themes>,
     id: Option<String>,
+    kind: Option<String>,
 ) -> Result<String, String> {
     authorize(window.label(), true)?;
     let _guard = state.lock.lock().map_err(|e| e.to_string())?;
+    if id.is_none() && kind.as_deref().is_some_and(|kind| kind != "color") {
+        let root = library(&app)?;
+        let stage = tempfile::tempdir_in(&root).map_err(|e| e.to_string())?;
+        icons::write(
+            stage.path(),
+            &icons::builtin(kind.as_deref().unwrap_or("file"))?,
+        )?;
+        return duplicate(&root, Some(stage.path()));
+    }
     let source = id.as_ref().map(|id| theme_root(&app, id)).transpose()?;
     duplicate(&library(&app)?, source.as_deref())
 }

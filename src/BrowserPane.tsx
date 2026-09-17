@@ -14,7 +14,7 @@ import {
   Search,
   RotateCw,
   X,
-} from "lucide-react";
+} from "./icons";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { BrowserTab } from "./model";
 import { browserAddress } from "./browser-url";

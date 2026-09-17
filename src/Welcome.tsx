@@ -1,4 +1,4 @@
-import { ArrowRight, FilePlus2, FolderOpen } from "lucide-react";
+import { ArrowRight, FilePlus2, FolderOpen } from "./icons";
 
 export default function Welcome({
   busy,

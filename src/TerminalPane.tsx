@@ -19,7 +19,7 @@ import {
   Search,
   Terminal,
   X,
-} from "lucide-react";
+} from "./icons";
 import type { Pane, ShellProfile } from "./model";
 import { terminalFor } from "./terminal-runtime";
 import { IconButton } from "./ui";

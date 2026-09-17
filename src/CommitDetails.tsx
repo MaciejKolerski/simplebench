@@ -1,5 +1,6 @@
+import ResourceIcon from "./ResourceIcon";
 import { useEffect, useMemo, useState } from "react";
-import { FileDiff, GitCommitHorizontal } from "lucide-react";
+import { FileDiff, GitCommitHorizontal } from "./icons";
 import { api, errorMessage } from "./api";
 import type { GitCommitDetails, GitCommitDiff, GitCommitSummary } from "./api";
 import { diffLines } from "./git-diff";
@@ -205,7 +206,11 @@ export default function CommitDetails({
           </nav>
           <section className="commit-file-diff" aria-label="File changes">
             <header>
-              <FileDiff size={14} />
+              <ResourceIcon
+                path={`${root}/${selectedPath}`}
+                size={14}
+                fallback={FileDiff}
+              />
               <span>
                 {selectedFile?.originalPath
                   ? `${selectedFile.originalPath} → ${selectedFile.path}`

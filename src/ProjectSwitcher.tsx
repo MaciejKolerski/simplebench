@@ -1,11 +1,6 @@
+import ResourceIcon from "./ResourceIcon";
 import { useEffect, useId, useRef } from "react";
-import {
-  Check,
-  ChevronDown,
-  Folder,
-  FolderOpen,
-  Menu as MenuIcon,
-} from "lucide-react";
+import { Check, ChevronDown, FolderOpen, Menu as MenuIcon } from "./icons";
 import { basename } from "./model";
 import type { Project } from "./model";
 import { Menu } from "./ui";
@@ -62,7 +57,7 @@ export default function ProjectSwitcher({
         }}
       >
         {project ? (
-          <Folder size={14} aria-hidden="true" />
+          <ResourceIcon path={project.path} folder root size={14} />
         ) : (
           <MenuIcon size={13} aria-hidden="true" />
         )}
@@ -139,7 +134,12 @@ export default function ProjectSwitcher({
                         onSelect(candidate.path);
                       }}
                     >
-                      <Folder size={14} aria-hidden="true" />
+                      <ResourceIcon
+                        path={candidate.path}
+                        folder
+                        root
+                        size={14}
+                      />
                       <span>{basename(candidate.path)}</span>
                       {candidate.id === activeProjectId && (
                         <Check size={13} aria-hidden="true" />

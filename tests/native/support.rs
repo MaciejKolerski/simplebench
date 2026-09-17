@@ -1,8 +1,14 @@
 use tauri::{Manager, Window};
+#[path = "theme-support.rs"]
+mod theme_smoke;
 fn entry_script(source: &str, data: &serde_json::Value) -> String {
     source.replace("SMOKE_ENTRY", &serde_json::to_string(data).unwrap())
 }
 pub fn page(webview: &tauri::Webview, payload: &tauri::webview::PageLoadPayload<'_>) {
+    if std::env::var_os("SIMPLEBENCH_THEME_SMOKE_DIRECTORY").is_some() {
+        theme_smoke::page(webview, payload);
+        return;
+    }
     if webview.label() != "settings"
         || !matches!(payload.event(), tauri::webview::PageLoadEvent::Finished)
     {
@@ -32,6 +38,9 @@ pub fn plugin_smoke_result(
 ) -> Result<serde_json::Value, String> {
     if !matches!(window.label(), "main" | "settings") {
         return Err("Unknown test caller.".into());
+    }
+    if std::env::var_os("SIMPLEBENCH_THEME_SMOKE_DIRECTORY").is_some() {
+        return theme_smoke::result(&app, &stage, data);
     }
     if std::env::var_os("SIMPLEBENCH_PLUGIN_SMOKE_PACKAGE").is_none() {
         return Err("The smoke environment is not active.".into());

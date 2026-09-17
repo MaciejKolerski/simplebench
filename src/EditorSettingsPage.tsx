@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw } from "./icons";
 import { errorMessage } from "./api";
 import { useEditorPreferences } from "./EditorPreferencesProvider";
 import Select from "./Select";

@@ -1,3 +1,4 @@
+import ResourceIcon from "./ResourceIcon";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Channel, Resource } from "@tauri-apps/api/core";
 import {
@@ -7,13 +8,10 @@ import {
   Copy,
   Eye,
   EyeOff,
-  File,
-  Folder,
-  FolderOpen,
   RefreshCw,
   Search,
   Terminal,
-} from "lucide-react";
+} from "./icons";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { api, errorMessage } from "./api";
 import type { FileEntry, GitCommitSummary, GitStatus } from "./api";
@@ -176,7 +174,7 @@ export default function Explorer(props: Props) {
               onContextMenu={(event) => actions.onContext(event, rootEntry)}
               onKeyDown={(event) => actions.onKey(event, rootEntry)}
             >
-              <FolderOpen size={14} />
+              <ResourceIcon path={props.root} folder root expanded size={14} />
               <span title={props.root}>{basename(props.root)}</span>
               <IconButton
                 title="Open terminal in project folder"
@@ -371,15 +369,12 @@ function Directory(props: DirectoryProps) {
                   ) : (
                     <span className="tree-indent" />
                   )}
-                  {entry.isDirectory ? (
-                    open ? (
-                      <FolderOpen size={14} />
-                    ) : (
-                      <Folder size={14} />
-                    )
-                  ) : (
-                    <File size={14} />
-                  )}
+                  <ResourceIcon
+                    path={entry.path}
+                    folder={entry.isDirectory}
+                    expanded={open}
+                    size={14}
+                  />
                   <span className={entry.name.startsWith(".") ? "dotfile" : ""}>
                     {entry.name}
                   </span>

@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { ArrowLeft, Check } from "lucide-react";
+import { ArrowLeft, Check } from "./icons";
 import type { EditorDocument } from "./editor-runtime";
 import { editorLanguage, editorLanguages } from "./editor-languages";
 import { api, errorMessage } from "./api";

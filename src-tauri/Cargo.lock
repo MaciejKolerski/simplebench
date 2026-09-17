@@ -3667,6 +3667,7 @@ version = "1.0.151"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c841b55ecdae098c80dcae9cf767f6f8a0c2cdb3416bbef72181df4d0fe73f14"
 dependencies = [
+ "indexmap 2.14.2",
  "itoa",
  "memchr",
  "serde",
@@ -3856,6 +3857,7 @@ dependencies = [
  "objc2-app-kit",
  "objc2-foundation",
  "percent-encoding",
+ "plist",
  "portable-pty",
  "regex",
  "serde",
@@ -3873,6 +3875,7 @@ dependencies = [
  "trash",
  "webkit2gtk",
  "windows-sys 0.61.2",
+ "zip",
 ]
 
 [[package]]
@@ -6219,6 +6222,7 @@ checksum = "caa8cd6af31c3b31c6631b8f483848b91589021b28fffe50adada48d4f4d2ed1"
 dependencies = [
  "arbitrary",
  "crc32fast",
+ "flate2",
  "indexmap 2.14.2",
  "memchr",
 ]

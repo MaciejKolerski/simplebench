@@ -1,5 +1,6 @@
+import ResourceIcon from "./ResourceIcon";
 import { useCallback, useId, useRef, useState } from "react";
-import { CircleAlert, FileText, Save } from "lucide-react";
+import { CircleAlert, Save } from "./icons";
 import { closingEditorDocuments } from "./editor-service";
 import { pluginHost } from "./plugins/runtime";
 interface CloseDocument {
@@ -98,7 +99,7 @@ export function useEditorCloseGuard() {
           >
             {request.documents.map((document) => (
               <li key={document.path} title={document.path}>
-                <FileText size={18} aria-hidden="true" />
+                <ResourceIcon path={document.path} size={18} />
                 <span className="editor-unsaved-file">
                   <span className="editor-unsaved-name">
                     {basename(document.path)}

@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, Columns2, Eye, FileCode } from "lucide-react";
+import { Check, Columns2, Eye, FileCode } from "./icons";
 import type { MarkdownView } from "./model";
 
 export default function MarkdownPreviewToggle({

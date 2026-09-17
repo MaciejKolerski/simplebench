@@ -1,6 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState } from "react";
 import type { ButtonHTMLAttributes } from "react";
-import { Check, ChevronDown } from "lucide-react";
+import { Check, ChevronDown } from "./icons";
 
 type Option = { value: string; label: string; disabled?: boolean };
 

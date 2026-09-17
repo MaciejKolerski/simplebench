@@ -1,3 +1,4 @@
+import { prepareIcons, type PreparedIcons } from "./icon-theme";
 import { terminalPresets } from "./palette";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import type { ITerminalOptions, ITheme } from "@xterm/xterm";
@@ -41,6 +42,9 @@ const defaultSyntax: Record<SyntaxName, SyntaxStyle> = {
   invalid: { color: "var(--color-error)" },
 };
 let snapshot = {
+  fileIcons: null as PreparedIcons | null,
+  productIcons: null as PreparedIcons | null,
+  highContrast: false,
   sourceRevision: 0,
   revision: 0,
   appearance:
@@ -61,6 +65,9 @@ export const subscribeTheme = (listener: () => void) => {
   };
 };
 let activeResolved: ResolvedTheme = {};
+let activeIcons: { file: PreparedIcons | null; product: PreparedIcons | null } =
+  { file: null, product: null };
+let highContrast = false;
 let sourceRevision = 0;
 function publish() {
   const root = getComputedStyle(document.documentElement);
@@ -89,6 +96,9 @@ function publish() {
       if (value) (style as Record<string, string>)[property] = value;
     }
   snapshot = {
+    fileIcons: activeIcons.file,
+    productIcons: activeIcons.product,
+    highContrast,
     sourceRevision,
     revision: snapshot.revision + 1,
     appearance:
@@ -102,6 +112,9 @@ function publish() {
   };
   document.documentElement.dataset.themeSourceRevision = String(
     snapshot.sourceRevision,
+  );
+  document.documentElement.dataset.hideExplorerArrows = String(
+    !!activeIcons.file?.data.hidesExplorerArrows,
   );
   for (const listener of listeners) listener();
   window.dispatchEvent(new Event(themeAppliedEvent));
@@ -373,8 +386,11 @@ export async function prepareTheme(
   preferences: ThemePreferences,
   signal?: AbortSignal,
   nextSourceRevision = sourceRevision,
+  iconBundles?: { file: ThemeBundle | null; product: ThemeBundle | null },
 ): Promise<PreparedTheme> {
   const manifest = bundle ? parseThemeText(bundle.raw) : builtinTheme;
+  if (manifest.iconTheme)
+    throw new Error("Select icon themes in their own category.");
   const appearance =
     manifest.appearance && manifest.appearance !== "adaptive"
       ? manifest.appearance
@@ -401,15 +417,45 @@ export async function prepareTheme(
   style.textContent = compileTheme(resolved, asset);
   const links: HTMLLinkElement[] = [];
   const cancelLoads = new Set<() => void>();
+  const stagedIcons: {
+    file: PreparedIcons | null;
+    product: PreparedIcons | null;
+  } = { file: null, product: null };
+  let iconsCommitted = false;
   const dispose = () => {
     signal?.removeEventListener("abort", dispose);
     for (const cancel of cancelLoads) cancel();
+    if (!iconsCommitted) {
+      stagedIcons.file?.dispose();
+      stagedIcons.product?.dispose();
+    }
     style.remove();
     for (const link of links) link.remove();
   };
   signal?.addEventListener("abort", dispose, { once: true });
   if (signal?.aborted) throw new Error("Theme loading was canceled.");
   try {
+    if (iconBundles)
+      for (const kind of ["file", "product"] as const) {
+        const iconBundle = iconBundles[kind];
+        if (!iconBundle) continue;
+        if (
+          parseThemeText(iconBundle.raw).iconTheme?.kind !== kind ||
+          !iconBundle.iconTheme
+        )
+          throw new Error(`Expected a ${kind} icon theme.`);
+        const prepared = await prepareIcons(
+          iconBundle.iconTheme,
+          (path) => themeAssetUrl(iconBundle.id, path, currentRevision),
+          `${currentRevision} ${kind}`,
+          signal,
+        );
+        if (signal?.aborted) {
+          prepared.dispose();
+          throw new Error("Icon loading was canceled.");
+        }
+        stagedIcons[kind] = prepared;
+      }
     const paths = resolved.stylesheets ?? [];
     await Promise.all(
       paths.map(
@@ -553,6 +599,14 @@ export async function prepareTheme(
       } else document.head.append(style);
       document.documentElement.dataset.theme = bundle?.id ?? "deepmono";
       activeResolved = resolved;
+      highContrast =
+        manifest.vscode?.type === "hcDark" ||
+        manifest.vscode?.type === "hcLight";
+      const previousIcons = iconBundles ? activeIcons : null;
+      if (iconBundles) {
+        activeIcons = stagedIcons;
+        iconsCommitted = true;
+      }
       sourceRevision = nextSourceRevision;
       initializeAppearance(appearance);
       terminalOptions = readTerminalAppearance();
@@ -564,6 +618,12 @@ export async function prepareTheme(
       if (request === appliedRevision) {
         terminalOptions = options;
         publish();
+      }
+      // Retain old faces until React has replaced glyphs using the old families.
+      if (previousIcons) {
+        await nextStyleFrame();
+        previousIcons.file?.dispose();
+        previousIcons.product?.dispose();
       }
     },
   };
@@ -690,6 +750,7 @@ export function holdThemePreview() {
     ),
   ];
   const previous = {
+    highContrast,
     sourceRevision,
     resolved: activeResolved,
     appearance: document.documentElement.dataset.appearance!,
@@ -708,6 +769,7 @@ export function holdThemePreview() {
       node.media = "all";
     }
     activeResolved = previous.resolved;
+    highContrast = previous.highContrast;
     sourceRevision = previous.sourceRevision;
     document.documentElement.dataset.appearance = previous.appearance;
     if (previous.id) document.documentElement.dataset.theme = previous.id;

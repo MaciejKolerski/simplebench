@@ -1,3 +1,4 @@
+import ResourceIcon from "./ResourceIcon";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import {
@@ -11,7 +12,7 @@ import {
   Terminal,
   Puzzle,
   X,
-} from "lucide-react";
+} from "./icons";
 import type { Tab, TabCloseAction, TabDropSide } from "./model";
 import { tabTitle } from "./model";
 import { useTabDrag } from "./tab-drag";
@@ -218,11 +219,18 @@ export default function TabBar({
                 {tab.type === "commit" ? (
                   <GitCommitHorizontal size={14} />
                 ) : tab.type === "diff" ? (
-                  <FileDiff size={14} />
+                  <ResourceIcon
+                    path={`${tab.root}/${tab.relative}`}
+                    size={14}
+                    fallback={FileDiff}
+                  />
                 ) : tab.type === "browser" ? (
                   <Globe size={14} />
                 ) : tab.type === "file" ? (
-                  <FileCode size={14} />
+                  <ResourceIcon
+                    path={`${tab.root}/${tab.relative}`}
+                    size={14}
+                  />
                 ) : tab.type === "plugin" ? (
                   <Puzzle size={14} />
                 ) : (
@@ -242,7 +250,7 @@ export default function TabBar({
                 title={`Close ${tabTitle(tab)}`}
                 onClick={() => onClose(tab.id)}
               >
-                <X size={13} />
+                <X size={13} iconId="tab-close" />
               </button>
             </div>
           ))}

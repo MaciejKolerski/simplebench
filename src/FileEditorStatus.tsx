@@ -5,7 +5,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { WrapText } from "lucide-react";
+import { WrapText } from "./icons";
 import type { EditorDocument } from "./editor-runtime";
 import { useKeybindings } from "./KeybindingsProvider";
 import { shortcutTitle } from "./keybindings";

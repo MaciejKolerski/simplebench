@@ -13,6 +13,7 @@ import {
   type ThemeManifest,
 } from "./theme/format";
 import { terminalPresets } from "./theme/palette";
+import { vscodeCompatibility, vscodeValues } from "./theme/vscode";
 import Select from "./Select";
 import { Modal } from "./ui";
 const JsonEditor = lazy(() => import("./ThemeJsonEditor"));
@@ -133,7 +134,18 @@ export default function ThemeEditor({
     savedName = parseThemeText(saved.raw).name;
   } catch {}
   const values = draft?.[section];
-  const tokens = { ...builtinTheme.dark?.tokens, ...values?.tokens };
+  const mode =
+    section === "common"
+      ? draft?.appearance === "light" || draft?.appearance === "dark"
+        ? draft.appearance
+        : themes.snapshot.appearance
+      : section;
+  const tokens = {
+    ...builtinTheme[mode]?.tokens,
+    ...(draft?.vscode && !diagnostic ? vscodeValues(draft.vscode).tokens : {}),
+    ...(section !== "common" ? draft?.common?.tokens : {}),
+    ...values?.tokens,
+  };
   return (
     <Modal
       title={`Edit theme: ${savedName}`}
@@ -174,6 +186,20 @@ export default function ThemeEditor({
                 {message}
               </p>
             ))}
+            {draft?.vscode && !diagnostic && (
+              <details className="settings-help">
+                <summary>VS Code compatibility</summary>
+                <ul>
+                  {vscodeCompatibility(draft.vscode).messages.map((message) => (
+                    <li key={message}>{message}</li>
+                  ))}
+                </ul>
+                <p>
+                  Original VS Code data is stored in the vscode section.
+                  SimpleBench overrides are applied above it.
+                </p>
+              </details>
+            )}
             {saved.readOnly && (
               <p role="status">
                 This theme belongs to an immutable plugin package. Duplicate it
@@ -276,7 +302,12 @@ export default function ThemeEditor({
                         )
                       }
                       options={[
-                        { value: "", label: "Inherit DeepMono" },
+                        {
+                          value: "",
+                          label: draft.vscode
+                            ? "Inherit theme"
+                            : "Inherit DeepMono",
+                        },
                         ...presets.map((value) => ({ value, label: value })),
                       ]}
                     />

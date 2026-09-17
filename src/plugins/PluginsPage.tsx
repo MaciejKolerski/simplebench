@@ -10,7 +10,7 @@ import {
   ShieldCheck,
   Trash2,
   X,
-} from "lucide-react";
+} from "../icons";
 import { api, errorMessage } from "../api";
 import { useThemes } from "../ThemeProvider";
 import Select from "../Select";

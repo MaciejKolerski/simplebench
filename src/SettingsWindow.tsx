@@ -8,7 +8,7 @@ import {
   Terminal,
   RotateCcw,
   X,
-} from "lucide-react";
+} from "./icons";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import PluginsPage from "./plugins/PluginsPage";

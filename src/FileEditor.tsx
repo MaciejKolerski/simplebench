@@ -1,3 +1,4 @@
+import ResourceIcon from "./ResourceIcon";
 import {
   lazy,
   Suspense,
@@ -7,15 +8,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import {
-  FileCode,
-  Redo2,
-  RotateCcw,
-  Save,
-  Search,
-  Undo2,
-  X,
-} from "lucide-react";
+import { Redo2, RotateCcw, Save, Search, Undo2, X } from "./icons";
 import type { EditorPosition, FileTab, MarkdownView } from "./model";
 import { errorMessage } from "./api";
 import { loadedEditor, openEditorDocument } from "./editor-service";
@@ -61,7 +54,10 @@ export default function FileEditor(props: Props) {
   if (!document)
     return (
       <div className="empty-message editor-loading" role="status">
-        <FileCode size={25} />
+        <ResourceIcon
+          path={`${props.tab.root}/${props.tab.relative}`}
+          size={25}
+        />
         <strong>{props.tab.title}</strong>
         <p>{error || "Opening file…"}</p>
         {error && (
@@ -141,7 +137,7 @@ function DocumentEditor({
   return (
     <section className="file-editor" aria-label={`Editor for ${tab.title}`}>
       <header className="editor-heading" data-pane-drag-handle>
-        <FileCode size={15} />
+        <ResourceIcon path={document.path} size={15} />
         <span className="editor-path" title={document.path}>
           {tab.untitled ? tab.title : tab.relative}
           {status.dirty ? " •" : ""}

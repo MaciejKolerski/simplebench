@@ -1,6 +1,6 @@
 import { useId, useRef, useState } from "react";
 import type { FormEvent, KeyboardEvent, MouseEvent } from "react";
-import { File, Folder } from "lucide-react";
+import ResourceIcon from "./ResourceIcon";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { api, errorMessage } from "./api";
 import type { FileEntry, GitCommitSummary } from "./api";
@@ -323,15 +323,19 @@ export function useExplorerActions(props: Props) {
               <div className="tree-row">
                 <div className="tree-entry">
                   <span className="tree-indent" />
-                  {(
-                    creating
-                      ? prompt.kind === "newFolder"
-                      : prompt.entry.isDirectory
-                  ) ? (
-                    <Folder size={14} />
-                  ) : (
-                    <File size={14} />
-                  )}
+                  <ResourceIcon
+                    path={
+                      creating
+                        ? `${prompt.entry.path}/${value}`
+                        : prompt.entry.path
+                    }
+                    folder={
+                      creating
+                        ? prompt.kind === "newFolder"
+                        : prompt.entry.isDirectory
+                    }
+                    size={14}
+                  />
                   <input
                     aria-label={`${title} name`}
                     aria-invalid={!!error}

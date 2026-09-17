@@ -7,7 +7,7 @@ import {
   Layers,
   PanelLeft,
   PanelRight,
-} from "lucide-react";
+} from "./icons";
 import type { SidebarPanel, SidebarSide } from "./model";
 import { IconButton } from "./ui";
 
