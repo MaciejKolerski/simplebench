@@ -224,8 +224,8 @@ test("Lua files detect their language, highlight syntax, indent, comment, and sa
   await expect(languageButton(page)).toHaveText("Lua");
   const token = (text: string) =>
     page.locator(".cm-line span[class]").getByText(text, { exact: true });
-  await expect(token("local").first()).toHaveCSS("font-weight", "600");
-  await expect(token("block comment")).toHaveCSS("font-style", "italic");
+  await expect(token("local").first()).toHaveCSS("font-weight", "700");
+  await expect(token("block comment")).toHaveCSS("font-style", "normal");
   const color = (text: string) =>
     token(text)
       .first()
@@ -241,7 +241,7 @@ test("Lua files detect their language, highlight syntax, indent, comment, and sa
   await selectLanguage(page, "Plain text");
   await expect(page.locator(".cm-line span[class]")).toHaveCount(0);
   await selectLanguage(page, "Lua");
-  await expect(token("local").first()).toHaveCSS("font-weight", "600");
+  await expect(token("local").first()).toHaveCSS("font-weight", "700");
   expect(await editorText(page)).toBe(content);
   await replaceText(page, "if true then");
   await selectSize(page, "Indent Using Spaces", 2);
@@ -286,7 +286,7 @@ test("Lua files detect their language, highlight syntax, indent, comment, and sa
   await page.reload();
   await expect(languageButton(page)).toHaveText("Lua");
   expect(await editorText(page)).toBe(edited);
-  await expect(token("if")).toHaveCSS("font-weight", "600");
+  await expect(token("if")).toHaveCSS("font-weight", "700");
 });
 
 test("menus support keyboard navigation, Escape, filtering, outside clicks, and the minimum window", async ({

@@ -516,57 +516,59 @@
   overflow-wrap: anywhere;
 }
 :is(.file-editor, .theme-json) .cm-editor {
-  color: var(--color-background-text);
   outline: none;
 }
 :is(.file-editor, .theme-json) .cm-scroller {
   font-family: var(--editor-font-family);
   font-size: var(--editor-font-size);
   line-height: var(--editor-line-height);
+  font-variant-ligatures: none;
 }
 :is(.file-editor, .theme-json) .cm-content {
   padding: var(--editor-content-padding);
-  caret-color: var(--color-primary);
 }
 :is(.file-editor, .theme-json) .cm-line {
   padding: var(--editor-line-padding);
 }
 :is(.file-editor, .theme-json) .cm-gutters {
-  background: var(--color-background);
-  color: var(--color-surface-variant-text);
-  border-right: var(--border-width) solid var(--color-outline);
+  border-right: 0;
+  user-select: none;
 }
 :is(.file-editor, .theme-json) .cm-gutterElement {
   padding-left: var(--space-8);
   padding-right: var(--space-8);
 }
-:is(.file-editor, .theme-json) .cm-activeLine,
-:is(.file-editor, .theme-json) .cm-activeLineGutter {
-  background: var(--color-surface);
+:is(.file-editor, .theme-json) .cm-lineNumbers {
+  font-variant-numeric: tabular-nums;
 }
-:is(.file-editor, .theme-json) .cm-cursor,
-:is(.file-editor, .theme-json) .cm-dropCursor {
-  border-left-color: var(--color-primary);
+:is(.file-editor, .theme-json) .cm-foldGutter .cm-gutterElement {
+  padding-inline: var(--space-4);
+  cursor: pointer;
 }
-:is(.file-editor, .theme-json) .cm-selectionBackground,
-:is(.file-editor, .theme-json) .cm-focused .cm-selectionBackground,
-:is(.file-editor, .theme-json) .cm-content ::selection {
-  background: var(--color-surface-container-highest);
+:is(.file-editor, .theme-json) .cm-foldGutter .cm-gutterElement:hover {
+  color: var(--editor-foreground);
+  background: var(--editor-active-line);
 }
 :is(.file-editor, .theme-json) .cm-matchingBracket {
-  background: var(--color-surface-container-highest);
-  color: var(--color-background-text);
+  background: color-mix(in srgb, var(--editor-selection) 55%, transparent);
+  outline: 1px solid var(--color-primary);
+  border-radius: var(--radius-xs);
+}
+:is(.file-editor, .theme-json) .cm-nonmatchingBracket {
+  text-decoration: underline wavy var(--color-error);
 }
 :is(.file-editor, .theme-json) .cm-searchMatch {
-  background: var(--color-surface-container-highest);
-  outline: 1px solid var(--color-outline);
+  background: color-mix(in srgb, var(--color-warning) 14%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--color-warning) 55%, transparent);
+  border-radius: var(--radius-xs);
 }
 :is(.file-editor, .theme-json) .cm-searchMatch-selected {
-  background: var(--color-surface-container-highest);
-  outline-color: var(--color-primary);
+  background: color-mix(in srgb, var(--color-warning) 24%, transparent);
+  outline-color: var(--color-warning);
 }
 :is(.file-editor, .theme-json) .cm-selectionMatch {
-  background: var(--color-surface-container-high);
+  background: color-mix(in srgb, var(--editor-selection) 40%, transparent);
+  box-shadow: inset 0 -1px var(--color-primary);
 }
 :is(.file-editor, .theme-json) .cm-foldPlaceholder {
   background: var(--color-surface-container);
@@ -587,6 +589,8 @@
 }
 :is(.file-editor, .theme-json) .cm-panel input[type="checkbox"] {
   width: auto;
+  accent-color: var(--color-primary);
+  vertical-align: middle;
 }
 :is(.file-editor, .theme-json) .cm-textfield,
 :is(.file-editor, .theme-json) .cm-button {

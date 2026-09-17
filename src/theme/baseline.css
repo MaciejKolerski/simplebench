@@ -182,15 +182,19 @@
   --editor-heading-gap: var(--space-12);
   --editor-heading-padding: var(--space-4) var(--space-12);
   --editor-heading-height: 38px;
-  --editor-font-family: var(--font-family-mono);
-  --editor-font-size: var(--font-size-13);
+  --editor-font-family: "JetBrains Mono", var(--font-family-mono);
+  --editor-font-size: var(--font-size-14);
   --editor-line-height: 1.6;
   --editor-background: var(--color-background);
   --editor-foreground: var(--color-background-text);
-  --editor-gutter-background: var(--color-surface);
+  --editor-gutter-background: var(--editor-background);
   --editor-gutter-foreground: var(--color-surface-variant-text);
   --editor-active-line: var(--color-surface-container);
-  --editor-selection: var(--terminal-selection-background);
+  --editor-selection: color-mix(
+    in srgb,
+    var(--color-primary) 28%,
+    var(--editor-background)
+  );
   --editor-cursor: var(--color-surface-text);
   --editor-content-padding: var(--space-12) 0;
   --editor-line-padding: 0 var(--space-12);

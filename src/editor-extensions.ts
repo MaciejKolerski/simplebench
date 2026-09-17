@@ -30,7 +30,11 @@ import {
   closeBracketsKeymap,
   completionKeymap,
 } from "@codemirror/autocomplete";
-import { search, searchKeymap } from "@codemirror/search";
+import {
+  highlightSelectionMatches,
+  search,
+  searchKeymap,
+} from "@codemirror/search";
 
 export function codeEditorExtensions(large = false): Extension {
   return [
@@ -42,7 +46,7 @@ export function codeEditorExtensions(large = false): Extension {
     EditorState.allowMultipleSelections.of(true),
     highlightActiveLine(),
     highlightActiveLineGutter(),
-    search(),
+    search({ top: true }),
     keymap.of([
       ...closeBracketsKeymap,
       ...defaultKeymap,
@@ -76,6 +80,7 @@ export function codeEditorExtensions(large = false): Extension {
           bracketMatching(),
           closeBrackets(),
           foldGutter(),
+          highlightSelectionMatches({ minSelectionLength: 2 }),
           autocompletion(),
         ]),
     EditorView.theme({

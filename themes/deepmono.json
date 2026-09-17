@@ -170,15 +170,15 @@
       "--editor-heading-gap": "var(--space-12)",
       "--editor-heading-padding": "var(--space-4) var(--space-12)",
       "--editor-heading-height": "38px",
-      "--editor-font-family": "var(--font-family-mono)",
-      "--editor-font-size": "var(--font-size-13)",
+      "--editor-font-family": "\"JetBrains Mono\", var(--font-family-mono)",
+      "--editor-font-size": "var(--font-size-14)",
       "--editor-line-height": "1.6",
       "--editor-background": "var(--color-background)",
       "--editor-foreground": "var(--color-background-text)",
-      "--editor-gutter-background": "var(--color-surface)",
+      "--editor-gutter-background": "var(--editor-background)",
       "--editor-gutter-foreground": "var(--color-surface-variant-text)",
       "--editor-active-line": "var(--color-surface-container)",
-      "--editor-selection": "var(--terminal-selection-background)",
+      "--editor-selection": "color-mix(in srgb, var(--color-primary) 28%, var(--editor-background))",
       "--editor-cursor": "var(--color-surface-text)",
       "--editor-content-padding": "var(--space-12) 0",
       "--editor-line-padding": "0 var(--space-12)",
@@ -393,15 +393,15 @@
       "--editor-heading-gap": "var(--space-12)",
       "--editor-heading-padding": "var(--space-4) var(--space-12)",
       "--editor-heading-height": "38px",
-      "--editor-font-family": "var(--font-family-mono)",
-      "--editor-font-size": "var(--font-size-13)",
+      "--editor-font-family": "\"JetBrains Mono\", var(--font-family-mono)",
+      "--editor-font-size": "var(--font-size-14)",
       "--editor-line-height": "1.6",
       "--editor-background": "var(--color-background)",
       "--editor-foreground": "var(--color-background-text)",
-      "--editor-gutter-background": "var(--color-surface)",
+      "--editor-gutter-background": "var(--editor-background)",
       "--editor-gutter-foreground": "var(--color-surface-variant-text)",
       "--editor-active-line": "var(--color-surface-container)",
-      "--editor-selection": "var(--terminal-selection-background)",
+      "--editor-selection": "color-mix(in srgb, var(--color-primary) 28%, var(--editor-background))",
       "--editor-cursor": "var(--color-surface-text)",
       "--editor-content-padding": "var(--space-12) 0",
       "--editor-line-padding": "0 var(--space-12)",
@@ -447,6 +447,70 @@
       "--editor-overflow": "hidden",
       "--input-padding": "var(--space-8) var(--space-10)",
       "--sidebar-max-width": "520px"
+    }
+  },
+  "common": {
+    "tokens": {
+      "--deepmono-syntax-keyword": "color-mix(in srgb, var(--color-info) 75%, var(--editor-foreground))",
+      "--deepmono-syntax-type": "color-mix(in srgb, var(--color-info) 60%, var(--editor-foreground))",
+      "--deepmono-syntax-function": "color-mix(in srgb, var(--color-warning) 65%, var(--editor-foreground))",
+      "--deepmono-syntax-string": "color-mix(in srgb, var(--color-warning) 40%, var(--editor-foreground))",
+      "--deepmono-syntax-number": "color-mix(in srgb, var(--color-info) 40%, var(--editor-foreground))",
+      "--deepmono-syntax-property": "color-mix(in srgb, var(--editor-foreground) 85%, var(--color-info))",
+      "--deepmono-syntax-invalid": "color-mix(in srgb, var(--color-error) 65%, var(--editor-foreground))"
+    },
+    "editor": {
+      "syntax": {
+        "keyword": {
+          "color": "var(--deepmono-syntax-keyword)",
+          "fontWeight": 700
+        },
+        "type": {
+          "color": "var(--deepmono-syntax-type)"
+        },
+        "function": {
+          "color": "var(--deepmono-syntax-function)"
+        },
+        "string": {
+          "color": "var(--deepmono-syntax-string)"
+        },
+        "number": {
+          "color": "var(--deepmono-syntax-number)"
+        },
+        "comment": {
+          "color": "var(--color-surface-variant-text)",
+          "fontStyle": "normal"
+        },
+        "variable": {
+          "color": "var(--editor-foreground)"
+        },
+        "property": {
+          "color": "var(--deepmono-syntax-property)"
+        },
+        "operator": {
+          "color": "var(--color-surface-variant-text)"
+        },
+        "punctuation": {
+          "color": "var(--color-surface-variant-text)"
+        },
+        "heading": {
+          "color": "var(--editor-foreground)",
+          "fontWeight": 700
+        },
+        "strong": {
+          "fontWeight": 700
+        },
+        "emphasis": {
+          "fontStyle": "italic"
+        },
+        "link": {
+          "color": "var(--deepmono-syntax-keyword)",
+          "textDecoration": "underline"
+        },
+        "invalid": {
+          "color": "var(--deepmono-syntax-invalid)"
+        }
+      }
     }
   }
 }
