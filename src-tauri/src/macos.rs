@@ -3,6 +3,8 @@ use tauri::{
     App, AppHandle, Manager, RunEvent,
 };
 
+pub mod traffic_lights;
+
 #[cfg(dev)]
 fn use_development_bundle_icon() {
     if std::env::var_os("SIMPLEBENCH_DEV_BUNDLE").is_none() {
@@ -82,6 +84,7 @@ pub fn setup_menu(app: &App) -> tauri::Result<()> {
 
 pub fn handle_run_event(app: &AppHandle, event: &RunEvent) {
     match event {
+        RunEvent::MainEventsCleared => traffic_lights::refresh(app),
         #[cfg(dev)]
         RunEvent::Ready => use_development_bundle_icon(),
         RunEvent::ExitRequested { api, code, .. } if *code != Some(tauri::RESTART_EXIT_CODE) => {

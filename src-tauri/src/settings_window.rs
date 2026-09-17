@@ -40,7 +40,7 @@ pub async fn prepare(app: &tauri::AppHandle) -> Result<(), String> {
     let builder = builder
         .title_bar_style(tauri::TitleBarStyle::Overlay)
         .hidden_title(true)
-        .traffic_light_position(tauri::LogicalPosition::new(14.0, 24.0))
+        .traffic_light_position(crate::macos::traffic_lights::SETTINGS_POSITION)
         .background_throttling(tauri::utils::config::BackgroundThrottlingPolicy::Throttle);
     builder.build().map_err(|error| error.to_string())?;
     Ok(())
