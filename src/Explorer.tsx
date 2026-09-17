@@ -177,6 +177,16 @@ export default function Explorer(props: Props) {
               <ResourceIcon path={props.root} folder root expanded size={14} />
               <span title={props.root}>{basename(props.root)}</span>
               <IconButton
+                title="Copy project folder path"
+                onClick={() =>
+                  void writeText(props.root).catch((error) =>
+                    props.onError(errorMessage(error)),
+                  )
+                }
+              >
+                <Copy size={14} />
+              </IconButton>
+              <IconButton
                 title="Open terminal in project folder"
                 onClick={() => props.onTerminal(props.root)}
               >
@@ -380,7 +390,21 @@ function Directory(props: DirectoryProps) {
                   </span>
                   {entry.isSymlink && <span className="symlink-mark">↗</span>}
                 </button>
-                {entry.isDirectory ? (
+                <button
+                  className="tree-action"
+                  title={
+                    entry.isDirectory ? "Copy folder path" : "Copy file path"
+                  }
+                  aria-label={`Copy path of ${entry.name}`}
+                  onClick={() =>
+                    void writeText(entry.path).catch((error) =>
+                      onError(errorMessage(error)),
+                    )
+                  }
+                >
+                  <Copy size={12} />
+                </button>
+                {entry.isDirectory && (
                   <button
                     className="tree-action"
                     title="Open terminal here"
@@ -388,19 +412,6 @@ function Directory(props: DirectoryProps) {
                     onClick={() => onTerminal(entry.path)}
                   >
                     <Terminal size={13} />
-                  </button>
-                ) : (
-                  <button
-                    className="tree-action"
-                    title="Copy file path"
-                    aria-label={`Copy path of ${entry.name}`}
-                    onClick={() =>
-                      void writeText(entry.path).catch((error) =>
-                        onError(errorMessage(error)),
-                      )
-                    }
-                  >
-                    <Copy size={12} />
                   </button>
                 )}
               </div>
