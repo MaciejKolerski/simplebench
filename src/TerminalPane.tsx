@@ -17,7 +17,6 @@ import {
   Play,
   RotateCcw,
   Search,
-  Terminal,
   X,
 } from "./icons";
 import type { Pane, ShellProfile } from "./model";
@@ -31,7 +30,6 @@ interface Props {
   profile?: ShellProfile;
   active: boolean;
   overview: boolean;
-  showTitle: boolean;
   canMove: boolean;
   canMaximize: boolean;
   maximized: boolean;
@@ -62,7 +60,6 @@ function LiveTerminal({
   profile,
   active,
   overview,
-  showTitle,
   canMove,
   canMaximize,
   maximized,
@@ -128,10 +125,21 @@ function LiveTerminal({
     snapshot.status === "running"
       ? snapshot.title || snapshot.foregroundProgram
       : "";
-  const titleBusy = snapshot.status === "running" && snapshot.titleBusy;
+  const activity =
+    snapshot.status === "running"
+      ? snapshot.agentSignal || (snapshot.titleBusy ? "working" : null)
+      : null;
+  const activityLabel =
+    activity === "working"
+      ? "Working"
+      : activity === "attention"
+        ? "Needs input"
+        : activity === "finished"
+          ? "Done"
+          : "";
   const fallbackTitle = pane.cwd || profile.name;
   const displayTitle = title || (canMove ? fallbackTitle : "");
-  const headingVisible = !!(displayTitle || titleBusy || maximized);
+  const headingVisible = !!(displayTitle || activity || maximized);
   return (
     <section
       className={`terminal-pane${active ? " is-active" : ""}${overview ? " is-overview" : ""}`}
@@ -207,56 +215,43 @@ function LiveTerminal({
       )}
       <div className="terminal-body" inert={overview}>
         <div className="terminal-mount" ref={container} />
-        {canMaximize && (
+        <div
+          className="terminal-heading"
+          aria-hidden={!headingVisible}
+          inert={!headingVisible}
+        >
           <div
-            className="terminal-heading"
-            aria-hidden={!headingVisible}
-            inert={!headingVisible}
+            className={`terminal-title-box${canMove ? " is-movable" : ""}`}
+            title={
+              canMove ? "Ctrl+drag to move terminal · Esc to cancel" : undefined
+            }
           >
-            <div
-              className={`terminal-title-box${canMove ? " is-movable" : ""}`}
-              title={
-                canMove
-                  ? "Ctrl+drag to move terminal · Esc to cancel"
-                  : undefined
-              }
-            >
-              {showTitle && (displayTitle || titleBusy) && (
-                <>
-                  <span className="terminal-title-icon" data-busy={titleBusy}>
-                    <Terminal size={13} aria-hidden="true" />
-                    <svg
-                      className="terminal-spinner"
-                      width={13}
-                      height={13}
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeLinecap="round"
-                      role="img"
-                      aria-label="Working"
-                      aria-hidden={!titleBusy}
-                    >
-                      <circle
-                        cx={12}
-                        cy={12}
-                        r={9}
-                        pathLength={100}
-                        strokeDasharray="75 25"
-                      />
-                    </svg>
-                  </span>
-                  {displayTitle && (
-                    <span
-                      className="terminal-title"
-                      title={canMove ? undefined : title}
-                      dir="auto"
-                    >
-                      {displayTitle}
-                    </span>
-                  )}
-                </>
-              )}
+            {displayTitle && (
+              <span
+                className="terminal-title"
+                title={canMove ? undefined : title}
+                dir="auto"
+              >
+                {displayTitle}
+              </span>
+            )}
+            {activity && (
+              <span
+                className="terminal-activity"
+                data-state={activity}
+                role="status"
+                aria-label={activityLabel}
+                aria-atomic="true"
+              >
+                <span className="terminal-activity-dots" aria-hidden="true">
+                  <span />
+                  <span />
+                  <span />
+                </span>
+                {activityLabel}
+              </span>
+            )}
+            {canMaximize && (
               <IconButton
                 title={
                   maximized ? "Restore terminal size" : "Maximize terminal"
@@ -269,9 +264,9 @@ function LiveTerminal({
               >
                 {maximized ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
               </IconButton>
-            </div>
+            )}
           </div>
-        )}
+        </div>
         {snapshot.status === "error" && (
           <div className="terminal-error">
             <p>{snapshot.error}</p>

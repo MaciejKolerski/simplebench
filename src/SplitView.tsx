@@ -57,8 +57,6 @@ export default function SplitView({
   const [size, setSize] = useState<LayoutSize>();
   const [maximizedPaneId, setMaximizedPaneId] = useState<string | null>(null);
   const allPanes = layoutPanes(props.layout);
-  const showTitles =
-    allPanes.filter((pane) => pane.type === "terminal").length > 1;
   const maximizedPane = allPanes.find(
     (pane) =>
       pane.type === "terminal" &&
@@ -143,7 +141,6 @@ export default function SplitView({
                       }
                       active={props.activePaneId === layout.id}
                       overview={props.overview}
-                      showTitle={showTitles}
                       canMove={controlHeld}
                       canMaximize={props.layout.type === "split"}
                       maximized={maximizedPane?.id === layout.id}

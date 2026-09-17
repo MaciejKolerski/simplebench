@@ -23,6 +23,28 @@
           .status === "running",
     );
     const id = runtime.sessionId;
+    checkpoint = "terminal activity title";
+    await wait(() => runtime.getSnapshot().cwd && document.hasFocus());
+    await invoke("write_terminal", {
+      id,
+      data: "printf '\\033]2;⠋ Native agent task\\007\\033]777;notify;SimpleBench;claude;working\\007'; sleep 3\r",
+    });
+    await wait(
+      () =>
+        document.querySelector(".terminal-activity")?.textContent === "Working",
+    );
+    if (
+      document.querySelector(".terminal-title")?.textContent !==
+      "Native agent task"
+    )
+      throw Error("Single terminal did not display its title");
+    if (document.querySelector(".terminal-heading button"))
+      throw Error("Single terminal offered maximization");
+    if (document.querySelector(".terminal-title-box svg"))
+      throw Error("Single terminal still has a terminal icon");
+    await wait(() => runtime.getSnapshot().agentSignal === null);
+    if (document.querySelector(".terminal-activity"))
+      throw Error("Activity remained visible after the shell prompt");
     const configuration = await invoke("inspect_agent_notifications");
     if (!configuration.path.includes("simplebench-notification-native-"))
       throw Error("Configuration is not isolated");
@@ -110,6 +132,8 @@
         checks: [
           "isolated Claude hook installation",
           "real PTY OSC parsing",
+          "single-terminal title and work indicator without maximization",
+          "activity cleared on the native shell prompt",
           "foreground suppression",
           "native notification request in background",
           "duplicate suppression",

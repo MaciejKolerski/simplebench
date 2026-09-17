@@ -44,7 +44,7 @@ async function setup(page: Page) {
   return { first, second: second.id, layout: tab.layout };
 }
 
-test("titles appear only for multiple terminals in the same tab and retain hidden updates", async ({
+test("single terminals retain titles and activity without a maximize control", async ({
   page,
 }, testInfo) => {
   const { first, second } = await setup(page);
@@ -57,9 +57,14 @@ test("titles appear only for multiple terminals in the same tab and retain hidde
   await other.locator(".xterm-helper-textarea").focus();
   await page.keyboard.press("Control+w");
   await expect(page.locator("[data-pane-id]")).toHaveCount(1);
-  await expect(page.locator(".terminal-heading")).toHaveCount(0);
+  await expect(pane.locator(".terminal-title")).toHaveText("Pierwsza rozmowa");
+  await expect(pane.getByRole("button", { name: /terminal/i })).toHaveCount(0);
   await emit(page, first, "\x1b]2;⠋ Zmieniona rozmowa po /resume\x07");
-  await expect(page.locator(".terminal-heading")).toHaveCount(0);
+  await expect(pane.locator(".terminal-title")).toHaveText(
+    "Zmieniona rozmowa po /resume",
+  );
+  await expect(pane.getByRole("status", { name: "Working" })).toBeVisible();
+  await expect(pane.locator(".terminal-title-box svg")).toHaveCount(0);
   await page.screenshot({ path: testInfo.outputPath("single-terminal.png") });
 
   await page.keyboard.press("Control+Shift+t");
@@ -69,10 +74,13 @@ test("titles appear only for multiple terminals in the same tab and retain hidde
     .getAttribute("data-pane-id"))!;
   await expect.poll(() => buffer(page, newId)).toContain("bash $ ");
   await emit(page, newId, "\x1b]133;C\x07\x1b]2;Inna zakładka\x07");
-  await expect(page.locator(".terminal-heading")).toHaveCount(0);
+  await expect(page.locator(".terminal-title")).toHaveText("Inna zakładka");
+  await expect(
+    page.getByRole("button", { name: "Maximize terminal" }),
+  ).toHaveCount(0);
   await page.getByRole("tab", { name: "Terminal", exact: true }).click();
   await expect(pane).toBeVisible();
-  await expect(pane.locator(".terminal-heading")).toHaveCount(0);
+  await expect(pane.getByRole("status", { name: "Working" })).toBeVisible();
   await pane.locator(".xterm-helper-textarea").focus();
   await page.keyboard.press("Control+d");
   await expect(page.locator("[data-pane-id]")).toHaveCount(2);
@@ -83,7 +91,10 @@ test("titles appear only for multiple terminals in the same tab and retain hidde
   await expect(pane.locator(".terminal-title")).toHaveText(
     "Zmieniona rozmowa po /resume",
   );
-  await expect(pane.getByRole("img", { name: "Working" })).toBeVisible();
+  await expect(pane.getByRole("status", { name: "Working" })).toBeVisible();
+  await expect(
+    pane.getByRole("button", { name: "Maximize terminal" }),
+  ).toBeVisible();
   await expect(added.locator(".terminal-title")).toHaveText("Nowa rozmowa");
   await page.screenshot({
     path: testInfo.outputPath("split-terminal-titles.png"),
@@ -321,6 +332,76 @@ test("a foreground process supplies a fallback without replacing a published tit
 });
 
 for (const colorScheme of ["dark", "light"] as const) {
+  test(`agent signals distinguish work, input and completion in ${colorScheme} mode`, async ({
+    page,
+  }, testInfo) => {
+    await page.emulateMedia({ colorScheme });
+    await mockDesktop(page, false);
+    await page.goto("/");
+    const pane = page.locator("[data-pane-id]");
+    await expect(pane.locator(".xterm-screen")).toBeVisible();
+    const id = (await pane.getAttribute("data-pane-id"))!;
+    await expect.poll(() => buffer(page, id)).toContain("bash $ ");
+    const activity = pane.locator(".terminal-activity");
+    const signal = (kind: string) =>
+      emit(page, id, "\x1b]777;notify;Simple", `Bench;claude;${kind}\x07`);
+    await emit(page, id, "\x1b]133;C\x07");
+    await signal("working");
+    await expect(activity).toHaveText("Working");
+    await expect(pane.locator(".terminal-title")).toHaveCount(0);
+    await emit(
+      page,
+      id,
+      "\x1b]2;Ulepsz tytuły terminali i sygnalizację pracy agenta\x07",
+    );
+    await expect(activity).toHaveText("Working");
+    await signal("unrecognized");
+    await expect(activity).toHaveText("Working");
+    await page.setViewportSize({ width: 800, height: 420 });
+    await page.screenshot({
+      path: testInfo.outputPath(`single-working-${colorScheme}.png`),
+    });
+    await expect(
+      pane.getByRole("button", { name: "Maximize terminal" }),
+    ).toHaveCount(0);
+    const bounds = await pane.locator(".terminal-title-box").boundingBox();
+    await signal("attention");
+    await expect(activity).toHaveText("Needs input");
+    expect(await pane.locator(".terminal-title-box").boundingBox()).toEqual(
+      bounds,
+    );
+    await emit(
+      page,
+      id,
+      "\x1b]2;⠋ Ulepsz tytuły terminali i sygnalizację pracy agenta\x07",
+    );
+    await expect(activity).toHaveText("Needs input");
+    await page.screenshot({
+      path: testInfo.outputPath(`single-attention-${colorScheme}.png`),
+    });
+    await signal("working");
+    await expect(activity).toHaveText("Working");
+    await page.keyboard.press("Control+Shift+t");
+    await expect(page.getByRole("tab")).toHaveCount(2);
+    await signal("finished");
+    await page.getByRole("tab", { name: "Terminal", exact: true }).click();
+    await expect(activity).toHaveText("Done");
+    await page.screenshot({
+      path: testInfo.outputPath(`single-done-${colorScheme}.png`),
+    });
+    await signal("working");
+    await expect(activity).toHaveText("Working");
+    await emit(page, id, "\x1b]133;D;0\x07\x1b]133;A\x07");
+    await expect(activity).toHaveCount(0);
+    await expect(pane.locator(".terminal-heading")).toHaveAttribute(
+      "aria-hidden",
+      "true",
+    );
+    await emit(page, id, "\x1b]133;C\x07\x1b]2;Next command\x07");
+    await expect(pane.locator(".terminal-title")).toHaveText("Next command");
+    await expect(activity).toHaveCount(0);
+  });
+
   test(`idle terminal labels follow the current directory in ${colorScheme} mode`, async ({
     page,
   }, testInfo) => {
@@ -473,7 +554,7 @@ for (const colorScheme of ["dark", "light"] as const) {
     ).toEqual([]);
   });
 
-  test(`CLI activity keeps a stable spinner and animation across state changes in ${colorScheme} mode`, async ({
+  test(`CLI activity stays readable and stable in ${colorScheme} mode`, async ({
     page,
   }, testInfo) => {
     await page.emulateMedia({ colorScheme, reducedMotion: "no-preference" });
@@ -481,53 +562,26 @@ for (const colorScheme of ["dark", "light"] as const) {
     const pane = page.locator(`[data-pane-id="${first}"]`);
     const title = pane.locator(".terminal-title");
     const heading = pane.locator(".terminal-title-box");
-    const spinner = pane.getByRole("img", { name: "Working", exact: true });
+    const activity = pane.getByRole("status", { name: "Working", exact: true });
     const name = "Ulepsz system zakładek";
+    const mount = await pane.locator(".terminal-mount").boundingBox();
     await emit(page, first, `codex\r\n\x1b]133;C\x07\x1b]2;${name}\x07`);
     await expect(title).toHaveText(name);
-    await expect(spinner).toHaveCount(0);
-    const bounds = await heading.boundingBox();
-    await pane.locator(".terminal-spinner").evaluate((element) => {
-      (window as any).__titleIndicator = element;
-      (window as any).__titleAnimation = element
-        .querySelector("circle")!
-        .getAnimations()
-        .find(
-          (animation) =>
-            (animation as CSSAnimation).animationName === "terminal-spin",
-        );
-    });
+    await expect(activity).toHaveCount(0);
     await emit(page, first, `\x1b]2;⠋ ${name}\x07`);
-    await expect(spinner).toBeVisible();
+    await expect(activity).toHaveText("Working");
     await expect(title).toHaveText(name);
     await expect(title).toHaveAttribute("title", name);
-    expect(await heading.boundingBox()).toEqual(bounds);
-    await expect(spinner.locator("circle")).toHaveCSS(
-      "animation-name",
-      "terminal-spin",
-    );
-    const frames = await spinner.evaluate(async (element) => {
-      const slot = element.parentElement!;
-      const frames = [];
-      for (let index = 0; index < 10; index++) {
-        await new Promise((resolve) => setTimeout(resolve, 90));
-        const bounds = element.getBoundingClientRect();
-        frames.push({
-          slot: slot.getBoundingClientRect().toJSON(),
-          x: bounds.x + bounds.width / 2,
-          y: bounds.y + bounds.height / 2,
-          time: Number((window as any).__titleAnimation.currentTime),
-        });
-      }
-      return frames;
+    expect(await pane.locator(".terminal-mount").boundingBox()).toEqual(mount);
+    const bounds = await heading.boundingBox();
+    const dot = activity.locator(".terminal-activity-dots > span").first();
+    await expect(dot).toHaveCSS("animation-name", "terminal-activity-pulse");
+    await activity.evaluate((element) => {
+      (window as any).__titleIndicator = element;
+      (window as any).__titleAnimation = element
+        .querySelector(".terminal-activity-dots > span")!
+        .getAnimations()[0];
     });
-    for (const [index, frame] of frames.entries()) {
-      expect(frame.slot).toEqual(frames[0].slot);
-      expect(frame.x).toBeCloseTo(frame.slot.x + frame.slot.width / 2, 3);
-      expect(frame.y).toBeCloseTo(frame.slot.y + frame.slot.height / 2, 3);
-      expect(frame.y).toBeCloseTo(bounds!.y + bounds!.height / 2, 3);
-      if (index) expect(frame.time).toBeGreaterThan(frames[index - 1].time);
-    }
     await page.evaluate(async (id) => {
       const { runningTerminal } = await import("/src/terminal-runtime.ts");
       (window as any).__spinnerSnapshot = runningTerminal(id)!.getSnapshot();
@@ -543,42 +597,34 @@ for (const colorScheme of ["dark", "light"] as const) {
         );
       }, first),
     ).toBe(true);
-    await emit(page, first, `\x1b]2;${name}\x07`);
-    await expect(spinner).toHaveCount(0);
-    await expect(pane.locator(".terminal-spinner circle")).toHaveCSS(
-      "animation-play-state",
-      "paused",
-    );
     expect(await heading.boundingBox()).toEqual(bounds);
-    await emit(page, first, `\x1b]2;⠙ ${name}\x07`);
-    await expect(spinner).toBeVisible();
     expect(
-      await spinner.evaluate(
+      await activity.evaluate(
         (element) =>
           element === (window as any).__titleIndicator &&
           element
-            .querySelector("circle")!
+            .querySelector(".terminal-activity-dots > span")!
             .getAnimations()
             .includes((window as any).__titleAnimation),
       ),
     ).toBe(true);
-    await expect(spinner).toHaveCSS("opacity", "1");
-    await heading.screenshot({
-      path: testInfo.outputPath(`spinner-${colorScheme}.png`),
+    await page.screenshot({
+      path: testInfo.outputPath(`activity-${colorScheme}.png`),
     });
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await expect(spinner.locator("circle")).toHaveCSS("animation-name", "none");
+    await expect(dot).toHaveCSS("animation-name", "none");
+    await expect(activity).toBeVisible();
     await page.keyboard.press("Control+Shift+t");
     await page.getByRole("tab", { name: "Terminal", exact: true }).click();
-    await expect(spinner).toBeVisible();
+    await expect(activity).toBeVisible();
     await emit(page, first, `\x1b]2;${name}\x07`);
-    await expect(spinner).toHaveCount(0);
+    await expect(activity).toHaveCount(0);
     await expect(title).toHaveText(name);
     await emit(page, first, "\x1b]2;Znaki ⠋ w tytule\x07");
     await expect(title).toHaveText("Znaki ⠋ w tytule");
-    await expect(spinner).toHaveCount(0);
+    await expect(activity).toHaveCount(0);
     await emit(page, first, "\x1b]2;⠋\x07");
-    await expect(spinner).toBeVisible();
+    await expect(activity).toBeVisible();
     await expect(title).toHaveCount(0);
     await emit(page, first, "\x1b]133;D;0\x07");
     await expect(pane.locator(".terminal-heading")).toHaveCSS("opacity", "0");
@@ -784,7 +830,10 @@ test("overview respects custom bindings and pointer focus with a single terminal
   await expect(page.locator(".terminal-overview")).toBeFocused();
   await toggle.click();
   await expect(page.locator(".xterm-helper-textarea")).toBeFocused();
-  await expect(page.locator(".terminal-heading")).toHaveCount(0);
+  await expect(page.locator(".terminal-heading")).toHaveAttribute(
+    "aria-hidden",
+    "true",
+  );
   await page.keyboard.press("Control+Shift+l");
   await expect(page.getByRole("dialog")).toBeVisible();
   await page.keyboard.press("Control+o");
@@ -820,7 +869,7 @@ test("maximizing a terminal retains a hidden editor's unsaved text and undo hist
   await expect(page.locator(".xterm-screen")).toBeVisible();
   await expect.poll(() => buffer(page, tab.activePaneId)).toContain("bash $ ");
   await emit(page, tab.activePaneId, "codex\r\n\x1b]133;C\x07\x1b]2;Codex\x07");
-  await expect(page.locator(".terminal-title")).toHaveCount(0);
+  await expect(page.locator(".terminal-title")).toHaveText("Codex");
   const editor = page.locator(".cm-content");
   await expect(editor).toBeVisible();
   const original = await editor.innerText();

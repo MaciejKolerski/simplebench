@@ -16,6 +16,7 @@ import {
   emitAgentNotification,
   parseAgentSignal,
 } from "./agent-notifications";
+import type { AgentSignal } from "./agent-notifications";
 import {
   loadTerminalFonts,
   terminalAppearance,
@@ -35,6 +36,7 @@ interface Snapshot {
   status: "starting" | "running" | "exited" | "error";
   title: string;
   titleBusy: boolean;
+  agentSignal: AgentSignal | null;
   foregroundProgram: string;
   error: string | null;
   cwd: string;
@@ -111,6 +113,7 @@ export class TerminalRuntime {
       status: "starting",
       title: "",
       titleBusy: false,
+      agentSignal: null,
       foregroundProgram: "",
       error: null,
       cwd,
@@ -227,6 +230,8 @@ export class TerminalRuntime {
     this.terminal.parser.registerOscHandler(777, (value) => {
       const kind = parseAgentSignal(value);
       if (!kind) return false;
+      if (!this.disposed && kind !== this.snapshot.agentSignal)
+        this.update({ agentSignal: kind });
       if (!this.disposed && shouldNotify(kind) && kind !== "working")
         emitAgentNotification({
           paneId: this.paneId,
@@ -715,9 +720,15 @@ export class TerminalRuntime {
     if (
       this.snapshot.title ||
       this.snapshot.titleBusy ||
+      this.snapshot.agentSignal ||
       this.snapshot.foregroundProgram
     )
-      this.update({ title: "", titleBusy: false, foregroundProgram: "" });
+      this.update({
+        title: "",
+        titleBusy: false,
+        agentSignal: null,
+        foregroundProgram: "",
+      });
     if (!this.activeBlock) return;
     const id = this.activeBlock.id;
     this.activeBlock = undefined;
