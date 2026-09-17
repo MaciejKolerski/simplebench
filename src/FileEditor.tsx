@@ -19,6 +19,8 @@ import { shortcutTitle } from "./keybindings";
 import { IconButton, Modal } from "./ui";
 import { isMarkdownFile } from "./markdown";
 import MarkdownPreviewToggle from "./MarkdownPreviewToggle";
+import ImagePreview from "./ImagePreview";
+import { imagePreviewType } from "./image-preview";
 
 const MarkdownPreview = lazy(() => import("./MarkdownPreview"));
 
@@ -32,6 +34,21 @@ interface Props {
 }
 
 export default function FileEditor(props: Props) {
+  if (
+    !props.tab.untitled &&
+    imagePreviewType(props.tab.relative) &&
+    !loadedEditor(props.tab)
+  )
+    return (
+      <ImagePreview
+        key={`${props.tab.root}/${props.tab.relative}`}
+        {...props}
+      />
+    );
+  return <TextFileEditor {...props} />;
+}
+
+function TextFileEditor(props: Props) {
   const { ready } = useEditorPreferences();
   const [document, setDocument] = useState(() => loadedEditor(props.tab));
   const [error, setError] = useState("");

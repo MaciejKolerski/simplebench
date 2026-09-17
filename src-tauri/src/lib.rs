@@ -189,6 +189,7 @@ pub fn run() {
                 files::validate_directory,
                 files::preview_file,
                 files::markdown::read_markdown_image,
+                files::images::read_image_file,
                 files::editor::resolve_editor_file,
                 files::editor::read_editor_file,
                 files::editor::save_editor_file,

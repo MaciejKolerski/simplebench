@@ -8,6 +8,7 @@ use std::{
 use tauri::{Manager, State, Window};
 
 pub mod editor;
+pub mod images;
 pub mod markdown;
 pub mod operations;
 pub mod search;

@@ -34,7 +34,7 @@ export function usePointerFocus(
     if (!panel || !container.contains(panel) || panel.contains(active)) return;
     (
       panel.querySelector<HTMLElement>(
-        ".xterm-helper-textarea, .cm-content, [data-plugin-focus]",
+        ".xterm-helper-textarea, .cm-content, .image-viewport, [data-plugin-focus]",
       ) ??
       (panel.matches("[data-plugin-pane-id]") ? (panel as HTMLElement) : null)
     )?.focus({ preventScroll: true });

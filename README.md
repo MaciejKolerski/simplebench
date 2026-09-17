@@ -66,6 +66,14 @@ task in the same folder, open the Workspaces sidebar and choose **New workspace*
 - **Edit files where you work.** Browse and search the project, create and rename
   files, and edit with syntax highlighting. Views of the same file share edits
   and undo history. Markdown files include a live preview.
+- **View images in the workspace.** Open PNG/APNG, JPEG/JFIF, WebP, GIF, SVG,
+  AVIF, ICO, and BMP files from Explorer. Previews support fit, actual size,
+  zoom, transparency, and reload from disk, including in split panels and
+  restored tabs. TIFF, TGA, DDS, PNM, QOI, HDR, OpenEXR, and Farbfeld use native
+  conversion for preview without changing the original file. Previews accept
+  files up to 32 MiB; native conversion is limited to 16 megapixels and 128 MiB
+  of decoded pixels. Converted previews show the first image in 8-bit RGBA;
+  webview support determines which AVIF and animated image variants can play.
 - **Preview local services.** Browser panels use the operating system's webview.
   The address bar suggests discovered local HTTP servers; pages retain their
   state when you switch tabs or workspaces.

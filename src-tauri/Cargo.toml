@@ -41,6 +41,7 @@ sha2 = "0.10"
 notify = "8.2"
 tempfile = "3"
 ignore = "0.4"
+image = { version = "0.25", default-features = false, features = ["png", "tiff", "tga", "dds", "pnm", "qoi", "hdr", "exr", "ff"] }
 regex = "1"
 trash = "5"
 toml_edit = "0.25"
