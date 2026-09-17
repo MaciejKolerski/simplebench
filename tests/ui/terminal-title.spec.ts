@@ -208,7 +208,10 @@ test("CLI titles overlay the terminal and disappear at the prompt without resizi
   await expect(title).toHaveCount(0);
   await pane.getByRole("button", { name: "Restore terminal size" }).click();
   await expect(page.locator("[data-pane-id]")).toHaveCount(2);
-  await expect(pane.locator(".terminal-heading")).toHaveCount(0);
+  await expect(pane.locator(".terminal-heading")).toHaveCSS("opacity", "0");
+  await expect(
+    pane.getByRole("button", { name: "Maximize terminal" }),
+  ).toHaveCount(0);
 });
 
 test("any CLI can publish a title without a shell pre-execution report", async ({
@@ -521,7 +524,10 @@ for (const colorScheme of ["dark", "light"] as const) {
     await expect(spinner).toBeVisible();
     await expect(title).toHaveCount(0);
     await emit(page, first, "\x1b]133;D;0\x07");
-    await expect(heading).toHaveCount(0);
+    await expect(pane.locator(".terminal-heading")).toHaveCSS("opacity", "0");
+    await expect(
+      pane.getByRole("button", { name: "Maximize terminal" }),
+    ).toHaveCount(0);
   });
 
   test(`maximizing preserves PTYs and restores the layout in ${colorScheme} mode`, async ({

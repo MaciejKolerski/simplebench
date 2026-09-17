@@ -1055,6 +1055,22 @@ svg {
   animation-name: pane-appear;
   opacity: 1;
 }
+/* Reveal the live, reflowed contents before sidebar motion finishes. */
+.moving-sidebars::view-transition-old(*) {
+  animation: pane-disappear 90ms ease-out both;
+}
+.moving-sidebars::view-transition-new(*) {
+  opacity: 1;
+  animation: pane-appear 90ms ease-out both;
+}
+@keyframes pane-disappear {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
 @keyframes pane-appear {
   from {
     opacity: 0;
@@ -1703,6 +1719,10 @@ svg {
   min-width: 0;
   padding: var(--terminal-heading-padding);
   pointer-events: none;
+}
+/* Keep the motion target mounted when Ctrl is released or a command finishes. */
+.terminal-heading[aria-hidden="true"] {
+  opacity: 0;
 }
 .terminal-title-box {
   pointer-events: auto;

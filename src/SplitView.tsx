@@ -1,6 +1,7 @@
 import { builtinViews } from "./plugins/builtins";
 import {
   Suspense,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -73,22 +74,23 @@ export default function SplitView({
   useEffect(() => {
     if (!maximizedPane) setMaximizedPaneId(null);
   }, [maximizedPane]);
-  useLayoutEffect(() => {
+  const measure = useCallback(() => {
     const container = root.current!;
-    const measure = () => {
-      const width = container.clientWidth;
-      const height = container.clientHeight;
-      setSize((previous) =>
-        previous?.width === width && previous.height === height
-          ? previous
-          : { width, height },
-      );
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(container);
-    return () => observer.disconnect();
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+    setSize((previous) =>
+      previous?.width === width && previous.height === height
+        ? previous
+        : { width, height },
+    );
   }, []);
+  // Commit sidebar size changes before the pane transition captures its final layout.
+  useLayoutEffect(measure);
+  useLayoutEffect(() => {
+    const observer = new ResizeObserver(measure);
+    observer.observe(root.current!);
+    return () => observer.disconnect();
+  }, [measure]);
   const visibleLayout = props.overview
     ? props.layout
     : (maximizedPane ?? props.layout);

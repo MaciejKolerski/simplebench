@@ -269,12 +269,20 @@ export default function Workbench() {
       pluginHost.retainPanels(
         new Set(next ? pluginPanels(next).map((panel) => panel.id) : []),
       );
+      const sameTab =
+        !!previous &&
+        !!next &&
+        active(previous)?.tab.id === active(next)?.tab.id;
       renderPaneLayout(
         () => renderSession(next),
-        animate &&
-          !!previous &&
-          !!next &&
-          active(previous)?.tab.id === active(next)?.tab.id,
+        sameTab &&
+          (animate
+            ? "panes"
+            : !!previous.sidebar !== !!next.sidebar ||
+                !!previous.rightSidebar !== !!next.rightSidebar
+              ? "sidebars"
+              : false),
+        !sameTab,
       );
     },
     [renderPaneLayout],

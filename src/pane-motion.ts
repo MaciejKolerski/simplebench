@@ -2,30 +2,49 @@ import { useCallback, useLayoutEffect, useRef } from "react";
 import { flushSync } from "react-dom";
 import type { RefObject } from "react";
 
+type Motion = "panes" | "sidebars" | false;
+
 export function usePaneMotion(
   root: RefObject<HTMLDivElement | null>,
   tabId: string | undefined,
 ) {
   const pending = useRef<(() => void) | null>(null);
   const finishMotion = useRef<(() => void) | null>(null);
+  const queued = useRef<{ render: () => void; motion: Motion } | null>(null);
+  const sidebarMotion = useRef(false);
   useLayoutEffect(() => () => finishMotion.current?.(), [tabId]);
   useLayoutEffect(
     () => () => {
       pending.current = null;
+      queued.current = null;
     },
     [],
   );
 
   return useCallback(
-    (render: () => void, animate = false) => {
+    function renderLayout(
+      render: () => void,
+      motion: Motion = false,
+      interrupt = false,
+    ) {
       // State changes remain synchronous; renders queued during capture use the latest state.
+      if (interrupt) {
+        queued.current = null;
+        finishMotion.current?.();
+      }
       if (pending.current) {
         pending.current = render;
         return;
       }
+      // Complete sidebar motion before capturing another layout, keeping its visible
+      // geometry continuous. Only the latest requested layout needs to be rendered.
+      if (sidebarMotion.current && (motion || queued.current)) {
+        queued.current = { render, motion: motion || queued.current!.motion };
+        return;
+      }
       const container = root.current;
       if (
-        !animate ||
+        !motion ||
         !container ||
         !document.startViewTransition ||
         matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -34,11 +53,10 @@ export function usePaneMotion(
         return;
       }
       finishMotion.current?.();
-      const panels = [
-        ...container.querySelectorAll<HTMLElement>(
-          ".dock-pane-host > .split-child, .split-container > .split-divider",
-        ),
-      ];
+      const selector =
+        ".dock-pane-host > .split-child, .split-container > .split-divider" +
+        (motion === "sidebars" ? ", .terminal-title-box" : "");
+      const panels = [...container.querySelectorAll<HTMLElement>(selector)];
       if (!panels.length) {
         render();
         return;
@@ -48,6 +66,11 @@ export function usePaneMotion(
         panel.style.viewTransitionName = `terminal-pane-${index}`;
       });
       document.documentElement.classList.add("moving-panes");
+      sidebarMotion.current = motion === "sidebars";
+      document.documentElement.classList.toggle(
+        "moving-sidebars",
+        sidebarMotion.current,
+      );
       pending.current = render;
       // Animate captured panels while xterm fits each live terminal only to its final size.
       const transition = document.startViewTransition(() => {
@@ -56,9 +79,7 @@ export function usePaneMotion(
         if (render) flushSync(render);
         if (finishMotion.current !== cancel) return;
         // New panels and dividers join the transition instead of appearing behind it.
-        for (const panel of container.querySelectorAll<HTMLElement>(
-          ".dock-pane-host > .split-child, .split-container > .split-divider",
-        )) {
+        for (const panel of container.querySelectorAll<HTMLElement>(selector)) {
           if (panels.includes(panel)) continue;
           names.push(panel.style.viewTransitionName);
           panel.style.viewTransitionName = `terminal-pane-${panels.length}`;
@@ -70,7 +91,11 @@ export function usePaneMotion(
         panels.forEach((panel, index) => {
           panel.style.viewTransitionName = names[index];
         });
-        document.documentElement.classList.remove("moving-panes");
+        document.documentElement.classList.remove(
+          "moving-panes",
+          "moving-sidebars",
+        );
+        sidebarMotion.current = false;
         finishMotion.current = null;
       };
       const cancel = () => {
@@ -79,7 +104,14 @@ export function usePaneMotion(
       };
       finishMotion.current = cancel;
       void transition.ready.catch(() => {});
-      void transition.finished.then(clean, clean);
+      const finished = () => {
+        if (finishMotion.current !== cancel) return;
+        clean();
+        const next = queued.current;
+        queued.current = null;
+        if (next) renderLayout(next.render, next.motion);
+      };
+      void transition.finished.then(finished, finished);
     },
     [root],
   );

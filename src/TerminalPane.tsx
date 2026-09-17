@@ -130,6 +130,7 @@ function LiveTerminal({
       : "";
   const titleBusy = snapshot.status === "running" && snapshot.titleBusy;
   const displayTitle = title || (canMove ? profile.name : "");
+  const headingVisible = !!(displayTitle || titleBusy || maximized);
   return (
     <section
       className={`terminal-pane${active ? " is-active" : ""}${overview ? " is-overview" : ""}`}
@@ -205,8 +206,12 @@ function LiveTerminal({
       )}
       <div className="terminal-body" inert={overview}>
         <div className="terminal-mount" ref={container} />
-        {canMaximize && (displayTitle || titleBusy || maximized) && (
-          <div className="terminal-heading">
+        {canMaximize && (
+          <div
+            className="terminal-heading"
+            aria-hidden={!headingVisible}
+            inert={!headingVisible}
+          >
             <div
               className={`terminal-title-box${canMove ? " is-movable" : ""}`}
               title={
