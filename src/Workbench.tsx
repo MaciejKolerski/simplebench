@@ -87,7 +87,7 @@ import {
   runningTerminal,
 } from "./terminal-runtime";
 import type { TerminalContext } from "./terminal-runtime";
-import { dropPaths, terminalAt } from "./file-drag";
+import { dropPaths, terminalAtNativePosition } from "./file-drag";
 import { IconButton, Modal, WindowControls } from "./ui";
 import Explorer from "./Explorer";
 import ProjectSwitcher from "./ProjectSwitcher";
@@ -636,10 +636,7 @@ export default function Workbench() {
           target = null;
           return;
         }
-        target = terminalAt(
-          payload.position.x / window.devicePixelRatio,
-          payload.position.y / window.devicePixelRatio,
-        );
+        target = terminalAtNativePosition(payload.position, info.platform);
         if (payload.type === "drop") {
           void dropPaths(target, payload.paths, setError);
           target = null;

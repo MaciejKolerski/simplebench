@@ -25,6 +25,8 @@ try {
 let pending = Promise.resolve();
 let appliedPercentage = 100;
 
+export const windowZoom = () => appliedPercentage / 100;
+
 function applyZoom(next: number) {
   const root = document.documentElement;
   root.style.setProperty("--app-zoom", String(next / 100));

@@ -1,6 +1,17 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { runningTerminal } from "./terminal-runtime";
 import { errorMessage } from "./api";
+import { windowZoom } from "./useWindowZoom";
+
+export function terminalAtNativePosition(
+  position: { x: number; y: number },
+  platform: string,
+): HTMLElement | null {
+  // Wry 0.55 reports AppKit/GTK logical coordinates but Windows physical pixels.
+  // WebKit page zoom is separate from devicePixelRatio; WebView2 includes it.
+  const scale = platform === "windows" ? window.devicePixelRatio : windowZoom();
+  return terminalAt(position.x / scale, position.y / scale);
+}
 
 export function terminalAt(x: number, y: number): HTMLElement | null {
   return (
