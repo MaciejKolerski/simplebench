@@ -321,6 +321,63 @@ test("a foreground process supplies a fallback without replacing a published tit
 });
 
 for (const colorScheme of ["dark", "light"] as const) {
+  test(`idle terminal labels follow the current directory in ${colorScheme} mode`, async ({
+    page,
+  }, testInfo) => {
+    await page.emulateMedia({ colorScheme });
+    const { first, second } = await setup(page);
+    const pane = page.locator(`[data-pane-id="${first}"]`);
+    const other = page.locator(`[data-pane-id="${second}"]`);
+    await page.keyboard.down("Control");
+    await expect(pane.locator(".terminal-title")).toHaveText("/project");
+    await expect(other.locator(".terminal-title")).toHaveText("/project");
+    const directory = "/project/Zażółć gęślą 🦀";
+    await emit(
+      page,
+      first,
+      `\x1b]7;file://localhost${encodeURI(directory)}\x07`,
+    );
+    await expect(pane.locator(".terminal-title")).toHaveText(directory);
+    await expect(other.locator(".terminal-title")).toHaveText("/project");
+    await page.screenshot({
+      path: testInfo.outputPath(`terminal-directory-${colorScheme}.png`),
+    });
+    await page.keyboard.up("Control");
+    await expect(page.locator(".terminal-title")).toHaveCount(0);
+    await page.keyboard.press("Control+Tab");
+    await expect(pane.locator(".terminal-overview")).toHaveText(directory);
+    await expect(other.locator(".terminal-overview")).toHaveText("/project");
+    // Shells without directory escape sequences use native context reports.
+    await page.evaluate(async (id) => {
+      const { runningTerminal } = await import("/src/terminal-runtime.ts");
+      (window as any).__nativeTest.terminalContexts[
+        runningTerminal(id)!.sessionId
+      ] = { cwd: "/project/native directory", foregroundProgram: null };
+    }, first);
+    await expect(pane.locator(".terminal-overview")).toHaveText(
+      "/project/native directory",
+    );
+    await emit(page, first, "\x1b]133;C\x07\x1b]2;Active conversation\x07");
+    await expect(pane.locator(".terminal-overview")).toHaveText(
+      "Active conversation",
+    );
+    await emit(page, first, "\x1b]133;D;0\x07");
+    await expect(pane.locator(".terminal-overview")).toHaveText(
+      "/project/native directory",
+    );
+    await page.screenshot({
+      path: testInfo.outputPath(`overview-directory-${colorScheme}.png`),
+    });
+    expect(
+      await page.evaluate(
+        () =>
+          (window as any).__nativeTest.calls.filter(
+            (call: any) => call.command === "start_terminal",
+          ).length,
+      ),
+    ).toBe(2);
+  });
+
   test(`overview toggles live titles without restarting terminals in ${colorScheme} mode`, async ({
     page,
   }, testInfo) => {
@@ -683,7 +740,7 @@ test("overview reveals maximized splits and restores the previous view", async (
   await page.keyboard.press("Control+Tab");
   await expect(page.locator(".terminal-overview")).toHaveText([
     "Maximized conversation",
-    "bash",
+    "/project",
   ]);
   await page.keyboard.press("Control+Tab");
   await expect(page.locator("[data-pane-id]")).toHaveCount(1);
@@ -721,7 +778,7 @@ test("overview respects custom bindings and pointer focus with a single terminal
     "Terminal",
   );
   await page.keyboard.press("Control+o");
-  await expect(page.locator(".terminal-overview")).toHaveText("bash");
+  await expect(page.locator(".terminal-overview")).toHaveText("/project");
   await page.locator(".sidebar-heading").hover();
   await page.locator(".terminal-overview").hover();
   await expect(page.locator(".terminal-overview")).toBeFocused();

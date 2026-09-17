@@ -129,7 +129,8 @@ function LiveTerminal({
       ? snapshot.title || snapshot.foregroundProgram
       : "";
   const titleBusy = snapshot.status === "running" && snapshot.titleBusy;
-  const displayTitle = title || (canMove ? profile.name : "");
+  const fallbackTitle = pane.cwd || profile.name;
+  const displayTitle = title || (canMove ? fallbackTitle : "");
   const headingVisible = !!(displayTitle || titleBusy || maximized);
   return (
     <section
@@ -146,7 +147,7 @@ function LiveTerminal({
           tabIndex={0}
           onClick={() => overviewCard.current?.focus()}
         >
-          <span dir="auto">{title || profile.name}</span>
+          <span dir="auto">{title || fallbackTitle}</span>
         </div>
       )}
       {searchOpen && (
