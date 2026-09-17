@@ -22,7 +22,7 @@ import type {
   Layout,
   LayoutBounds,
   LayoutSize,
-  MarkdownView,
+  FilePreviewView,
   ShellProfile,
   Split,
   TabDropSide,
@@ -44,7 +44,7 @@ interface Props {
   onResize: (id: string, ratio: number) => void;
   onMove: (id: string, targetId: string, side: TabDropSide) => void;
   onFilePosition: (id: string, position: EditorPosition) => void;
-  onMarkdownView: (id: string, view: MarkdownView) => void;
+  onPreviewView: (id: string, view: FilePreviewView) => void;
   onOpenFile: (root: string, relative: string) => void;
   onClosePane: (id: string) => void;
 }
@@ -197,8 +197,8 @@ export default function SplitView({
                       <builtinViews.file
                         tab={layout}
                         onOpenFile={props.onOpenFile}
-                        onMarkdownView={(view) =>
-                          props.onMarkdownView(layout.id, view)
+                        onPreviewView={(view) =>
+                          props.onPreviewView(layout.id, view)
                         }
                         active={props.activePaneId === layout.id}
                         onClose={() => props.onClosePane(layout.id)}

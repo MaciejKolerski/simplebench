@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { api, errorMessage } from "./api";
 import { Minus, Plus, RotateCcw, X } from "./icons";
 import type { FileTab } from "./model";
@@ -10,10 +10,14 @@ export default function ImagePreview({
   tab,
   active = true,
   onClose,
+  sourceText,
+  children,
 }: {
   tab: FileTab;
   active?: boolean;
   onClose?: () => void;
+  sourceText?: string;
+  children?: ReactNode;
 }) {
   const [source, setSource] = useState("");
   const [error, setError] = useState("");
@@ -39,24 +43,29 @@ export default function ImagePreview({
       if (current)
         setError("Cannot read this image. Try reloading it from disk.");
     };
-    void api<ArrayBuffer>("read_image_file", {
-      root: tab.root,
-      relative: tab.relative,
-    })
-      .then((bytes) => {
-        if (current)
-          reader.readAsDataURL(
-            new Blob([bytes], { type: imagePreviewType(tab.relative) }),
-          );
+    if (sourceText !== undefined) {
+      reader.readAsDataURL(
+        new Blob([sourceText], { type: "image/svg+xml;charset=utf-8" }),
+      );
+    } else
+      void api<ArrayBuffer>("read_image_file", {
+        root: tab.root,
+        relative: tab.relative,
       })
-      .catch((error) => {
-        if (current) setError(errorMessage(error));
-      });
+        .then((bytes) => {
+          if (current)
+            reader.readAsDataURL(
+              new Blob([bytes], { type: imagePreviewType(tab.relative) }),
+            );
+        })
+        .catch((error) => {
+          if (current) setError(errorMessage(error));
+        });
     return () => {
       current = false;
       reader.abort();
     };
-  }, [tab.root, tab.relative, attempt]);
+  }, [tab.root, tab.relative, sourceText, attempt]);
 
   useEffect(() => {
     if (
@@ -89,10 +98,14 @@ export default function ImagePreview({
       aria-label={`Image preview for ${tab.title}`}
     >
       <header className="editor-heading" data-pane-drag-handle>
-        <ResourceIcon path={`${tab.root}/${tab.relative}`} size={15} />
-        <span className="editor-path" title={`${tab.root}/${tab.relative}`}>
-          {tab.relative}
-        </span>
+        {sourceText === undefined && (
+          <>
+            <ResourceIcon path={`${tab.root}/${tab.relative}`} size={15} />
+            <span className="editor-path" title={`${tab.root}/${tab.relative}`}>
+              {tab.relative}
+            </span>
+          </>
+        )}
         <div className="editor-actions">
           <IconButton
             title="Zoom out"
@@ -126,12 +139,14 @@ export default function ImagePreview({
           >
             Fit
           </button>
-          <IconButton
-            title="Reload image from disk"
-            onClick={() => setAttempt((value) => value + 1)}
-          >
-            <RotateCcw size={15} />
-          </IconButton>
+          {sourceText === undefined && (
+            <IconButton
+              title="Reload image from disk"
+              onClick={() => setAttempt((value) => value + 1)}
+            >
+              <RotateCcw size={15} />
+            </IconButton>
+          )}
           {onClose && (
             <IconButton title="Close panel" onClick={onClose}>
               <X size={15} />
@@ -139,69 +154,66 @@ export default function ImagePreview({
           )}
         </div>
       </header>
-      <div
-        className="image-viewport"
-        ref={viewport}
-        tabIndex={0}
-        aria-label={`View ${tab.title}`}
-      >
-        {error ? (
-          <div className="empty-message" role="alert">
-            <strong>Cannot display image</strong>
-            <p>{error}</p>
-            <button
-              className="button"
-              onClick={() => setAttempt((value) => value + 1)}
-            >
-              Try again
-            </button>
-          </div>
-        ) : (
-          <>
-            {!ready && (
-              <div className="empty-message image-loading" role="status">
-                Opening image…
-              </div>
-            )}
-            {source && (
-              <div className={`image-canvas${zoom === "fit" ? " is-fit" : ""}`}>
-                <img
-                  ref={image}
-                  src={source}
-                  alt={tab.relative}
-                  draggable={false}
-                  style={{
-                    visibility: ready ? "visible" : "hidden",
-                    width:
-                      zoom === "fit"
-                        ? undefined
-                        : (dimensions?.width ?? 0) * zoom,
-                  }}
-                  onLoad={(event) =>
-                    setDimensions({
-                      width: event.currentTarget.naturalWidth,
-                      height: event.currentTarget.naturalHeight,
-                    })
-                  }
-                  onError={() =>
-                    setError(
-                      "The file is damaged or its image format is not supported by this system.",
-                    )
-                  }
-                />
-              </div>
-            )}
-          </>
-        )}
+      <div className="editor-content">
+        <div
+          className="image-viewport"
+          ref={viewport}
+          tabIndex={0}
+          aria-label={`View ${tab.title}`}
+        >
+          {error ? (
+            <div className="empty-message" role="alert">
+              <strong>Cannot display image</strong>
+              <p>{error}</p>
+              <button
+                className="button"
+                onClick={() => setAttempt((value) => value + 1)}
+              >
+                Try again
+              </button>
+            </div>
+          ) : (
+            <>
+              {!ready && (
+                <div className="empty-message image-loading" role="status">
+                  Opening image…
+                </div>
+              )}
+              {source && (
+                <div
+                  className={`image-canvas${zoom === "fit" ? " is-fit" : ""}`}
+                >
+                  <img
+                    ref={image}
+                    src={source}
+                    alt={tab.relative}
+                    draggable={false}
+                    style={{
+                      visibility: ready ? "visible" : "hidden",
+                      width:
+                        zoom === "fit"
+                          ? undefined
+                          : (dimensions?.width ?? 0) * zoom,
+                    }}
+                    onLoad={(event) =>
+                      setDimensions({
+                        width: event.currentTarget.naturalWidth,
+                        height: event.currentTarget.naturalHeight,
+                      })
+                    }
+                    onError={() =>
+                      setError(
+                        "The file is damaged or its image format is not supported by this system.",
+                      )
+                    }
+                  />
+                </div>
+              )}
+            </>
+          )}
+        </div>
+        {children}
       </div>
-      {ready && (
-        <footer className="image-information" aria-label="Image information">
-          <span>
-            {dimensions.width} × {dimensions.height} px
-          </span>
-          <span>{zoom === "fit" ? "Fit" : `${Math.round(zoom * 100)}%`}</span>
-        </footer>
-      )}
     </section>
   );
 }

@@ -33,9 +33,6 @@ async function setup(page: Page, saved?: unknown) {
         "animation.gif":
           "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
         "converted.tiff": png,
-        "vector.svg": btoa(
-          '<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" onload="window.__imageExecuted=true"><script>window.__imageExecuted=true</script><rect x="100" y="100" width="1400" height="800" rx="100" fill="#737373"/><image href="https://example.com/private.png" width="20" height="20"/></svg>',
-        ),
         "broken.png": btoa("not an image"),
       };
       native.imageError = "";
@@ -79,18 +76,11 @@ async function setup(page: Page, saved?: unknown) {
 async function openImage(page: Page, name = "picture.PNG") {
   await page.getByRole("button", { name, exact: true }).click();
   await expect(page.locator(".image-canvas img")).toBeVisible();
-  await expect(
-    page.getByLabel("Image information", { exact: true }),
-  ).toBeVisible();
 }
 
 test("Explorer opens image formats in reusable file tabs without editor buffers or extra shells", async ({
   page,
 }) => {
-  const remote: string[] = [];
-  page.on("request", (request) => {
-    if (request.url().includes("example.com")) remote.push(request.url());
-  });
   await setup(page);
   await expect(page.locator(".xterm-screen")).toBeVisible();
   for (const name of [
@@ -100,7 +90,6 @@ test("Explorer opens image formats in reusable file tabs without editor buffers 
     "favicon.ico",
     "animation.gif",
     "converted.tiff",
-    "vector.svg",
   ]) {
     await openImage(page, name);
     await expect(page.getByRole("tab", { name: new RegExp(name) })).toHaveCount(
@@ -111,7 +100,7 @@ test("Explorer opens image formats in reusable file tabs without editor buffers 
   }
   await openImage(page);
   await openImage(page);
-  await expect(page.getByRole("tab")).toHaveCount(8);
+  await expect(page.getByRole("tab")).toHaveCount(7);
   const calls = await page.evaluate(() => (window as any).__nativeTest.calls);
   expect(
     calls.filter((call: any) => call.command === "start_terminal"),
@@ -123,18 +112,11 @@ test("Explorer opens image formats in reusable file tabs without editor buffers 
       ),
     ),
   ).toEqual([]);
-  expect(remote).toEqual([]);
-  expect(
-    await page.evaluate(() => (window as any).__imageExecuted),
-  ).toBeUndefined();
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("test-session")))
     .toContain("picture.PNG");
   await page.reload();
   await expect(page.locator(".image-canvas img")).toBeVisible();
-  await expect(
-    page.getByLabel("Image information", { exact: true }),
-  ).toContainText("1600 × 1000 px");
   expect(
     await page.evaluate(() => (window as any).__nativeTest.sessions.size),
   ).toBe(0);

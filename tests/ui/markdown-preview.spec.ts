@@ -168,7 +168,7 @@ test("preview-only mode survives tab switches and restoration, and returning to 
   ).toBeDisabled();
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("test-session")))
-    .toContain('"markdownView":"preview"');
+    .toContain('"previewView":"preview"');
   await page.reload();
   await expect(
     page.getByRole("heading", { name: "Unsaved draft" }),
@@ -180,7 +180,7 @@ test("preview-only mode survives tab switches and restoration, and returning to 
   await expect(page.locator(".cm-content")).toBeVisible();
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("test-session")))
-    .not.toContain("markdownView");
+    .not.toContain("previewView");
 });
 
 test("preview controls remain clickable at the minimum window size and support the keyboard", async ({

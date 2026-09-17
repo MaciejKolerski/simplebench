@@ -9,7 +9,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { Redo2, RotateCcw, Save, Search, Undo2, X } from "./icons";
-import type { EditorPosition, FileTab, MarkdownView } from "./model";
+import type { EditorPosition, FileTab, FilePreviewView } from "./model";
 import { errorMessage } from "./api";
 import { loadedEditor, openEditorDocument } from "./editor-service";
 import type { EditorDocument } from "./editor-runtime";
@@ -18,9 +18,10 @@ import { useEditorPreferences } from "./EditorPreferencesProvider";
 import { shortcutTitle } from "./keybindings";
 import { IconButton, Modal } from "./ui";
 import { isMarkdownFile } from "./markdown";
-import MarkdownPreviewToggle from "./MarkdownPreviewToggle";
+import FilePreviewToggle from "./FilePreviewToggle";
 import ImagePreview from "./ImagePreview";
-import { imagePreviewType } from "./image-preview";
+import { imagePreviewType, isSvgFile } from "./image-preview";
+import SvgPreview from "./SvgPreview";
 
 const MarkdownPreview = lazy(() => import("./MarkdownPreview"));
 
@@ -29,7 +30,7 @@ interface Props {
   active?: boolean;
   onClose?: () => void;
   onPosition: (position: EditorPosition) => void;
-  onMarkdownView: (view: MarkdownView) => void;
+  onPreviewView: (view: FilePreviewView) => void;
   onOpenFile: (root: string, relative: string) => void;
 }
 
@@ -37,6 +38,7 @@ export default function FileEditor(props: Props) {
   if (
     !props.tab.untitled &&
     imagePreviewType(props.tab.relative) &&
+    !isSvgFile(props.tab.relative) &&
     !loadedEditor(props.tab)
   )
     return (
@@ -96,7 +98,7 @@ function DocumentEditor({
   onClose,
   document,
   onPosition,
-  onMarkdownView,
+  onPreviewView,
   onOpenFile,
 }: Props & { document: EditorDocument }) {
   const status = useSyncExternalStore(document.subscribe, document.getSnapshot);
@@ -109,7 +111,8 @@ function DocumentEditor({
   >(null);
   const [busy, setBusy] = useState(false);
   const markdown = isMarkdownFile(tab.relative);
-  const view = markdown ? (tab.markdownView ?? "editor") : "editor";
+  const svg = isSvgFile(tab.relative);
+  const view = markdown || svg ? (tab.previewView ?? "editor") : "editor";
   const sourceVisible = view !== "preview";
   const wasSourceVisible = useRef(sourceVisible);
   useLayoutEffect(() => {
@@ -133,7 +136,7 @@ function DocumentEditor({
           ?.contains(window.document.activeElement))
     )
       document.focus();
-  }, [active, document, sourceVisible]);
+  }, [active, document, sourceVisible, view]);
   const save = () =>
     void document
       .save()
@@ -151,6 +154,13 @@ function DocumentEditor({
       setBusy(false);
     }
   };
+  const previewToggle = (markdown || svg) && (
+    <FilePreviewToggle
+      kind={svg ? "SVG" : "Markdown"}
+      view={view}
+      onChange={onPreviewView}
+    />
+  );
   return (
     <section className="file-editor" aria-label={`Editor for ${tab.title}`}>
       <header className="editor-heading" data-pane-drag-handle>
@@ -233,10 +243,19 @@ function DocumentEditor({
         </div>
       )}
       <div
-        className={`editor-content${view === "split" ? " is-split" : ""}${markdown ? " has-markdown" : ""}`}
+        className={`editor-content${view === "split" ? " is-split" : ""}${markdown || svg ? " has-preview" : ""}`}
       >
         {sourceVisible && <div className="editor-host" ref={host} />}
-        {view !== "editor" && (
+        {view !== "editor" && svg && (
+          <SvgPreview
+            tab={tab}
+            document={document}
+            active={active && !sourceVisible}
+          >
+            {previewToggle}
+          </SvgPreview>
+        )}
+        {view !== "editor" && markdown && (
           <Suspense
             fallback={
               <div
@@ -250,9 +269,7 @@ function DocumentEditor({
             <MarkdownPreview document={document} onOpenFile={onOpenFile} />
           </Suspense>
         )}
-        {markdown && (
-          <MarkdownPreviewToggle view={view} onChange={onMarkdownView} />
-        )}
+        {(!svg || view === "editor") && previewToggle}
       </div>
       {confirmation && (
         <Modal

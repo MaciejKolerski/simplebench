@@ -34,3 +34,7 @@ export function imagePreviewType(relative: string): string | undefined {
     ? imageTypes[extension]
     : undefined;
 }
+
+export function isSvgFile(relative: string): boolean {
+  return imagePreviewType(relative) === "image/svg+xml";
+}

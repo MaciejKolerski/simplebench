@@ -36,7 +36,7 @@ export default function DockviewLayout(props: Props) {
       "cwd",
       "profileId",
       "position",
-      "markdownView",
+      "previewView",
       "title",
       "customTitle",
       "url",

@@ -10,7 +10,7 @@ import {
   openFileTab,
   restoreSession,
   updateFilePosition,
-  updateMarkdownView,
+  updateFilePreviewView,
 } from "../src/model.ts";
 
 test("Markdown links resolve relative to the document and reject executable URLs", () => {
@@ -60,11 +60,11 @@ test("Markdown view modes retain file identities and positions in tabs and split
   const file = fileTabs(state)[0];
   const position = { anchor: 12, head: 24, scrollTop: 140, scrollLeft: 10 };
   state = updateFilePosition(state, file.id, position);
-  state = updateMarkdownView(state, file.id, "preview");
+  state = updateFilePreviewView(state, file.id, "preview");
   assert.deepEqual(fileTabs(state)[0], {
     ...file,
     position,
-    markdownView: "preview",
+    previewView: "preview",
   });
   state.projects[0].workspaces[0] = mergeTabs(
     active(state)!.workspace,
@@ -73,7 +73,7 @@ test("Markdown view modes retain file identities and positions in tabs and split
     "right",
     { width: 1000, height: 700 },
   );
-  state = updateMarkdownView(state, file.id, "split");
+  state = updateFilePreviewView(state, file.id, "split");
   const info = {
     directory: "/project",
     home: "/home/test",
@@ -81,18 +81,23 @@ test("Markdown view modes retain file identities and positions in tabs and split
     profiles: [],
   };
   const restored = restoreSession(JSON.parse(JSON.stringify(state)), info);
-  assert.equal(fileTabs(restored)[0].markdownView, "split");
+  assert.equal(fileTabs(restored)[0].previewView, "split");
   assert.deepEqual(fileTabs(restored)[0].position, position);
   assert.equal(fileTabs(restored)[0].id, file.id);
+  const legacy = JSON.parse(JSON.stringify(restored));
+  const legacyFile = legacy.projects[0].workspaces[0].tabs[0].layout.second;
+  legacyFile.markdownView = legacyFile.previewView;
+  delete legacyFile.previewView;
+  assert.equal(fileTabs(restoreSession(legacy, info))[0].previewView, "split");
   assert.equal(
-    fileTabs(updateMarkdownView(restored, file.id, "editor"))[0].markdownView,
+    fileTabs(updateFilePreviewView(restored, file.id, "editor"))[0].previewView,
     undefined,
   );
   const invalid = JSON.parse(JSON.stringify(restored));
-  invalid.projects[0].workspaces[0].tabs[0].layout.second.markdownView =
+  invalid.projects[0].workspaces[0].tabs[0].layout.second.previewView =
     "unknown";
   assert.equal(
-    fileTabs(restoreSession(invalid, info))[0].markdownView,
+    fileTabs(restoreSession(invalid, info))[0].previewView,
     undefined,
   );
 });

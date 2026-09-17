@@ -1,14 +1,16 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, Columns2, Eye, FileCode } from "./icons";
-import type { MarkdownView } from "./model";
+import type { FilePreviewView } from "./model";
 
-export default function MarkdownPreviewToggle({
+export default function FilePreviewToggle({
+  kind,
   view,
   onChange,
 }: {
-  view: MarkdownView;
-  onChange: (view: MarkdownView) => void;
+  kind: "Markdown" | "SVG";
+  view: FilePreviewView;
+  onChange: (view: FilePreviewView) => void;
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -57,7 +59,7 @@ export default function MarkdownPreviewToggle({
         type="button"
         className="button markdown-preview-toggle"
         aria-label={
-          view === "editor" ? "Preview Markdown" : "Close Markdown preview"
+          view === "editor" ? `Preview ${kind}` : `Close ${kind} preview`
         }
         title={`${view === "editor" ? "Preview beside editor" : "Back to editor"}. Right-click for preview options.`}
         aria-pressed={view !== "editor"}
@@ -91,7 +93,7 @@ export default function MarkdownPreviewToggle({
             ref={menu}
             className="menu markdown-preview-menu"
             role="menu"
-            aria-label="Markdown preview options"
+            aria-label={`${kind} preview options`}
             onContextMenu={(event) => event.preventDefault()}
             onBlur={(event) => {
               if (

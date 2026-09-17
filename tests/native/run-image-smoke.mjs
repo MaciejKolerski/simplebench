@@ -74,7 +74,17 @@ const session = openFileTab(
 );
 await writeFile(join(appData, "session.json"), JSON.stringify(session));
 const config = join(directory, "config.json");
-await writeFile(config, JSON.stringify({ identifier }));
+const port = Number(process.env.SIMPLEBENCH_IMAGE_SMOKE_PORT ?? 1431);
+await writeFile(
+  config,
+  JSON.stringify({
+    identifier,
+    build: {
+      beforeDevCommand: `pnpm dev --port ${port}`,
+      devUrl: `http://127.0.0.1:${port}`,
+    },
+  }),
+);
 console.log(`Native image artifacts: ${directory}`);
 const child = spawn(
   "pnpm",

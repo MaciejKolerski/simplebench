@@ -38,7 +38,7 @@ import {
   fileTabs,
   layoutPanes,
   updateFilePosition,
-  updateMarkdownView,
+  updateFilePreviewView,
   basename,
   canSplitPane,
   mapLayout,
@@ -1586,7 +1586,7 @@ export default function Workbench() {
               )
           : undefined;
         const next = file
-          ? updateMarkdownView(opened, file.id, "editor")
+          ? updateFilePreviewView(opened, file.id, "editor")
           : opened;
         return request === fileOpenRequest.current || !previous
           ? next
@@ -1978,8 +1978,10 @@ export default function Workbench() {
                     onOpenFile={(root, relative) =>
                       void openFile(relative, root)
                     }
-                    onMarkdownView={(view) =>
-                      change((state) => updateMarkdownView(state, tab.id, view))
+                    onPreviewView={(view) =>
+                      change((state) =>
+                        updateFilePreviewView(state, tab.id, view),
+                      )
                     }
                     onPosition={(position) =>
                       change((state) =>
@@ -2028,8 +2030,8 @@ export default function Workbench() {
                     onFilePosition={(id, position) =>
                       change((state) => updateFilePosition(state, id, position))
                     }
-                    onMarkdownView={(id, view) =>
-                      change((state) => updateMarkdownView(state, id, view))
+                    onPreviewView={(id, view) =>
+                      change((state) => updateFilePreviewView(state, id, view))
                     }
                     onOpenFile={(root, relative) =>
                       void openFile(relative, root)

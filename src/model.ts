@@ -87,9 +87,9 @@ export interface FileTab {
   relative: string;
   untitled?: true;
   position?: EditorPosition;
-  markdownView?: "split" | "preview";
+  previewView?: FilePreviewView;
 }
-export type MarkdownView = "editor" | "split" | "preview";
+export type FilePreviewView = "editor" | "split" | "preview";
 export interface BrowserTab {
   type: "browser";
   id: string;
@@ -801,14 +801,14 @@ export function updateFilePosition(
   return updateFile(session, id, (file) => ({ ...file, position }));
 }
 
-export function updateMarkdownView(
+export function updateFilePreviewView(
   session: Session,
   id: string,
-  view: MarkdownView,
+  view: FilePreviewView,
 ): Session {
   return updateFile(session, id, (file) => {
-    const { markdownView: _previous, ...rest } = file;
-    return view === "editor" ? rest : { ...rest, markdownView: view };
+    const { previewView: _previous, ...rest } = file;
+    return view === "editor" ? rest : { ...rest, previewView: view };
   });
 }
 
@@ -916,6 +916,7 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
   };
   const file = (node: Record<string, unknown>, cwd: string): FileTab => {
     const position = record(node.position);
+    const previewView = node.previewView ?? node.markdownView;
     const offset = (value: unknown) =>
       typeof value === "number" && Number.isFinite(value)
         ? Math.max(0, Math.floor(value))
@@ -930,8 +931,10 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
       root: node.untitled === true ? "" : string(node.root, cwd),
       relative: node.untitled === true ? "" : string(node.relative, ""),
       ...(node.untitled === true ? { untitled: true as const } : {}),
-      ...(node.markdownView === "split" || node.markdownView === "preview"
-        ? { markdownView: node.markdownView }
+      ...(previewView === "editor" ||
+      previewView === "split" ||
+      previewView === "preview"
+        ? { previewView }
         : {}),
       ...(node.position
         ? {
