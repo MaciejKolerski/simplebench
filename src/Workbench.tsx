@@ -1315,12 +1315,6 @@ export default function Workbench() {
             <footer className="statusbar">
               {workspaceToggle}
               <Slot name="statusbar" />
-              <button
-                className="text-button"
-                onClick={() => setCommandPicker(true)}
-              >
-                Commands
-              </button>
               <span className="status-spacer" />
             </footer>
             {dialog && (
@@ -2159,12 +2153,6 @@ export default function Workbench() {
             </div>
             {pluginSidebarToggles}
             <Slot name="statusbar" />
-            <button
-              className="text-button"
-              onClick={() => setCommandPicker(true)}
-            >
-              Commands
-            </button>
             <span className="status-spacer" />
             {editorDocument && (
               <FileEditorStatus

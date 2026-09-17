@@ -33,7 +33,8 @@ async function packageRoutes(page: Page) {
   });
 }
 async function commands(page: Page, label: string) {
-  await page.getByRole("button", { name: "Commands", exact: true }).click();
+  await expect(page.locator(".statusbar")).toBeVisible();
+  await page.keyboard.press("Control+Shift+P");
   const dialog = page.getByRole("dialog", { name: "Commands", exact: true });
   await dialog.getByLabel("Find command").fill(label);
   await dialog.getByRole("button", { name: new RegExp("^" + label) }).click();

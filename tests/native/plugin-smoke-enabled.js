@@ -14,7 +14,16 @@
       (button) => button.textContent.trim() === text,
     );
   const command = async (label) => {
-    button("Commands").click();
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "P",
+        code: "KeyP",
+        ctrlKey: !navigator.platform.includes("Mac"),
+        metaKey: navigator.platform.includes("Mac"),
+        shiftKey: true,
+        bubbles: true,
+      }),
+    );
     await wait(() => document.querySelector('[aria-label="Find command"]'));
     const input = document.querySelector('[aria-label="Find command"]');
     Object.getOwnPropertyDescriptor(

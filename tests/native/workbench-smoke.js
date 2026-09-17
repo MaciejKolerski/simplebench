@@ -144,7 +144,16 @@
       );
     });
     phase = "native browser dialog visibility";
-    button("Commands").click();
+    window.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "P",
+        code: "KeyP",
+        ctrlKey: !navigator.platform.includes("Mac"),
+        metaKey: navigator.platform.includes("Mac"),
+        shiftKey: true,
+        bubbles: true,
+      }),
+    );
     await wait(
       async () =>
         !(await invoke("plugin_smoke_result", { stage: "inspect", data: null }))
