@@ -1,10 +1,11 @@
+use crate::cli_config::{read, revision};
 use crate::{files::main_window, terminal::Terminals};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
+#[cfg(any(target_os = "linux", test))]
+use std::fs;
 use std::{
-    fs,
-    io::{Read, Write},
+    io::Read,
     path::{Path, PathBuf},
     sync::Mutex,
 };
@@ -14,7 +15,7 @@ use toml_edit::{Array, DocumentMut, Item, Table};
 const LIMIT: u64 = 1024 * 1024;
 
 #[derive(Default)]
-pub struct CliTitleConfig(Mutex<()>);
+pub struct CliTitleConfig(pub(crate) Mutex<()>);
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -199,39 +200,6 @@ fn truthy(value: &str) -> bool {
     )
 }
 
-fn read(path: &Path) -> Result<Option<String>, String> {
-    match fs::metadata(path) {
-        Ok(metadata) if !metadata.is_file() => {
-            return Err("CLI configuration must be a regular file.".into())
-        }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(error.to_string()),
-        _ => {}
-    }
-    let file = match fs::File::open(path) {
-        Ok(file) => file,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(error.to_string()),
-    };
-    if !file
-        .metadata()
-        .map_err(|error| error.to_string())?
-        .is_file()
-    {
-        return Err("CLI configuration must be a regular file.".into());
-    }
-    let mut bytes = Vec::new();
-    file.take(LIMIT + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|error| error.to_string())?;
-    if bytes.len() as u64 > LIMIT {
-        return Err("CLI configuration exceeds 1 MiB. The file was left intact.".into());
-    }
-    String::from_utf8(bytes)
-        .map(Some)
-        .map_err(|_| "CLI configuration is not UTF-8. The file was left intact.".into())
-}
-
 fn document(source: Option<&str>) -> Result<DocumentMut, String> {
     let doc = source
         .unwrap_or_default()
@@ -254,10 +222,6 @@ fn document(source: Option<&str>) -> Result<DocumentMut, String> {
         }
     }
     Ok(doc)
-}
-
-fn revision(source: Option<&str>) -> Option<String> {
-    source.map(|source| format!("{:x}", Sha256::digest(source.as_bytes())))
 }
 
 fn agy_command() -> Result<String, String> {
@@ -460,7 +424,7 @@ fn enable(cli: TitleCli, path: &Path, expected: Option<&str>) -> Result<(), Stri
     if revision(source.as_deref()).as_deref() != expected {
         return Err(conflict.into());
     }
-    let mut output = if cli == TitleCli::Codex {
+    let output = if cli == TitleCli::Codex {
         let mut doc = document(source.as_deref())?;
         let tui = doc
             .entry("tui")
@@ -504,84 +468,7 @@ fn enable(cli: TitleCli, path: &Path, expected: Option<&str>) -> Result<(), Stri
             serde_json::to_string_pretty(&doc).map_err(|error| error.to_string())?
         )
     };
-    if source
-        .as_ref()
-        .is_some_and(|source| source.contains("\r\n"))
-    {
-        output = output.replace("\r\n", "\n").replace('\n', "\r\n");
-    }
-    if output.len() as u64 > LIMIT {
-        return Err(
-            "Updated CLI configuration would exceed 1 MiB. The file was left intact.".into(),
-        );
-    }
-    let directory = path
-        .parent()
-        .ok_or("CLI configuration has no parent directory.")?;
-    fs::create_dir_all(directory).map_err(|error| error.to_string())?;
-    let mut temporary = tempfile::Builder::new()
-        .prefix(".simplebench-cli-")
-        .tempfile_in(directory)
-        .map_err(|error| error.to_string())?;
-    temporary
-        .write_all(output.as_bytes())
-        .map_err(|error| error.to_string())?;
-    if let Some(source) = &source {
-        let metadata = fs::metadata(path).map_err(|error| error.to_string())?;
-        if metadata.permissions().readonly() {
-            return Err("CLI configuration is read-only. The file was left intact.".into());
-        }
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::MetadataExt;
-            let created = temporary
-                .as_file()
-                .metadata()
-                .map_err(|error| error.to_string())?;
-            if created.uid() != metadata.uid() || created.gid() != metadata.gid() {
-                std::os::unix::fs::chown(
-                    temporary.path(),
-                    Some(metadata.uid()),
-                    Some(metadata.gid()),
-                )
-                .map_err(|error| error.to_string())?;
-            }
-        }
-        let mut backup = tempfile::Builder::new()
-            .prefix(&format!(
-                "{}.simplebench-backup-",
-                path.file_name().unwrap_or_default().to_string_lossy()
-            ))
-            .tempfile_in(directory)
-            .map_err(|error| error.to_string())?;
-        backup
-            .write_all(source.as_bytes())
-            .map_err(|error| error.to_string())?;
-        backup
-            .as_file()
-            .sync_all()
-            .map_err(|error| error.to_string())?;
-        backup.keep().map_err(|error| error.to_string())?;
-        temporary
-            .as_file()
-            .set_permissions(metadata.permissions())
-            .map_err(|error| error.to_string())?;
-    }
-    temporary
-        .as_file()
-        .sync_all()
-        .map_err(|error| error.to_string())?;
-    if read(path)? != source {
-        return Err(conflict.into());
-    }
-    if source.is_none() {
-        temporary
-            .persist_noclobber(path)
-            .map_err(|error| error.to_string())?;
-    } else {
-        temporary.persist(path).map_err(|error| error.to_string())?;
-    }
-    Ok(())
+    crate::cli_config::write(path, source.as_deref(), output)
 }
 
 #[tauri::command]

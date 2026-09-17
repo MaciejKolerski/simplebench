@@ -70,6 +70,14 @@ export async function mockDesktop(
       };
       const desktop = window as any;
       desktop.isTauri = true;
+      Object.defineProperty(window.Notification, "permission", {
+        configurable: true,
+        get: () => "default",
+      });
+      window.Notification.requestPermission = () =>
+        desktop.__TAURI_INTERNALS__.invoke(
+          "plugin:notification|request_permission",
+        );
       desktop.__nativeTest = {
         update: null,
         updateInstruction:
@@ -111,6 +119,16 @@ export async function mockDesktop(
         cliTitleSetup: null,
         cliTitleError: "",
         cliTitleSaveDelay: 0,
+        agentNotificationSetup: {
+          path: "/home/test/.claude/settings.json",
+          revision: "initial",
+          configured: false,
+        },
+        agentNotificationSetupError: "",
+        agentNotificationPermission: true,
+        agentNotificationPermissionDelay: 0,
+        windowFocused: false,
+        agentNotifications: [] as unknown[],
         emit,
         failSave: false,
         gitHistory,
@@ -150,6 +168,11 @@ export async function mockDesktop(
           void emitEvent("check-for-updates");
         if (event.key === "test-terminal-preferences")
           void emitEvent("terminal-preferences-changed");
+        if (
+          event.key === "test-agent-notification-setup" &&
+          !location.search.includes("settings")
+        )
+          void emitEvent("agent-notification-setup");
         if (event.key === "test-editor-preferences")
           void emitEvent("editor-preferences-changed");
         if (event.key === "test-keybindings")
@@ -183,6 +206,49 @@ export async function mockDesktop(
         },
         async invoke(command: string, args: Record<string, any> = {}) {
           calls.push({ command, args: JSON.parse(JSON.stringify(args)) });
+          if (command === "request_agent_notification_setup") {
+            localStorage.setItem(
+              "test-agent-notification-setup",
+              String(Date.now()),
+            );
+            return;
+          }
+          if (command === "inspect_agent_notifications") {
+            if (desktop.__nativeTest.agentNotificationSetupError)
+              throw desktop.__nativeTest.agentNotificationSetupError;
+            return desktop.__nativeTest.agentNotificationSetup;
+          }
+          if (command === "enable_agent_notifications") {
+            if (desktop.__nativeTest.agentNotificationSetupError)
+              throw desktop.__nativeTest.agentNotificationSetupError;
+            desktop.__nativeTest.agentNotificationSetup.configured = true;
+            return;
+          }
+          if (command === "plugin:notification|is_permission_granted") {
+            await new Promise((resolve) =>
+              setTimeout(
+                resolve,
+                desktop.__nativeTest.agentNotificationPermissionDelay,
+              ),
+            );
+            return desktop.__nativeTest.agentNotificationPermission;
+          }
+          if (command === "plugin:notification|request_permission")
+            return desktop.__nativeTest.agentNotificationPermission
+              ? "granted"
+              : "denied";
+          if (command === "notify_agent") {
+            const preferences = JSON.parse(
+              localStorage.getItem("test-terminal-preferences") ?? "null",
+            );
+            if (
+              desktop.__nativeTest.windowFocused ||
+              preferences?.agentNotifications === false
+            )
+              return false;
+            desktop.__nativeTest.agentNotifications.push(args);
+            return true;
+          }
           if (command === "update_environment")
             return { linuxInstruction: desktop.__nativeTest.updateInstruction };
           if (command === "request_update_check") {

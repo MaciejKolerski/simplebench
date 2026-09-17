@@ -130,6 +130,7 @@ import {
 import { useCloseGuard } from "./CloseGuard";
 import { useUpdater } from "./Updater";
 import { useCliTitleSetup } from "./CliTitleSetup";
+import { useAgentNotifications } from "./AgentNotifications";
 import {
   absoluteFilePath,
   applyFileChange,
@@ -451,6 +452,12 @@ export default function Workbench() {
   );
   const [paneNotice, setPaneNotice] = useState("");
   const cliTitles = useCliTitleSetup(setError, setPaneNotice);
+  const agentNotifications = useAgentNotifications(
+    session,
+    terminalPreferences.ready && terminalPreferences.value.agentNotifications,
+    setError,
+    setPaneNotice,
+  );
   const [projectMenuOpen, setProjectMenuOpen] = useState(false);
   const folderPickerBusy = useRef(false);
   const [browsing, setBrowsing] = useState(false);
@@ -1333,6 +1340,7 @@ export default function Workbench() {
             {updater.dialog}
             {closeGuard.dialog}
             {cliTitles.dialog}
+            {agentNotifications.dialog}
           </div>
         </SlotProvider>
       </HostContext.Provider>
@@ -2291,6 +2299,7 @@ export default function Workbench() {
           {updater.dialog}
           {closeGuard.dialog}
           {cliTitles.dialog}
+          {agentNotifications.dialog}
         </div>
       </SlotProvider>
     </HostContext.Provider>

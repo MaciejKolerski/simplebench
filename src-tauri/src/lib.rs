@@ -1,4 +1,6 @@
+mod agent_notifications;
 mod browser;
+mod cli_config;
 mod cli_titles;
 pub use cli_titles::print_agy_title;
 mod editor_preferences;
@@ -110,6 +112,7 @@ pub fn run() {
                 .build(),
         )
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -248,6 +251,10 @@ pub fn run() {
                 terminal::quote_paths,
                 terminal::terminal_contexts,
                 cli_titles::inspect_cli_titles,
+                agent_notifications::request_agent_notification_setup,
+                agent_notifications::inspect_agent_notifications,
+                agent_notifications::enable_agent_notifications,
+                agent_notifications::notify_agent,
                 cli_titles::enable_cli_titles
             ];
             handler(invoke)

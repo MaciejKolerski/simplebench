@@ -1,0 +1,136 @@
+(async () => {
+  const invoke = window.__TAURI_INTERNALS__.invoke;
+  const notices = [];
+  let checkpoint = "initializing";
+  const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const wait = async (check) => {
+    for (let i = 0; i < 200; i++) {
+      if (await check()) return;
+      await pause(100);
+    }
+    throw Error("Native notification check timed out");
+  };
+  try {
+    const { listen } = await import("/node_modules/@tauri-apps/api/event.js");
+    await listen("notification-smoke-result", ({ payload }) =>
+      notices.push(payload),
+    );
+    const { runningTerminal } = await import("/src/terminal-runtime.ts");
+    let runtime;
+    await wait(
+      () =>
+        (runtime = runningTerminal("notification-terminal"))?.getSnapshot()
+          .status === "running",
+    );
+    const id = runtime.sessionId;
+    const configuration = await invoke("inspect_agent_notifications");
+    if (!configuration.path.includes("simplebench-notification-native-"))
+      throw Error("Configuration is not isolated");
+    await invoke("enable_agent_notifications", {
+      path: configuration.path,
+      revision: configuration.revision,
+    });
+    if (!(await invoke("inspect_agent_notifications")).configured)
+      throw Error("Hooks were not installed");
+    await invoke("plugin:notification|request_permission");
+    const signal = async (kind) => {
+      await invoke("write_terminal", {
+        id,
+        data: `printf '\\033]777;notify;SimpleBench;claude;${kind}\\007'\r`,
+      });
+    };
+    checkpoint = "foreground focus";
+    await wait(() => document.hasFocus());
+    checkpoint = "foreground signal";
+    await signal("finished");
+    await wait(() => notices.length === 1);
+    if (notices[0].requested) throw Error("Focused main window sent an alert");
+
+    // Hide the native window, keeping its PTY and xterm parser alive.
+    await invoke("plugin_smoke_result", {
+      stage: "notification-background",
+      data: null,
+    });
+    checkpoint = "background signal";
+    await signal("attention");
+    await wait(() => notices.length === 2);
+    if (!notices[1].requested)
+      throw Error("Background alert was not requested");
+    await signal("attention");
+    await pause(300);
+    if (notices.length !== 2) throw Error("Duplicate alert was delivered");
+
+    await invoke("plugin_smoke_result", {
+      stage: "notification-toggle",
+      data: false,
+    });
+    await wait(
+      async () =>
+        (await invoke("load_terminal_preferences"))?.agentNotifications ===
+        false,
+    );
+    await pause(100);
+    await pause(2100);
+    await signal("finished");
+    await pause(300);
+    if (notices.some((notice, index) => index >= 2 && notice.requested))
+      throw Error("Disabled alerts were delivered");
+    checkpoint = "re-enable";
+    const quietCount = notices.length;
+    await invoke("plugin_smoke_result", {
+      stage: "notification-toggle",
+      data: true,
+    });
+    await wait(
+      async () =>
+        (await invoke("load_terminal_preferences"))?.agentNotifications ===
+        true,
+    );
+    await pause(2100);
+    await signal("finished");
+    await wait(() => notices.length > quietCount);
+    if (!notices.at(-1).requested)
+      throw Error("Re-enabled alert was not requested");
+    if (runningTerminal("notification-terminal")?.sessionId !== id)
+      throw Error("Preferences restarted the PTY");
+    await invoke("write_terminal", {
+      id,
+      data: "printf 'NOTIFICATION_NATIVE_OK\\n'\r",
+    });
+    await wait(() =>
+      Array.from({ length: runtime.terminal.buffer.active.length }, (_, i) =>
+        runtime.terminal.buffer.active.getLine(i)?.translateToString(),
+      )
+        .join("\n")
+        .includes("NOTIFICATION_NATIVE_OK"),
+    );
+    await invoke("plugin_smoke_result", {
+      stage: "passed",
+      data: {
+        checks: [
+          "isolated Claude hook installation",
+          "real PTY OSC parsing",
+          "foreground suppression",
+          "native notification request in background",
+          "duplicate suppression",
+          "settings-window toggle applied live",
+          "PTY retained after preference changes",
+        ],
+        notices,
+      },
+    });
+  } catch (error) {
+    await invoke("plugin_smoke_result", {
+      stage: "failed",
+      data: {
+        error: String(error),
+        checkpoint,
+        notices,
+        focused: document.hasFocus(),
+        errors: [...document.querySelectorAll("[role=alert]")].map(
+          (node) => node.textContent,
+        ),
+      },
+    });
+  }
+})();

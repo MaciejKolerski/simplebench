@@ -26,6 +26,7 @@ test("terminal defaults inherit appearance and validate bounded, independent ove
     appearance: saved.appearance,
     behavior: saved.behavior,
     windowsShell: "powershell",
+    agentNotifications: true,
   });
   for (const invalid of [
     undefined,
@@ -35,6 +36,8 @@ test("terminal defaults inherit appearance and validate bounded, independent ove
     { ...saved, future: true },
     { ...saved, windowsShell: "bash" },
     { ...saved, windowsShell: null },
+    { ...saved, agentNotifications: "true" },
+    { ...saved, agentNotifications: null },
     ...[
       { fontSize: 0 },
       { fontFamily: "" },
@@ -65,6 +68,12 @@ test("Windows defaults migrate old settings and select installed local shells on
     behavior: defaultTerminalPreferences.behavior,
   };
   assert.equal(restoreTerminalPreferences(legacy).windowsShell, "powershell");
+  assert.equal(restoreTerminalPreferences(legacy).agentNotifications, true);
+  assert.equal(
+    restoreTerminalPreferences({ ...legacy, agentNotifications: false })
+      .agentNotifications,
+    false,
+  );
   assert.equal(
     restoreTerminalPreferences({ ...legacy, windowsShell: "cmd" }).windowsShell,
     "cmd",

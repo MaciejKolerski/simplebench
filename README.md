@@ -98,6 +98,21 @@ Settings opens in a separate window. Change keyboard shortcuts, editor
 indentation, terminal appearance, and panel focus behavior. Appearance follows
 the system by default, with manual light and dark options.
 
+Agent notifications are enabled by default in **Settings → Terminal**. Choose
+**Configure Claude Code…** and approve the displayed configuration file in the
+main window, then start a new Claude Code session. SimpleBench preserves existing
+hooks and settings and makes a backup before writing. Alerts identify the
+workspace and terminal when Claude finishes responding or needs input while the
+main window is in the background, including hidden terminals. Turn off
+**Agent notifications** to stop alerts immediately without restarting terminals.
+Finishing a response does not guarantee that the task succeeded.
+
+Setup targets local Claude Code's `settings.json` under `CLAUDE_CONFIG_DIR` when
+SimpleBench inherits it, otherwise `~/.claude`. WSL, SSH, and custom per-terminal
+configuration locations need their own hook configuration. Notifications also
+depend on the operating system's notification settings; Windows requires an
+installed build for the correct application identity.
+
 ![The native SimpleBench settings window on the Keybinds page, showing workspace shortcuts and the focus-follows-pointer option.](docs/images/keybindings.png)
 
 - **Themes:** use the built-in DeepMono palette or create and import JSONC theme

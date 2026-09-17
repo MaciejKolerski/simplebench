@@ -4,7 +4,7 @@ import { RotateCcw } from "./icons";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import { errorMessage, windows } from "./api";
+import { api, errorMessage, native, windows } from "./api";
 import { useTerminalPreferences } from "./TerminalPreferencesProvider";
 import {
   defaultTerminalPreferences,
@@ -22,6 +22,7 @@ import {
 } from "./theme/runtime";
 
 const labels: Record<string, string> = {
+  agentNotifications: "Agent notifications",
   windowsShell: "Default shell",
   powershell: "PowerShell",
   cmd: "CMD",
@@ -65,6 +66,8 @@ const labels: Record<string, string> = {
   wordSeparator: "Word separators",
 };
 const help: Record<string, string> = {
+  agentNotifications:
+    "Notify when Claude Code finishes responding or needs your input while SimpleBench is in the background. Configure Claude Code once below.",
   windowsShell:
     "Used for new terminal tabs and workspaces. Existing terminals keep their shell, including when split or restored. PowerShell uses version 7 when installed, otherwise Windows PowerShell.",
   fontFamily:
@@ -128,6 +131,7 @@ function Setting({
             role="switch"
             className="settings-switch"
             checked={value}
+            aria-describedby={help[name] ? `${id}-help` : undefined}
             disabled={disabled}
             onChange={(event) => change(event.target.checked)}
           />
@@ -427,6 +431,53 @@ export default function TerminalSettingsPage() {
       <div className="keybindings-status" role="status">
         {!preferences.ready ? "Loading terminal settings…" : status}
       </div>
+      <section className="keybindings-group" aria-label="Notifications">
+        <h2>Notifications</h2>
+        <Setting
+          name="agentNotifications"
+          value={preferences.value.agentNotifications}
+          disabled={disabled}
+          change={(value) =>
+            void persist({
+              ...preferences.value,
+              agentNotifications: Boolean(value),
+            })
+          }
+          reset={
+            preferences.value.agentNotifications
+              ? undefined
+              : () =>
+                  void persist({
+                    ...preferences.value,
+                    agentNotifications: true,
+                  })
+          }
+        />
+        <div className="terminal-setting-row">
+          <div className="keybinding-label">
+            <span>Claude Code integration</span>
+            <small>
+              Review and approve the configuration in the main window. Existing
+              settings are preserved with a backup.
+            </small>
+          </div>
+          <button
+            type="button"
+            className="button"
+            disabled={
+              disabled || !native || !preferences.value.agentNotifications
+            }
+            onClick={() => {
+              setError("");
+              void api("request_agent_notification_setup").catch((error) =>
+                setError(errorMessage(error)),
+              );
+            }}
+          >
+            Configure Claude Code…
+          </button>
+        </div>
+      </section>
       {windows && (
         <section className="keybindings-group" aria-label="Shell">
           <h2>Shell</h2>

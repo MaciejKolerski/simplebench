@@ -15,7 +15,7 @@ fn validate(data: &Value) -> Result<(), String> {
         if data.keys().any(|key| {
             !matches!(
                 key.as_str(),
-                "version" | "appearance" | "behavior" | "windowsShell"
+                "version" | "appearance" | "behavior" | "windowsShell" | "agentNotifications"
             )
         }) || data.get("version")?.as_u64()? != 1
         {
@@ -25,6 +25,9 @@ fn validate(data: &Value) -> Result<(), String> {
             if !matches!(shell.as_str()?, "powershell" | "cmd") {
                 return None;
             }
+        }
+        if let Some(enabled) = data.get("agentNotifications") {
+            enabled.as_bool()?;
         }
         let appearance = data.get("appearance")?.as_object()?;
         for (key, value) in appearance {
@@ -272,6 +275,8 @@ mod tests {
             ("/behavior/altClickMovesCursor", json!("true")),
             ("/windowsShell", json!("bash")),
             ("/windowsShell", Value::Null),
+            ("/agentNotifications", json!("true")),
+            ("/agentNotifications", Value::Null),
             ("/unknown", json!(true)),
         ] {
             let mut invalid = data.clone();
@@ -284,6 +289,12 @@ mod tests {
         for shell in ["powershell", "cmd"] {
             let mut updated = data.clone();
             updated["windowsShell"] = json!(shell);
+            save(&path, &updated).unwrap();
+            assert_eq!(read(&path).unwrap().unwrap(), updated);
+        }
+        for enabled in [true, false] {
+            let mut updated = data.clone();
+            updated["agentNotifications"] = json!(enabled);
             save(&path, &updated).unwrap();
             assert_eq!(read(&path).unwrap().unwrap(), updated);
         }

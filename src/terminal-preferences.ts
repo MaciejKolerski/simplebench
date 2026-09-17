@@ -30,11 +30,13 @@ export interface TerminalPreferences {
   appearance: ThemeTerminal;
   behavior: typeof terminalBehaviorDefaults;
   windowsShell: "powershell" | "cmd";
+  agentNotifications: boolean;
 }
 export const defaultTerminalPreferences: TerminalPreferences = {
   appearance: {},
   behavior: { ...terminalBehaviorDefaults },
   windowsShell: "powershell",
+  agentNotifications: true,
 };
 export const terminalColorPattern = /^#[\da-f]{6}([\da-f]{2})?$/i;
 
@@ -69,7 +71,13 @@ export function restoreTerminalPreferences(
       data.version !== 1 ||
       Object.keys(data).some(
         (key) =>
-          !["version", "appearance", "behavior", "windowsShell"].includes(key),
+          ![
+            "version",
+            "appearance",
+            "behavior",
+            "windowsShell",
+            "agentNotifications",
+          ].includes(key),
       )
     )
       throw new Error("Unsupported format.");
@@ -79,6 +87,11 @@ export function restoreTerminalPreferences(
       data.windowsShell !== "cmd"
     )
       throw new Error("Invalid Windows shell.");
+    if (
+      data.agentNotifications !== undefined &&
+      typeof data.agentNotifications !== "boolean"
+    )
+      throw new Error("Invalid agent notifications setting.");
     if (
       !data.appearance ||
       !data.behavior ||
@@ -134,6 +147,7 @@ export function restoreTerminalPreferences(
       appearance: structuredClone(appearance),
       behavior: { ...behavior } as TerminalPreferences["behavior"],
       windowsShell: data.windowsShell ?? "powershell",
+      agentNotifications: data.agentNotifications ?? true,
     };
   } catch (error) {
     throw new Error(

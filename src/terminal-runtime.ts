@@ -12,6 +12,11 @@ import { newId } from "./model";
 import type { Pane, ShellProfile } from "./model";
 import { inputChunks } from "./terminal-utils";
 import {
+  createAgentNotificationGate,
+  emitAgentNotification,
+  parseAgentSignal,
+} from "./agent-notifications";
+import {
   loadTerminalFonts,
   terminalAppearance,
   terminalSearchColors,
@@ -216,6 +221,18 @@ export class TerminalRuntime {
       if (event === "C") this.startBlock();
       if (event === "D")
         this.finishBlock(status === undefined ? undefined : Number(status));
+      return true;
+    });
+    const shouldNotify = createAgentNotificationGate();
+    this.terminal.parser.registerOscHandler(777, (value) => {
+      const kind = parseAgentSignal(value);
+      if (!kind) return false;
+      if (!this.disposed && shouldNotify(kind) && kind !== "working")
+        emitAgentNotification({
+          paneId: this.paneId,
+          sessionId: this.sessionId,
+          kind,
+        });
       return true;
     });
     this.searchAddon.onDidChangeResults(({ resultIndex, resultCount }) =>

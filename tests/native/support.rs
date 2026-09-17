@@ -1,12 +1,18 @@
 use tauri::{Manager, Window};
 #[path = "image-support.rs"]
 mod image_smoke;
+#[path = "notification-support.rs"]
+mod notification_smoke;
 #[path = "theme-support.rs"]
 mod theme_smoke;
 fn entry_script(source: &str, data: &serde_json::Value) -> String {
     source.replace("SMOKE_ENTRY", &serde_json::to_string(data).unwrap())
 }
 pub fn page(webview: &tauri::Webview, payload: &tauri::webview::PageLoadPayload<'_>) {
+    if std::env::var_os("SIMPLEBENCH_NOTIFICATION_SMOKE_DIRECTORY").is_some() {
+        notification_smoke::page(webview, payload);
+        return;
+    }
     if std::env::var_os("SIMPLEBENCH_IMAGE_SMOKE_DIRECTORY").is_some() {
         image_smoke::page(webview, payload);
         return;
@@ -44,6 +50,9 @@ pub fn plugin_smoke_result(
 ) -> Result<serde_json::Value, String> {
     if !matches!(window.label(), "main" | "settings") {
         return Err("Unknown test caller.".into());
+    }
+    if std::env::var_os("SIMPLEBENCH_NOTIFICATION_SMOKE_DIRECTORY").is_some() {
+        return notification_smoke::result(&app, &stage, data);
     }
     if std::env::var_os("SIMPLEBENCH_IMAGE_SMOKE_DIRECTORY").is_some() {
         return image_smoke::result(&app, &stage, data);
