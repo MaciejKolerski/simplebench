@@ -1,6 +1,130 @@
 import { test, expect } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { addWorkspace, newSession } from "../../src/model";
 import { mockDesktop } from "./desktop";
+
+async function expectWorkspaceFits(page: Page) {
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const area = document
+          .querySelector(".work-area")!
+          .getBoundingClientRect();
+        return [
+          ...document.querySelectorAll<HTMLElement>(
+            ".work-area, .terminal-stage, .terminal-layout, .split-container, .dock-layout, .dock-pane-host",
+          ),
+        ].flatMap((element) => {
+          const bounds = element.getBoundingClientRect();
+          element.scrollTo(element.scrollWidth, element.scrollHeight);
+          return element.scrollWidth > element.clientWidth ||
+            element.scrollHeight > element.clientHeight ||
+            element.scrollLeft !== 0 ||
+            element.scrollTop !== 0 ||
+            bounds.left < area.left - 1 ||
+            bounds.right > area.right + 1 ||
+            bounds.top < area.top - 1 ||
+            bounds.bottom > area.bottom + 1
+            ? [
+                {
+                  name: element.className,
+                  width: element.clientWidth,
+                  height: element.clientHeight,
+                  scrollWidth: element.scrollWidth,
+                  scrollHeight: element.scrollHeight,
+                  scrollLeft: element.scrollLeft,
+                  scrollTop: element.scrollTop,
+                  bounds: bounds.toJSON(),
+                  area: area.toJSON(),
+                },
+              ]
+            : [];
+        });
+      }),
+    )
+    .toEqual([]);
+}
+
+for (const sidebars of [1, 2]) {
+  test(`workspace fits ${sidebars} sidebars and a live pane after shrinking and enlarging`, async ({
+    page,
+  }, testInfo) => {
+    const session = addWorkspace(
+      newSession(),
+      "/project",
+      "local:bash",
+      "First",
+    );
+    session.sidebar = "workspaces";
+    if (sidebars === 2) {
+      session.rightSidebar = "git";
+      session.sidebarSides.git = "right";
+    }
+    await mockDesktop(page, true, session);
+    await page.goto("/");
+    const screen = page.locator(".xterm-screen");
+    await expect(screen).toBeVisible();
+    const original = await screen.elementHandle();
+    await page.evaluate(() => {
+      const native = (window as any).__nativeTest;
+      native.emit(
+        [...native.sessions.keys()][0],
+        "scrollback line\r\n".repeat(100),
+      );
+      document.documentElement.style.setProperty("--stage-padding", "0.3px");
+    });
+    for (const [width, height] of [
+      [800, 420],
+      [533, 280],
+      [400, 210],
+      [400, 160],
+      [1440, 900],
+    ]) {
+      await page.setViewportSize({ width, height });
+      await expectWorkspaceFits(page);
+      await expect(screen).toBeVisible();
+      const pane = await page.locator(".dock-pane-host").boundingBox();
+      const stage = await page.locator(".terminal-stage").boundingBox();
+      expect(pane!.width).toBeLessThanOrEqual(stage!.width);
+      expect(pane!.height).toBeLessThanOrEqual(stage!.height);
+      if (width === 400 && height === 210)
+        await page.screenshot({
+          path: testInfo.outputPath("workspace-zoomed.png"),
+        });
+    }
+    expect(
+      await original!.evaluate(
+        (element) => element === document.querySelector(".xterm-screen"),
+      ),
+    ).toBe(true);
+    expect(
+      await page.evaluate(() =>
+        (window as any).__nativeTest.calls
+          .filter((call: any) =>
+            ["start_terminal", "close_terminal"].includes(call.command),
+          )
+          .map((call: any) => call.command),
+      ),
+    ).toEqual(["start_terminal"]);
+    await page.locator(".terminal-pane").evaluate(async (element) => {
+      const { runningTerminal } = await import("/src/terminal-runtime.ts");
+      runningTerminal(
+        (element as HTMLElement).dataset.paneId!,
+      )!.terminal.scrollToTop();
+    });
+    await page.locator(".terminal-pane").hover();
+    await page.mouse.wheel(0, 400);
+    await expect
+      .poll(() =>
+        page.locator(".terminal-pane").evaluate(async (element) => {
+          const { runningTerminal } = await import("/src/terminal-runtime.ts");
+          return runningTerminal((element as HTMLElement).dataset.paneId!)!
+            .terminal.buffer.active.viewportY;
+        }),
+      )
+      .toBeGreaterThan(0);
+  });
+}
 
 for (const width of [1440, 800]) {
   test(`workspace switches keep the layout stable at ${width}px`, async ({

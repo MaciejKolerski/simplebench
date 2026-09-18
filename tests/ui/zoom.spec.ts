@@ -66,7 +66,7 @@ test("zoom works on welcome, remembers its level and respects the native macOS t
   await expect.poll(() => zoom(page)).toBe(1);
 });
 
-test("a heavily zoomed minimum window keeps the full pane layout reachable", async ({
+test("a heavily zoomed minimum window fits the pane without scrolling the workspace", async ({
   page,
 }) => {
   await mockDesktop(page, true, undefined, undefined, {}, "macos");
@@ -79,10 +79,7 @@ test("a heavily zoomed minimum window keeps the full pane layout reachable", asy
   const area = page.locator(".work-area");
   expect(
     await area.evaluate((element) => {
-      element.scrollLeft = element.scrollWidth;
-      return (
-        element.scrollLeft > 0 && getComputedStyle(element).overflowX === "auto"
-      );
+      return element.scrollWidth <= element.clientWidth;
     }),
   ).toBe(true);
   await page.keyboard.press("Meta+Digit0");

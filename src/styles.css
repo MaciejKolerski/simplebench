@@ -1303,14 +1303,14 @@ svg {
   flex: 1;
   min-height: 0;
   min-width: 0;
-  /* Page zoom can make the CSS viewport narrower than the pane layout. */
-  overflow: auto;
+  container-type: inline-size;
+  overflow: hidden;
 }
 .sidebar {
   border-radius: var(--radius-sidebar);
   padding: var(--sidebar-padding);
   flex-shrink: 1;
-  min-width: var(--sidebar-min-width);
+  min-width: min(var(--sidebar-min-width), 25cqw);
   max-width: var(--sidebar-max-width);
   background: var(--sidebar-background);
   overflow: hidden;
@@ -1606,16 +1606,17 @@ svg {
   position: relative;
   display: flex;
   flex-direction: column;
-  min-width: min(240px, 100%);
+  min-width: min(240px, 40cqw);
   min-height: 0;
   flex: 1;
+  overflow: hidden;
 }
 .terminal-layout {
   display: flex;
   flex: 1;
   min-height: 0;
   min-width: 0;
-  overflow: auto;
+  overflow: hidden;
 }
 .split-container {
   display: flex;

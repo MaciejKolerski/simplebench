@@ -21,9 +21,11 @@ export default function DockviewLayout(props: Props) {
   const dock = useRef<DockviewApi | null>(null);
   const hosts = useRef(new Map<string, HTMLElement>());
   const updating = useRef(false);
+  const restoreFocus = useRef<HTMLElement | null>(null);
   const current = useRef(props);
   current.current = props;
   const panes = layoutPanes(props.layout);
+  const singlePaneId = props.layout.type === "split" ? null : props.layout.id;
   for (const pane of panes)
     if (!hosts.current.has(pane.id)) {
       const host = document.createElement("div");
@@ -46,6 +48,23 @@ export default function DockviewLayout(props: Props) {
       : value,
   );
   useLayoutEffect(() => {
+    const rememberFocus = () => {
+      if (
+        document.activeElement instanceof HTMLElement &&
+        container.current?.contains(document.activeElement)
+      )
+        restoreFocus.current = document.activeElement;
+    };
+    // Dockview's outer grid has a fixed 100px minimum, even with no splits.
+    // Keep the same portal host while letting a single pane fill smaller areas.
+    if (singlePaneId) {
+      const host = hosts.current.get(singlePaneId)!;
+      container.current!.appendChild(host);
+      return () => {
+        rememberFocus();
+        host.remove();
+      };
+    }
     const api = createDockview(container.current!, {
       disableDnd: true,
       disableFloatingGroups: true,
@@ -90,20 +109,24 @@ export default function DockviewLayout(props: Props) {
     };
     const changes = api.onDidLayoutChange(measure);
     return () => {
+      rememberFocus();
       changes.dispose();
       api.dispose();
       dock.current = null;
     };
-  }, []);
+  }, [singlePaneId]);
   useLayoutEffect(() => {
     updating.current = true;
     const focused =
       document.activeElement instanceof HTMLElement &&
       hosts.current.get(props.activePaneId)?.contains(document.activeElement)
         ? document.activeElement
-        : null;
+        : hosts.current.get(props.activePaneId)?.contains(restoreFocus.current)
+          ? restoreFocus.current
+          : null;
+    restoreFocus.current = null;
     try {
-      dock.current!.fromJSON(
+      dock.current?.fromJSON(
         dockviewLayout(props.layout, props.size, props.activePaneId),
       );
     } finally {
@@ -117,12 +140,13 @@ export default function DockviewLayout(props: Props) {
   useLayoutEffect(() => {
     updating.current = true;
     try {
-      dock.current!.layout(props.size.width, props.size.height);
+      dock.current?.layout(props.size.width, props.size.height);
     } finally {
       updating.current = false;
     }
-  }, [props.size.width, props.size.height]);
+  }, [singlePaneId, props.size.width, props.size.height]);
   useLayoutEffect(() => {
+    if (!dock.current) return;
     updating.current = true;
     const gaps = dockviewGapShares(
       dockviewLayout(props.layout, props.size, props.activePaneId),
