@@ -101,7 +101,9 @@ impl Backend {
             )
         };
         #[cfg(feature = "chat-probe")]
-        let bundle = if std::env::var_os("SIMPLEBENCH_CHAT_PROBE_DIRECTORY").is_some() {
+        let bundle = if std::env::var_os("SIMPLEBENCH_CHAT_PROBE_DIRECTORY").is_some()
+            && std::env::var_os("SIMPLEBENCH_CHAT_LIVE_KEYS_FILE").is_none()
+        {
             bundle.with_file_name("fixture.cjs")
         } else {
             bundle

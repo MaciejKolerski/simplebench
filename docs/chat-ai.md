@@ -97,5 +97,8 @@ files; resetting history does not recover unsaved RAM or provider responses.
 
 The native test host is macOS 27.0 ARM64. Bundled Node 24.21.0 and the local
 Keychain passed dev and ad-hoc signed installed-app fixtures without system Node.
-Real provider API calls, Windows/Linux execution, Developer ID notarization,
+Live Gemini 3.5 Flash-Lite tests passed model discovery, connection testing,
+text attachments, multiple turns, Regenerate, Stop and reopening history.
+See [the local native test guide](../tests/native/CHAT.md) for reproducible probes.
+Live OpenAI/Anthropic calls, Windows/Linux execution, Developer ID notarization,
 Gatekeeper and updater installation require separate verification.

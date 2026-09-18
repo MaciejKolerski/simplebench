@@ -2,6 +2,7 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { spawn, execFileSync } from "node:child_process";
+import { browserProbe } from "./chat-browser-server.mjs";
 
 const root = resolve(import.meta.dirname, "../..");
 const directory = await mkdtemp(join(tmpdir(), "simplebench-chat-native-"));
@@ -24,6 +25,7 @@ await writeFile(
   }),
 );
 console.log(`Native chat artifacts: ${directory}`);
+const browser = await browserProbe(directory);
 const child = spawn(
   "pnpm",
   [
@@ -38,7 +40,11 @@ const child = spawn(
   {
     cwd: root,
     detached: true,
-    env: { ...process.env, SIMPLEBENCH_CHAT_PROBE_DIRECTORY: directory },
+    env: {
+      ...process.env,
+      SIMPLEBENCH_CHAT_PROBE_DIRECTORY: directory,
+      SIMPLEBENCH_CHAT_BROWSER_URL: browser.url,
+    },
     stdio: ["ignore", "pipe", "pipe"],
   },
 );
@@ -61,6 +67,7 @@ try {
   console.log(JSON.stringify(result, null, 2));
   if (!result.passed) process.exitCode = 1;
 } finally {
+  browser.close();
   await writeFile(join(directory, "native.log"), log);
   try {
     process.kill(-child.pid, "SIGTERM");

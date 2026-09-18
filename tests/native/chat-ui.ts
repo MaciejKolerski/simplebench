@@ -3,6 +3,7 @@ import type { Conversation } from "../../src/chat/types";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { Chat } from "@ai-sdk/react";
 import type { UIMessageChunk } from "ai";
+import { checkBrowserIsolation, runLive } from "./chat-live-ui";
 
 type Packet = {
   type: string;
@@ -26,6 +27,10 @@ type Packet = {
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export async function run() {
+  const mode = await invoke<{ live: boolean }>("chat_probe_backend", {
+    action: "mode",
+  });
+  if (mode.live) return runLive();
   const latency: number[] = [];
   const presentation: number[] = [];
   let measuringPresentation = false;
@@ -34,7 +39,7 @@ export async function run() {
   preview.style.cssText =
     "position:fixed;inset:20px;z-index:999999;background:var(--color-background);color:var(--color-surface-text);padding:16px;overflow:auto;pointer-events:none";
   document.body.append(preview);
-  let channel: Channel<Packet>;
+  let channel!: Channel<Packet>;
   let startup: unknown;
   let resync = false;
   let terminal = "";
@@ -245,6 +250,7 @@ export async function run() {
   if (runtime.snapshot.text !== "Retained next draft 👩🏽‍💻")
     throw Error("Production draft was lost");
   const productStopMs = performance.now() - productStop;
+  const deniedBrowser = await checkBrowserIsolation();
   await invoke("chat_close", { conversations: [conversation.id], all: false });
   const idleMemory = await invoke("chat_probe_backend", { action: "metrics" });
   const parallel = await Promise.all(
@@ -288,6 +294,7 @@ export async function run() {
       productStopMs,
       productTransport: true,
       deniedSettings,
+      deniedBrowser,
       idleMemory,
       fourStreamMemory,
       rustToUiP95Ms: latency[Math.floor(latency.length * 0.95)],

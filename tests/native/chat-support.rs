@@ -6,6 +6,7 @@ use crate::chat::{
 };
 use serde_json::{json, Value};
 use std::{
+    io::Read,
     path::PathBuf,
     sync::{Arc, Mutex},
     time::Instant,
@@ -256,7 +257,109 @@ pub async fn chat_probe_backend(
 ) -> Result<Value, String> {
     crate::files::main_window(&window)?;
     directory()?;
+    if action.as_deref() == Some("mode") {
+        return Ok(json!({"live":std::env::var_os("SIMPLEBENCH_CHAT_LIVE_KEYS_FILE").is_some()}));
+    }
+    if action.as_deref() == Some("browser-url") {
+        return Ok(
+            json!({"url":std::env::var("SIMPLEBENCH_CHAT_BROWSER_URL").ok(),"offline":std::env::var_os("SIMPLEBENCH_CHAT_PROBE_OFFLINE").is_some()}),
+        );
+    }
+    if action.as_deref() == Some("browser-result") {
+        return Ok(std::fs::read(directory()?.join("browser-result.json"))
+            .ok()
+            .and_then(|data| serde_json::from_slice(&data).ok())
+            .unwrap_or(Value::Null));
+    }
     let backend = state.backend(&app)?;
+    if action.as_deref() == Some("live-setup") {
+        window.show().map_err(|_| "Cannot show native live test.")?;
+        window
+            .set_focus()
+            .map_err(|_| "Cannot focus native live test.")?;
+        return tauri::async_runtime::spawn_blocking(move || {
+            let path = std::env::var_os("SIMPLEBENCH_CHAT_LIVE_KEYS_FILE")
+                .ok_or("Provide an explicit live-test key file.")?;
+            let mut bytes = Vec::new();
+            std::fs::File::open(path)
+                .map_err(|_| "Cannot open the live-test key file.")?
+                .take(16 * 1024 + 1)
+                .read_to_end(&mut bytes)
+                .map_err(|_| "Cannot read the live-test key file.")?;
+            if bytes.len() > 16 * 1024 {
+                return Err("The live-test key file exceeds 16 KiB.".into());
+            }
+            let keys: Value = serde_json::from_slice(&bytes)
+                .map_err(|_| "The live-test key file must contain JSON.")?;
+            let mut services = backend.services.lock().unwrap();
+            let settings = services.settings.as_mut().map_err(|e| e.clone())?;
+            let mut providers = Vec::new();
+            for (provider, key_fields, model_fields, fallback) in [
+                (
+                    "openai",
+                    ["OPENAI_API_KEY", "openaiApiKey"],
+                    ["OPENAI_MODEL", "openaiModel"],
+                    "gpt-4.1-mini",
+                ),
+                (
+                    "anthropic",
+                    ["ANTHROPIC_API_KEY", "anthropicApiKey"],
+                    ["ANTHROPIC_MODEL", "anthropicModel"],
+                    "claude-haiku-4-5",
+                ),
+                (
+                    "google",
+                    ["GOOGLE_GENERATIVE_AI_API_KEY", "googleApiKey"],
+                    ["GOOGLE_MODEL", "googleModel"],
+                    "gemini-2.5-flash",
+                ),
+            ] {
+                let Some(key) = key_fields
+                    .iter()
+                    .find_map(|field| keys[*field].as_str())
+                    .filter(|key| !key.trim().is_empty())
+                else {
+                    continue;
+                };
+                let model = model_fields
+                    .iter()
+                    .find_map(|field| keys[*field].as_str())
+                    .unwrap_or(fallback);
+                let id = format!("live-{provider}");
+                let mut data = settings.data.clone();
+                data.connections.retain(|connection| connection.id != id);
+                data.connections.push(crate::chat::preferences::Connection {
+                    id: id.clone(),
+                    name: format!("Live test {provider}"),
+                    provider: provider.into(),
+                    enabled: true,
+                    credential_revision: 0,
+                    secret_mode: "session".into(),
+                    secret_id: None,
+                    models: vec![model.into()],
+                    tested_model: None,
+                    test_status: None,
+                });
+                settings.save(data.clone(), data.revision, Some((&id, key)))?;
+                providers.push(json!({"id":id,"provider":provider,"model":model}));
+            }
+            if providers.is_empty() {
+                return Err("No recognized live-test keys were provided.".into());
+            }
+            drop(services);
+            for provider in &mut providers {
+                let id = provider["id"].as_str().unwrap().to_owned();
+                let model = provider["model"].as_str().unwrap().to_owned();
+                let catalog = backend.auxiliary(&id, &model, "list-models")?;
+                provider["catalog"] = json!({"status":catalog["status"],"code":catalog["result"]["code"],"selectedModelPresent":catalog["models"].as_array().is_some_and(|models| models.iter().any(|value| value.as_str()==Some(&model)))});
+                let tested = backend.auxiliary(&id, &model, "test-connection")?;
+                provider["connectionTest"] = json!({"status":tested["status"],"code":tested["result"]["code"]});
+            }
+            Ok(json!({"providers":providers}))
+        })
+        .await
+        .map_err(|_| "Live-test setup failed.")?;
+    }
     if action.as_deref() == Some("metrics") {
         if std::env::var_os("SIMPLEBENCH_CHAT_PROBE_OFFLINE").is_some() {
             return Ok(
