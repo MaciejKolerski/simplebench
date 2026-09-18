@@ -29,9 +29,12 @@ tag-triggered `publish-tauri` matrix:
 6. Notify Flathub only when `FLATHUB_TOKEN` is configured.
 
 The release stays a draft if a platform fails or updater metadata is incomplete.
-The previous stable release remains the updater endpoint until publication. The release workflow runs TypeScript and model/AI runtime tests; the check
-workflow also runs Playwright, formatting, Rust tests and Clippy. Run the relevant checks before
-tagging, as described in the [development guide](../README.md#validation-and-builds).
+The previous stable release remains the updater endpoint until publication.
+GitHub Actions only builds and distributes the application; test suites,
+formatting checks and Clippy run locally. TypeScript checking remains part of
+the frontend build, and release metadata and signatures are verified before
+publication. Run the relevant local checks before tagging, as described in the
+[development guide](../README.md#validation-and-builds).
 
 SimpleBench selects Xcode 26.3 to compile its Icon Composer source and uses its
 own pnpm version. It does not need Simple Voice's audio, Vulkan, or ONNX build
