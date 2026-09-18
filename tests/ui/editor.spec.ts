@@ -646,6 +646,11 @@ test("Rust editing preserves per-tab positions across switches and session resto
     "main.rs",
   );
   const content = `fn main() {\n${"    let value = 1;\n".repeat(600)}}\n`;
+  const expectedHead =
+    content
+      .split("\n")
+      .slice(0, 249)
+      .reduce((offset, line) => offset + line.length + 1, 0) + 1;
   await mockDesktop(page, true, session, undefined, {
     "/project/main.rs": {
       content,
@@ -687,7 +692,7 @@ test("Rust editing preserves per-tab positions across switches and session resto
           )?.position?.head,
       ),
     )
-    .toBeGreaterThan(4000);
+    .toBe(expectedHead);
   await page.reload();
   await expect(page.getByText("Ln 250, Col 2", { exact: true })).toBeVisible();
   await page.keyboard.press("End");
