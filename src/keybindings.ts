@@ -1,5 +1,34 @@
 export const actions = [
   {
+    id: "chatNew",
+    label: "New Chat AI",
+    description: "Open a new AI conversation.",
+    group: "Chat AI",
+    shortcut: null,
+  },
+  {
+    id: "chatFocusInput",
+    label: "Focus chat input",
+    description: "Focus the active conversation composer.",
+    group: "Chat AI",
+    shortcut: null,
+  },
+  {
+    id: "chatStop",
+    label: "Stop AI response",
+    description:
+      "Stop the active conversation request and keep its partial response.",
+    group: "Chat AI",
+    shortcut: null,
+  },
+  {
+    id: "chatHistory",
+    label: "Chat history",
+    description: "Search saved conversations in the active chat panel.",
+    group: "Chat AI",
+    shortcut: null,
+  },
+  {
     id: "commandPicker",
     label: "Show commands",
     description: "Find and run a workspace or plugin command.",

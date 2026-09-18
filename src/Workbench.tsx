@@ -1,3 +1,15 @@
+import {
+  configureChats,
+  retainChats,
+  createChat,
+  chatAction,
+} from "./chat/chat-service";
+import {
+  updateChat,
+  newChatTab,
+  chatTabs,
+  removeChatConversation,
+} from "./model";
 import { builtinViews } from "./plugins/builtins";
 import { listen } from "@tauri-apps/api/event";
 import PluginPanel from "./plugins/PluginPanel";
@@ -169,7 +181,8 @@ function initialize() {
         typeof saved === "object" &&
         "version" in saved &&
         saved.version !== 1 &&
-        saved.version !== 2
+        saved.version !== 2 &&
+        saved.version !== 3
       ) {
         throw new Error(
           "This session was saved in an unsupported format. The saved file has been left intact.",
@@ -267,6 +280,7 @@ export default function Workbench() {
       currentSession.current = next;
       retainEditorTabs(next);
       retainBrowsers(next);
+      retainChats(next);
       pluginHost.retainPanels(
         new Set(next ? pluginPanels(next).map((panel) => panel.id) : []),
       );
@@ -508,6 +522,54 @@ export default function Workbench() {
   const closeProjectMenu = useCallback(() => setProjectMenuOpen(false), []);
 
   useEffect(() => {
+    if (!native) return;
+    const stop = listen<string>("chat-conversation-deleted", ({ payload }) => {
+      setSession((state) =>
+        state
+          ? removeChatConversation(state, payload, defaultProfileId)
+          : state,
+      );
+    });
+    return () => {
+      void stop.then((fn) => fn()).catch(() => {});
+    };
+  }, [setSession, defaultProfileId]);
+  useEffect(
+    () =>
+      configureChats({
+        activate: (workspace, panel) =>
+          setSession((state) =>
+            state
+              ? updateWorkspace(state, workspace, (w) => {
+                  const parent = w.tabs.find(
+                    (t) =>
+                      t.id === panel ||
+                      (t.type === "terminal" &&
+                        layoutPanes(t.layout).some((p) => p.id === panel)),
+                  );
+                  return parent
+                    ? {
+                        ...w,
+                        activeTabId: parent.id,
+                        tabs: w.tabs.map((t) =>
+                          t === parent && t.type === "terminal"
+                            ? { ...t, activePaneId: panel }
+                            : t,
+                        ),
+                      }
+                    : w;
+                })
+              : state,
+          ),
+        update: (id, change) =>
+          setSession((state) =>
+            state ? updateChat(state, id, change) : state,
+          ),
+        error: setError,
+      }),
+    [setSession],
+  );
+  useEffect(() => {
     configureBrowsers(
       (id, change) =>
         setSession((state) =>
@@ -692,6 +754,27 @@ export default function Workbench() {
         activeTabId: added.id,
       }));
     });
+  const addChat = async () => {
+    const state = currentSession.current;
+    const selection = state && active(state);
+    if (!selection) return;
+    try {
+      const conversation = await createChat(
+        selection.project,
+        selection.workspace,
+      );
+      const added = newChatTab(conversation.id, conversation.title);
+      change((state) =>
+        updateWorkspace(state, selection.workspace.id, (workspace) => ({
+          ...workspace,
+          tabs: [...workspace.tabs, added],
+          activeTabId: added.id,
+        })),
+      );
+    } catch (error) {
+      setError(errorMessage(error));
+    }
+  };
   const closeTab = async (id: string, action: TabCloseAction = "close") => {
     const state = currentSession.current;
     if (!state) return;
@@ -818,6 +901,14 @@ export default function Workbench() {
       const runtime =
         panel?.type === "terminal" ? runningTerminal(panel.id) : undefined;
       switch (action) {
+        case "chatNew":
+          void addChat();
+          break;
+        case "chatFocusInput":
+        case "chatStop":
+        case "chatHistory":
+          if (panel?.type === "chat") chatAction(panel.id, action);
+          break;
         case "movePanel":
         case "dockTab": {
           const target =
@@ -927,6 +1018,17 @@ export default function Workbench() {
         (isTextInput(event.target) &&
           !action?.includes(".") &&
           !inEditor &&
+          !(
+            panel?.type === "chat" &&
+            [
+              "chatNew",
+              "chatFocusInput",
+              "chatStop",
+              "chatHistory",
+              "closeTerminal",
+              "commandPicker",
+            ].includes(action ?? "")
+          ) &&
           !(
             action === "terminalOverview" &&
             event.target instanceof Element &&
@@ -1181,7 +1283,7 @@ export default function Workbench() {
           onClick={() => {
             savingEnabled.current = true;
             setRestoreError("");
-            void saveSession(session).catch((error) =>
+            void saveSession(session, true).catch((error) =>
               setError(errorMessage(error)),
             );
           }}
@@ -1502,7 +1604,7 @@ export default function Workbench() {
     }
     if (
       !(await closeGuard.confirm(
-        new Set(pane.type === "file" || pane.type === "plugin" ? [id] : []),
+        new Set([id]),
         pane.type === "terminal" ? [id] : [],
       ))
     )
@@ -1650,6 +1752,21 @@ export default function Workbench() {
             )
             .map((file) => file.id),
         );
+        for (const panel of chatTabs(currentSession.current).filter((panel) =>
+          currentSession.current!.projects.some(
+            (project) =>
+              containsPath(path, project.path) &&
+              project.workspaces.some((workspace) =>
+                workspace.tabs.some(
+                  (tab) =>
+                    tab.id === panel.id ||
+                    (tab.type === "terminal" &&
+                      layoutPanes(tab.layout).some((p) => p.id === panel.id)),
+                ),
+              ),
+          ),
+        ))
+          ids.add(panel.id);
         if (
           !(await closeGuard.confirm(
             ids,
@@ -1761,6 +1878,7 @@ export default function Workbench() {
               activeTabId={tab.id}
               newTabTitle={shortcutTitle("New tab", bindings.newTab)}
               onNew={() => addTab()}
+              onNewChat={() => void addChat()}
               onNewBrowser={() =>
                 change((state) => {
                   const added = newBrowserTab();
@@ -1948,6 +2066,16 @@ export default function Workbench() {
                   onOpenCommit={(commit) => openHistoryCommit(commit, tab.root)}
                   onError={setError}
                 />
+              ) : tab.type === "chat" ? (
+                <Suspense
+                  fallback={<div role="status">Loading conversation…</div>}
+                >
+                  <builtinViews.chat
+                    tab={tab}
+                    onFocus={() => {}}
+                    onClose={() => void closeTab(tab.id)}
+                  />
+                </Suspense>
               ) : tab.type === "browser" ? (
                 <builtinViews.browser
                   key={tab.id}
@@ -2050,7 +2178,8 @@ export default function Workbench() {
                               .filter(
                                 (pane) =>
                                   pane.type === "file" ||
-                                  pane.type === "plugin",
+                                  pane.type === "plugin" ||
+                                  pane.type === "chat",
                               )
                               .map((pane) => pane.id),
                           ),

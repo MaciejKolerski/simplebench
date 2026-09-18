@@ -60,7 +60,7 @@ task in the same folder, open the Workspaces sidebar and choose **New workspace*
   workspaces while background processes continue. Use installed shells, including
   Bash, Zsh, Fish, PowerShell, and Windows Command Prompt; WSL distributions appear
   as separate environments on Windows.
-- **Arrange panels around the task.** Dock terminals, files, and browsers beside
+- **Arrange panels around the task.** Dock terminals, files, browsers, and AI chats beside
   one another. Move panels without restarting shells or losing editor buffers.
   Maximize a panel when you need more space.
 - **Edit files where you work.** Browse and search the project, create and rename
@@ -80,6 +80,21 @@ task in the same folder, open the Workspaces sidebar and choose **New workspace*
 - **Separate projects and tasks.** A project is a folder; its named workspaces
   hold separate sets of tabs. Place Workspaces, Explorer, and Source Control on
   either side of the window.
+
+### Chat with your own AI providers
+
+Choose **+ → Chat AI**, then add a named connection in **Settings → Chat AI**.
+OpenAI, Anthropic and Google Gemini use your own API keys. Choose the system
+credential store or explicit session-only storage, set a default model, and
+optionally run the paid, fixed-prompt connection test. Installed builds include
+Node; no Node installation, SimpleBench account or Vercel account is required.
+
+Chats support streaming, Stop, Retry, preserved Edit/Regenerate variants, local
+searchable history, shared drafts, Markdown/JSON export, and explicitly attached
+UTF-8 text or PNG/JPEG/WebP images. Dock chats beside existing panels; switching
+workspaces keeps generation running. Responses cannot execute commands or edit
+files. See [Chat AI usage and data storage](docs/chat-ai.md) for limits, privacy,
+recovery and the current native validation scope.
 
 ### Review changes without leaving the workspace
 

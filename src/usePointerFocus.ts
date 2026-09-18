@@ -3,7 +3,7 @@ import type { RefObject } from "react";
 import { isTextInput } from "./keybindings";
 
 const panels =
-  ".terminal-pane[data-pane-id], [data-file-pane-id], [data-plugin-pane-id]";
+  ".terminal-pane[data-pane-id], [data-file-pane-id], [data-plugin-pane-id], [data-chat-pane-id]";
 
 export function usePointerFocus(
   enabled: boolean,
@@ -28,15 +28,17 @@ export function usePointerFocus(
     const hovered = pointer.current
       ? document.elementFromPoint(pointer.current.x, pointer.current.y)
       : container.querySelector(
-          ".terminal-pane[data-pane-id]:hover, [data-file-pane-id]:hover, [data-plugin-pane-id]:hover",
+          ".terminal-pane[data-pane-id]:hover, [data-file-pane-id]:hover, [data-plugin-pane-id]:hover, [data-chat-pane-id]:hover",
         );
     const panel = hovered?.closest(panels);
     if (!panel || !container.contains(panel) || panel.contains(active)) return;
     (
       panel.querySelector<HTMLElement>(
-        ".xterm-helper-textarea, .cm-content, .image-viewport, [data-plugin-focus]",
+        ".xterm-helper-textarea, .cm-content, .image-viewport, [data-plugin-focus], [data-chat-input]",
       ) ??
-      (panel.matches("[data-plugin-pane-id]") ? (panel as HTMLElement) : null)
+      (panel.matches("[data-plugin-pane-id], [data-chat-pane-id]")
+        ? (panel as HTMLElement)
+        : null)
     )?.focus({ preventScroll: true });
   }, [enabled, root]);
 

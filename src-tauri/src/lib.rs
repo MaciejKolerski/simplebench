@@ -1,5 +1,9 @@
 mod agent_notifications;
 mod browser;
+mod chat;
+#[cfg(feature = "chat-probe")]
+#[path = "../../tests/native/chat-support.rs"]
+mod chat_probe;
 mod cli_config;
 mod cli_titles;
 pub use cli_titles::print_agy_title;
@@ -117,6 +121,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(chat::commands::Chats::default())
         .manage(browser::Browsers::default())
         .manage(terminal::Terminals::default())
         .manage(cli_titles::CliTitleConfig::default())
@@ -133,6 +138,8 @@ pub fn run() {
         .on_page_load(|_view, _payload| {
             #[cfg(feature = "native-smoke")]
             native_smoke::page(_view, _payload);
+            #[cfg(feature = "chat-probe")]
+            chat_probe::page(_view, _payload);
         })
         .register_asynchronous_uri_scheme_protocol("theme", themes::protocol)
         .register_asynchronous_uri_scheme_protocol("plugin", plugins::protocol)
@@ -145,6 +152,8 @@ pub fn run() {
                 profiles: shell::discover(),
                 integration,
             });
+            #[cfg(feature = "chat-probe")]
+            app.manage(chat_probe::Probe::default());
             let handle = app.handle().clone();
             // Load settings alongside the workspace so its first click can
             // reuse the prepared view. Window creation stays off the GUI thread.
@@ -170,7 +179,31 @@ pub fn run() {
                     tauri::generate_handler![native_smoke::plugin_smoke_result];
                 return smoke(invoke);
             }
+            #[cfg(feature = "chat-probe")]
+            if invoke.message.command().starts_with("chat_probe_") {
+                let probe: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+                    chat_probe::chat_probe_start,
+                    chat_probe::chat_probe_backend,
+                    chat_probe::chat_probe_cancel,
+                    chat_probe::chat_probe_result
+                ];
+                return probe(invoke);
+            }
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+                chat::commands::chat_connection_action,
+                chat::commands::chat_main,
+                chat::commands::chat_preferences,
+                chat::commands::chat_preferences_save,
+                chat::commands::chat_generate,
+                chat::commands::chat_cancel,
+                chat::commands::chat_subscribe,
+                chat::commands::chat_ack,
+                chat::commands::chat_close,
+                chat::commands::chat_flush,
+                chat::commands::chat_retain,
+                chat::commands::chat_export,
+                chat::commands::chat_discard,
+                chat::commands::chat_recover,
                 browser::sync_browsers,
                 browser::browser_action,
                 browser::servers::local_web_servers,
@@ -265,6 +298,7 @@ pub fn run() {
         #[cfg(target_os = "macos")]
         macos::handle_run_event(app, &event);
         if matches!(event, tauri::RunEvent::Exit) {
+            app.state::<chat::commands::Chats>().stop();
             app.state::<terminal::Terminals>().stop_all();
         }
         if let tauri::RunEvent::WindowEvent {
@@ -274,6 +308,7 @@ pub fn run() {
         } = event
         {
             if label == "main" {
+                app.state::<chat::commands::Chats>().stop();
                 app.state::<terminal::Terminals>().stop_all();
                 app.exit(0);
             }

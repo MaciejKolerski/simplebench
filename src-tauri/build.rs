@@ -1,4 +1,23 @@
 fn main() {
+    println!("cargo:rerun-if-changed=../packages/ai-runtime");
+    println!("cargo:rerun-if-changed=../scripts/prepare-ai-runtime.mjs");
+    let target = std::env::var("TARGET").expect("missing Cargo target");
+    println!("cargo:rustc-env=SIMPLEBENCH_AI_TARGET={target}");
+    let mut prepare = std::process::Command::new("node");
+    prepare
+        .arg("../scripts/prepare-ai-runtime.mjs")
+        .env("TARGET", &target);
+    if std::env::var_os("CARGO_FEATURE_CHAT_PROBE").is_some() {
+        prepare.arg("--fixture");
+    }
+    assert!(
+        prepare
+            .status()
+            .expect("Install Node and run pnpm install before building")
+            .success(),
+        "AI runtime preparation failed"
+    );
+
     tauri_build::try_build(tauri_build::Attributes::new().plugin(
         "browser",
         tauri_build::InlinedPlugin::new().commands(&["signal"]),

@@ -23,6 +23,8 @@ export default function CommandPicker({
     if (id === "openSettings" || id === "toggleWorkspaces" || isZoomAction(id))
       return true;
     if (!context.workspaceName) return false;
+    if (["chatFocusInput", "chatStop", "chatHistory"].includes(id))
+      return context.viewType === "chat";
     if (id === "movePanel")
       return document.querySelectorAll(".dock-pane-host").length > 1;
     if (id === "dockTab")

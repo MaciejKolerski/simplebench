@@ -2,6 +2,7 @@ import { useCallback, useId, useRef, useState } from "react";
 import { useEditorCloseGuard } from "./EditorCloseGuard";
 import { terminalsWithProcesses } from "./terminal-runtime";
 import { errorMessage } from "./api";
+import { closeChatViews } from "./chat/chat-service";
 import { Modal } from "./ui";
 
 export function useCloseGuard() {
@@ -9,6 +10,7 @@ export function useCloseGuard() {
   const checking = useRef(false);
   const resolve = useRef<(close: boolean) => void>(undefined);
   const [message, setMessage] = useState("");
+  const [chatError, setChatError] = useState("");
   const descriptionId = useId();
   const confirmButton = useRef<HTMLButtonElement>(null);
   const confirm = useCallback(
@@ -31,7 +33,12 @@ export function useCloseGuard() {
           });
           if (!approved) return false;
         }
-        return await editor.confirm(fileIds);
+        if (!(await editor.confirm(fileIds))) return false;
+        await closeChatViews(fileIds);
+        return true;
+      } catch (error) {
+        setChatError(errorMessage(error));
+        return false;
       } finally {
         checking.current = false;
       }
@@ -73,6 +80,23 @@ export function useCloseGuard() {
                   Close anyway
                 </button>
               </div>
+            </div>
+          </Modal>
+        )}
+        {chatError && (
+          <Modal
+            title="Conversation could not be saved"
+            onClose={() => setChatError("")}
+          >
+            <div className="dialog-form">
+              <p>{chatError}</p>
+              <p>
+                The views remain open. Retry saving or export the available
+                conversation before closing.
+              </p>
+              <button className="button" onClick={() => setChatError("")}>
+                Keep open
+              </button>
             </div>
           </Modal>
         )}

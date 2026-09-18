@@ -71,9 +71,9 @@ export interface GitFileDiff extends GitCommitDiff {
 export const getInfo = () => api<AppInfo>("app_info");
 export const loadSession = () => api<unknown>("load_session");
 let pendingSave = Promise.resolve();
-export function saveSession(data: Session) {
+export function saveSession(data: Session, recovery = false) {
   pendingSave = pendingSave
     .catch(() => {})
-    .then(() => api("save_session", { data }));
+    .then(() => api("save_session", { data, recovery }));
   return pendingSave;
 }

@@ -3,7 +3,7 @@ import react from "@vitejs/plugin-react";
 
 export default defineConfig({
   plugins: [react()],
-  optimizeDeps: { include: ["react-slot-fill", "dockview"] },
+  optimizeDeps: { include: ["react-slot-fill", "dockview", "@ai-sdk/react"] },
   // Keep Rust diagnostics visible when Vite reloads the frontend.
   clearScreen: false,
   server: {

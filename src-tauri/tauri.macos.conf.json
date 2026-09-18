@@ -8,7 +8,7 @@
         "target.'cfg(target_os = \"macos\")'.runner = [\"sh\", \"../scripts/run-macos-dev.sh\"]"
       ]
     },
-    "beforeDevCommand": "pnpm icon:macos && pnpm dev",
+    "beforeDevCommand": "pnpm ai:prepare && pnpm icon:macos && pnpm dev",
     "beforeBundleCommand": "pnpm icon:macos"
   },
   "app": {
@@ -24,7 +24,10 @@
         "decorations": true,
         "titleBarStyle": "Overlay",
         "hiddenTitle": true,
-        "trafficLightPosition": { "x": 14, "y": 24 },
+        "trafficLightPosition": {
+          "x": 14,
+          "y": 24
+        },
         "transparent": true,
         "backgroundColor": "#00000000"
       }
@@ -35,7 +38,8 @@
       "hardenedRuntime": true,
       "files": {
         "Resources/Assets.car": "target/macos-icon/Assets.car"
-      }
+      },
+      "entitlements": "ai-runtime.entitlements.plist"
     }
   }
 }

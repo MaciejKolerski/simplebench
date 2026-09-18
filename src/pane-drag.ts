@@ -50,13 +50,14 @@ export function usePaneDrag({ layout, root, enabled, onMove }: Props) {
       ".terminal-title-box, [data-pane-drag-handle]",
     );
     const source = handle?.closest<HTMLElement>(
-      "[data-pane-id], [data-plugin-pane-id], [data-file-pane-id], [data-browser-pane-id]",
+      "[data-pane-id], [data-plugin-pane-id], [data-file-pane-id], [data-browser-pane-id], [data-chat-pane-id]",
     );
     const id =
       source?.dataset.paneId ??
       source?.dataset.pluginPaneId ??
       source?.dataset.filePaneId ??
-      source?.dataset.browserPaneId;
+      source?.dataset.browserPaneId ??
+      source?.dataset.chatPaneId;
     const container = root.current;
     if (
       !handle ||

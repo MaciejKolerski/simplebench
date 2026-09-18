@@ -19,6 +19,7 @@ incremental = false
 
 [features]
 native-smoke = []
+chat-probe = ["native-smoke"]
 
 [[example]]
 name = "macos-traffic-lights"
@@ -42,8 +43,10 @@ sha2 = "0.10"
 notify = "8.2"
 tempfile = "3"
 ignore = "0.4"
-image = { version = "0.25", default-features = false, features = ["png", "tiff", "tga", "dds", "pnm", "qoi", "hdr", "exr", "ff"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp", "tiff", "tga", "dds", "pnm", "qoi", "hdr", "exr", "ff"] }
 regex = "1"
+libc = "0.2"
+rusqlite = { version = "=0.40.2", features = ["bundled", "backup"] }
 trash = "5"
 toml_edit = "0.25"
 tauri-plugin-updater = "2"
@@ -53,13 +56,16 @@ plist = "1.8"
 zip = { version = "4.6", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "=3.6.3", features = ["sync-secret-service", "crypto-rust", "vendored"] }
 gtk = "0.18"
 webkit2gtk = "2"
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp"] }
+keyring = { version = "=3.6.3", features = ["windows-native"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_Security_Authorization", "Win32_System_Threading"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "=3.6.3", features = ["apple-native"] }
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSImage", "NSResponder", "NSWindow", "NSView", "NSButton"] }
 

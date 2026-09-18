@@ -70,6 +70,9 @@ jobs:
       - name: install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: check application and AI runtime
+        run: pnpm check && pnpm test
+
       - name: read release notes
         id: notes
         shell: bash

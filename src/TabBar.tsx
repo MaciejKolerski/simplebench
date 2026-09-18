@@ -1,5 +1,11 @@
 import ResourceIcon from "./ResourceIcon";
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { RefObject } from "react";
 import {
   ChevronLeft,
@@ -8,18 +14,25 @@ import {
   FileCode,
   FileDiff,
   Globe,
+  MessageSquare,
   Plus,
   Terminal,
   Puzzle,
   X,
 } from "./icons";
 import type { Tab, TabCloseAction, TabDropSide } from "./model";
-import { tabTitle } from "./model";
+import { tabTitle, layoutPanes } from "./model";
 import { useTabDrag } from "./tab-drag";
 import { IconButton } from "./ui";
 import TabContextMenu from "./TabContextMenu";
 import type { TabMenuAnchor } from "./TabContextMenu";
 import ContextMenu from "./ContextMenu";
+
+import {
+  chatActivity,
+  chatActivityRevision,
+  subscribeChatActivity,
+} from "./chat/chat-service";
 
 interface Props {
   tabs: Tab[];
@@ -28,6 +41,7 @@ interface Props {
   onNew: () => void;
   onNewFile: () => void;
   onNewBrowser: () => void;
+  onNewChat: () => void;
   onSelect: (id: string) => void;
   onClose: (id: string, action?: TabCloseAction) => void;
   onRename: (tab: Tab) => void;
@@ -44,6 +58,7 @@ export default function TabBar({
   onNew,
   onNewFile,
   onNewBrowser,
+  onNewChat,
   onSelect,
   onClose,
   onRename,
@@ -52,6 +67,12 @@ export default function TabBar({
   mergeContainer,
   modified = new Set<string>(),
 }: Props) {
+  useSyncExternalStore(subscribeChatActivity, chatActivityRevision);
+  const activity = (tab: Tab) =>
+    (tab.type === "terminal" ? layoutPanes(tab.layout) : [tab])
+      .filter((p) => p.type === "chat")
+      .map((p) => chatActivity(p.conversationId))
+      .find(Boolean);
   const strip = useRef<HTMLDivElement>(null);
   const newButton = useRef<HTMLButtonElement>(null);
   const [newMenu, setNewMenu] = useState<{ x: number; y: number } | null>(null);
@@ -226,6 +247,8 @@ export default function TabBar({
                   />
                 ) : tab.type === "browser" ? (
                   <Globe size={14} />
+                ) : tab.type === "chat" ? (
+                  <MessageSquare size={14} />
                 ) : tab.type === "file" ? (
                   <ResourceIcon
                     path={`${tab.root}/${tab.relative}`}
@@ -237,6 +260,19 @@ export default function TabBar({
                   <Terminal size={14} />
                 )}
                 <span>{tabTitle(tab)}</span>
+                {activity(tab) && (
+                  <span
+                    className="tab-modified"
+                    aria-hidden="true"
+                    title={activity(tab)}
+                  >
+                    {activity(tab) === "Generating"
+                      ? "◌"
+                      : activity(tab) === "Chat error"
+                        ? "!"
+                        : "●"}
+                  </span>
+                )}
                 {modified?.has(tab.id) && (
                   <span className="tab-modified" aria-label="Unsaved changes">
                     ●
@@ -311,6 +347,11 @@ export default function TabBar({
               label: "New file",
               icon: <FileCode size={14} aria-hidden="true" />,
               run: onNewFile,
+            },
+            {
+              label: "Chat AI",
+              icon: <MessageSquare size={14} aria-hidden="true" />,
+              run: onNewChat,
             },
             {
               label: "New browser",

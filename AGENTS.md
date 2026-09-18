@@ -72,6 +72,33 @@ or acronym.
 - Session v2 adds plugin tabs/panes and per-workspace plugin sidebars. Preserve
   v1 compatibility and its atomic backup before upgrading the session file.
   Unknown plugin views retain valid state; never interpret them as shells.
+- Session v3 adds ChatTab to standalone tabs and mixed layouts; read v1/v2/v3
+  and atomically preserve the exact legacy session before upgrading. Chat tabs
+  never own PTYs. Missing conversation records remain chat placeholders.
+- `src/chat/` owns the lazy Chat AI interface, retained SDK Chat instances,
+  native transport, Settings and history. One instance per conversation lives
+  outside React; domain references govern close, never transient Dockview mounts.
+  Native terminal events govern completion; SDK UI-only EOF requires resubscribe
+  with epoch/watermark and active block IDs, without aborting or sending again.
+- `src-tauri/src/chat/` owns SQLite WAL/FULL history, branches, draft revisions,
+  attachment copies, credentials, a shared owner lock and the bounded AI process.
+  Send commits the exact draft and idempotent request before provider dispatch.
+  Retry retains the user message; Edit branches. Checkpoints and final saves run
+  independently of React. Existing editor/PTY guards run before chat cancellation;
+  failed saves retain RAM and block close, update and restart until resolved.
+- `packages/ai-runtime/` bundles pinned AI SDK 7 and explicit OpenAI, Anthropic
+  and Google adapters. Build preparation stages verified Node 24 archives;
+  generation uses only the shipped binary and bundle, no shell or system Node.
+  Keys travel only from native storage to this private process. Disable SDK
+  retries and raw warnings/errors; never add tools, MCP or command execution.
+  Settings alone changes connections/keys or runs paid tests. Browser child
+  views remain excluded by the global trusted-app caller check.
+- Chat credentials use keyring 3.6.3 or explicitly chosen session-only memory.
+  Journal credential IDs before mutation, preserve committed revisions and
+  recover orphan keys without enumeration. Never use plaintext fallback.
+  Chat history and attachments are private local files, not encrypted storage.
+  Native probes in `tests/native/chat-*` require `chat-probe`; fixture bundles
+  and provider overrides must never enter a normal release build.
 - Theme v2 uses raw JSONC, common/light/dark surfaces and scoped resources.
   Keep one effective runtime, native source revisions, cancelable resource
   staging, local previews and scoped filesystem watches. Legacy JSON is a

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Code,
+  MessageSquare,
   Info,
   Keyboard,
   Palette,
@@ -11,6 +12,7 @@ import {
 } from "./icons";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import ChatSettingsPage from "./chat/ChatSettingsPage";
 import PluginsPage from "./plugins/PluginsPage";
 import ThemesPage from "./ThemesPage";
 import TerminalSettingsPage from "./TerminalSettingsPage";
@@ -31,7 +33,8 @@ import { useWindowZoom } from "./useWindowZoom";
 export default function SettingsWindow() {
   const [page, setPage] = useState(() => {
     const requested = new URLSearchParams(window.location.search).get("page");
-    return requested === "plugins" ||
+    return requested === "chat-ai" ||
+      requested === "plugins" ||
       requested === "editor" ||
       requested === "themes" ||
       requested === "terminal" ||
@@ -55,6 +58,7 @@ export default function SettingsWindow() {
       if (
         current &&
         [
+          "chat-ai",
           "keybinds",
           "editor",
           "themes",
@@ -196,6 +200,14 @@ export default function SettingsWindow() {
           </button>
           <button
             className="settings-nav-item"
+            aria-current={page === "chat-ai" ? "page" : undefined}
+            onClick={() => setPage("chat-ai")}
+          >
+            <MessageSquare size={16} />
+            Chat AI
+          </button>
+          <button
+            className="settings-nav-item"
             aria-current={page === "about" ? "page" : undefined}
             onClick={() => setPage("about")}
           >
@@ -203,7 +215,9 @@ export default function SettingsWindow() {
             About
           </button>
         </nav>
-        {page === "about" ? (
+        {page === "chat-ai" ? (
+          <ChatSettingsPage />
+        ) : page === "about" ? (
           <main className="keybindings-page">
             <header className="settings-page-heading">
               <div>

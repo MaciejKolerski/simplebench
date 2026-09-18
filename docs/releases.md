@@ -29,8 +29,8 @@ tag-triggered `publish-tauri` matrix:
 6. Notify Flathub only when `FLATHUB_TOKEN` is configured.
 
 The release stays a draft if a platform fails or updater metadata is incomplete.
-The previous stable release remains the updater endpoint until publication. This workflow does not
-run Playwright, model tests, Clippy, or Rust tests. Run the relevant checks before
+The previous stable release remains the updater endpoint until publication. The release workflow runs TypeScript and model/AI runtime tests; the check
+workflow also runs Playwright, formatting, Rust tests and Clippy. Run the relevant checks before
 tagging, as described in the [development guide](../README.md#validation-and-builds).
 
 SimpleBench selects Xcode 26.3 to compile its Icon Composer source and uses its
@@ -53,7 +53,8 @@ Windows and macOS show the version and release notes, then download and verify
 the signed package when the user chooses **Update now**. Downloads show progress
 (indeterminate when the server omits a length). Before installation, the existing
 close guard checks running processes and offers save/discard/cancel for dirty
-editors. Failed saves or cancellation prevent installation. The session is saved
+editors, then stops chat generations and flushes their drafts and responses.
+Failed editor or chat saves, or cancellation, prevent installation. The session is saved
 before PTYs are stopped and installation starts. Windows' installer relaunches
 the application; macOS requests a restart after replacing the app bundle.
 Terminals restart as fresh shells, with no command or output replay.
@@ -190,3 +191,31 @@ repository. Successful releases then dispatch `simplebench-release` with
 `client_payload.tag` and `client_payload.commit`, matching Simple Voice. Leave
 the token unset until the receiving workflow is ready; this hook alone does not
 publish an application on Flathub.
+
+## Bundled Chat AI runtime
+
+`pnpm tauri dev`, normal builds and Cargo's build script prepare the pinned
+Node archive and AI SDK bundle through `scripts/prepare-ai-runtime.mjs`.
+The build downloads only the manifest-pinned official Node archive, verifies
+SHA-256 and caches it in `src-tauri/target/ai-runtime`. End users never download
+or discover a runtime. Cross-target builds select `TAURI_ENV_TARGET_TRIPLE`.
+AUR source builds need network access during preparation; binary packages
+include the runtime from the application bundle.
+
+Ship the Node executable, `ai-runtime/index.cjs`, `node.json`, bundle checksum,
+`NODE-LICENSE` and `THIRD-PARTY-NOTICES`. Update the artifact manifest and run
+native probes when changing Node or SDK versions. Supported packaging targets
+are macOS ARM64/x64, Windows x64 and Linux x64; generation requires macOS 13.5
+or later. Older macOS can still open locally stored history.
+
+macOS signs the nested Node executable with the hardened runtime and the
+`com.apple.security.cs.allow-jit` entitlement. Do not add unsigned executable
+memory or disable library validation. Developer ID signing, notarization,
+Gatekeeper and updater replacement must be tested on real release artifacts;
+an ad-hoc signature is only a local packaging test. Never ship `chat-probe` or
+`fixture.cjs` in a release. See the [Chat AI guide](chat-ai.md) for the current
+native validation scope.
+
+Linux system-key storage requires an unlocked Secret Service implementation,
+such as GNOME Keyring or KWallet's Secret Service support. Session-only storage
+is an explicit user choice, not an automatic fallback when the service fails.

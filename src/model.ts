@@ -33,7 +33,7 @@ export interface Split {
   first: Layout;
   second: Layout;
 }
-export type LayoutPane = Pane | FileTab | BrowserTab | PluginPanel;
+export type LayoutPane = Pane | FileTab | BrowserTab | ChatTab | PluginPanel;
 export type Layout = LayoutPane | Split;
 export interface LayoutSize {
   width: number;
@@ -97,6 +97,67 @@ export interface BrowserTab {
   customTitle?: string;
   url: string;
 }
+export interface ChatTab {
+  type: "chat";
+  id: string;
+  title: string;
+  customTitle?: string;
+  conversationId: string;
+}
+export const newChatTab = (
+  conversationId: string,
+  title = "Chat AI",
+): ChatTab => ({
+  type: "chat",
+  id: newId(),
+  title,
+  conversationId,
+});
+export function chatTabs(session?: Session): ChatTab[] {
+  return (
+    session?.projects.flatMap((p) =>
+      p.workspaces.flatMap((w) =>
+        w.tabs.flatMap((t) =>
+          t.type === "terminal"
+            ? layoutPanes(t.layout).filter(
+                (p): p is ChatTab => p.type === "chat",
+              )
+            : t.type === "chat"
+              ? [t]
+              : [],
+        ),
+      ),
+    ) ?? []
+  );
+}
+export function updateChat(
+  session: Session,
+  id: string,
+  change: Partial<Pick<ChatTab, "conversationId" | "title">>,
+): Session {
+  return {
+    ...session,
+    projects: session.projects.map((p) => ({
+      ...p,
+      workspaces: p.workspaces.map((w) => ({
+        ...w,
+        tabs: w.tabs.map((t) => {
+          const apply = (p: Layout): Layout =>
+            p.type === "split"
+              ? { ...p, first: apply(p.first), second: apply(p.second) }
+              : p.type === "chat" && p.id === id
+                ? { ...p, ...change }
+                : p;
+          return t.type === "chat" && t.id === id
+            ? { ...t, ...change }
+            : t.type === "terminal"
+              ? { ...t, layout: apply(t.layout) }
+              : t;
+        }),
+      })),
+    })),
+  };
+}
 export const newBrowserTab = (url = "about:blank"): BrowserTab => ({
   type: "browser",
   id: newId(),
@@ -104,7 +165,13 @@ export const newBrowserTab = (url = "about:blank"): BrowserTab => ({
   url: restoreBrowserUrl(url),
 });
 export type Tab =
-  TerminalTab | CommitTab | DiffTab | FileTab | BrowserTab | PluginPanel;
+  | TerminalTab
+  | CommitTab
+  | DiffTab
+  | FileTab
+  | BrowserTab
+  | ChatTab
+  | PluginPanel;
 export const tabTitle = (tab: Tab) => tab.customTitle ?? tab.title;
 export type TabDropSide = "left" | "right" | "top" | "bottom";
 export type TabCloseAction =
@@ -126,7 +193,7 @@ export type SidebarPanel =
   "files" | "git" | "workspaces" | `${string}.${string}`;
 export type SidebarSide = "left" | "right";
 export interface Session {
-  version: 2;
+  version: 3;
   activeProjectId: string | null;
   projects: Project[];
   sidebar: SidebarPanel | null;
@@ -237,7 +304,7 @@ export function removeWorkspace(session: Session, id: string): Session {
 }
 export function newSession(): Session {
   return {
-    version: 2,
+    version: 3,
     projects: [],
     activeProjectId: null,
     sidebar: "files",
@@ -905,8 +972,15 @@ const string = (value: unknown, fallback: string) =>
 
 export function restoreSession(value: unknown, info: AppInfo): Session {
   const data = record(value);
-  if (![1, 2].includes(data.version as number) || !Array.isArray(data.projects))
-    return newSession();
+  if (
+    ![1, 2, 3].includes(data.version as number) ||
+    !Array.isArray(data.projects)
+  )
+    if (value == null) return newSession();
+    else
+      throw new Error(
+        "The saved session is corrupt or unsupported. The original file was preserved.",
+      );
   const ids = new Set<string>();
   const id = (value: unknown) => {
     let candidate = string(value, newId());
@@ -957,6 +1031,24 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
       : {}),
     url: restoreBrowserUrl(node.url),
   });
+  const chat = (node: Record<string, unknown>): ChatTab => {
+    if (
+      typeof node.conversationId !== "string" ||
+      !/^[A-Za-z0-9_-]{1,100}$/.test(node.conversationId)
+    )
+      throw new Error(
+        "Invalid saved conversation descriptor. The session was preserved.",
+      );
+    return {
+      type: "chat",
+      id: id(node.id),
+      title: string(node.title, "Chat AI"),
+      conversationId: node.conversationId,
+      ...(typeof node.customTitle === "string"
+        ? { customTitle: node.customTitle }
+        : {}),
+    };
+  };
   const plugin = (node: Record<string, unknown>): PluginPanel => {
     if (
       typeof node.owner !== "string" ||
@@ -988,6 +1080,7 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
     if (node.type === "plugin") return plugin(node);
     if (node.type === "file") return file(node, cwd);
     if (node.type === "browser") return browser(node);
+    if (node.type === "chat") return chat(node);
     // Preserve every layout accepted by the native JSON parser's nesting limit.
     if (node.type === "split" && depth < 128)
       return {
@@ -1026,6 +1119,7 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
             const tab = record(value);
             if (tab.type === "plugin") return plugin(tab);
             if (tab.type === "browser") return browser(tab);
+            if (tab.type === "chat") return chat(tab);
             if (tab.type === "file") {
               return file(tab, path);
             }
@@ -1138,7 +1232,7 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
         : 180
       : 250;
   return {
-    version: 2,
+    version: 3,
     projects,
     activeProjectId:
       data.activeProjectId === null
@@ -1215,6 +1309,54 @@ export function updatePluginPanel(
               : tab,
         ),
       })),
+    })),
+  };
+}
+
+export function removeChatConversation(
+  session: Session,
+  conversationId: string,
+  profileId: string,
+): Session {
+  const prune = (layout: Layout): Layout | null => {
+    if (layout.type === "chat" && layout.conversationId === conversationId)
+      return null;
+    if (layout.type !== "split") return layout;
+    const first = prune(layout.first),
+      second = prune(layout.second);
+    return first && second ? { ...layout, first, second } : (first ?? second);
+  };
+  return {
+    ...session,
+    projects: session.projects.map((project) => ({
+      ...project,
+      workspaces: project.workspaces.map((workspace) => {
+        const tabs = workspace.tabs.flatMap((tab): Tab[] => {
+          if (tab.type === "chat" && tab.conversationId === conversationId)
+            return [];
+          if (tab.type !== "terminal") return [tab];
+          const layout = prune(tab.layout);
+          if (!layout) return [];
+          const panels = layoutPanes(layout);
+          return [
+            {
+              ...tab,
+              layout,
+              activePaneId: panels.some((p) => p.id === tab.activePaneId)
+                ? tab.activePaneId
+                : panels[0].id,
+            },
+          ];
+        });
+        if (!tabs.length) tabs.push(newTab(project.path, profileId));
+        return {
+          ...workspace,
+          tabs,
+          activeTabId: tabs.some((t) => t.id === workspace.activeTabId)
+            ? workspace.activeTabId
+            : tabs[0].id,
+        };
+      }),
     })),
   };
 }

@@ -206,6 +206,8 @@ export async function mockDesktop(
         },
         async invoke(command: string, args: Record<string, any> = {}) {
           calls.push({ command, args: JSON.parse(JSON.stringify(args)) });
+          if (command.startsWith("chat_") && desktop.__chatInvoke)
+            return desktop.__chatInvoke(command, args);
           if (command === "request_agent_notification_setup") {
             localStorage.setItem(
               "test-agent-notification-setup",
@@ -1014,6 +1016,8 @@ export async function mockDesktop(
           }
           if (
             [
+              "chat_close",
+              "chat_retain",
               "write_terminal",
               "resize_terminal",
               "acknowledge_terminal",

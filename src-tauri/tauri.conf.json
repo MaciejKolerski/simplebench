@@ -4,9 +4,9 @@
   "version": "0.3.0",
   "identifier": "dev.simplebench.desktop",
   "build": {
-    "beforeDevCommand": "pnpm dev",
+    "beforeDevCommand": "pnpm ai:prepare && pnpm dev",
     "devUrl": "http://127.0.0.1:1420",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "pnpm ai:prepare && pnpm build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -49,7 +49,17 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "externalBin": [
+      "binaries/simplebench-node"
+    ],
+    "resources": {
+      "resources/ai-runtime/index.cjs": "ai-runtime/index.cjs",
+      "resources/ai-runtime/NODE-LICENSE": "ai-runtime/NODE-LICENSE",
+      "resources/ai-runtime/node.json": "ai-runtime/node.json",
+      "resources/ai-runtime/THIRD-PARTY-NOTICES": "ai-runtime/THIRD-PARTY-NOTICES",
+      "resources/ai-runtime/index.cjs.sha256": "ai-runtime/index.cjs.sha256"
+    }
   },
   "plugins": {
     "updater": {

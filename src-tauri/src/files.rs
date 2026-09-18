@@ -176,12 +176,19 @@ pub fn load_session(
             path.display()
         ));
     }
-    serde_json::from_slice(&data).map(Some).map_err(|error| {
+    let saved: serde_json::Value = serde_json::from_slice(&data).map_err(|error| {
         format!(
             "Cannot restore the saved session ({error}). The file has been left intact at {}.",
             path.display()
         )
-    })
+    })?;
+    if saved.is_null() {
+        return Err(
+            "The saved session is null, not an empty layout. Choose recovery before replacing it."
+                .into(),
+        );
+    }
+    Ok(Some(saved))
 }
 
 #[tauri::command]
@@ -190,36 +197,82 @@ pub fn save_session(
     app: tauri::AppHandle,
     state: State<'_, SessionFile>,
     data: serde_json::Value,
+    recovery: Option<bool>,
 ) -> Result<(), String> {
     main_window(&window)?;
     let _guard = state.0.lock().map_err(|error| error.to_string())?;
     let path = session_path(&app)?;
-    if data["version"] == 2 && path.exists() {
-        use std::io::{Read, Write};
-        let mut previous = Vec::new();
-        fs::File::open(&path)
-            .map_err(|e| e.to_string())?
-            .take(8 * 1024 * 1024 + 1)
-            .read_to_end(&mut previous)
-            .map_err(|e| e.to_string())?;
-        if previous.len() > 8 * 1024 * 1024 {
-            return Err("The previous session exceeds its size limit.".into());
-        }
-        if serde_json::from_slice::<serde_json::Value>(&previous)
-            .is_ok_and(|saved| saved["version"] == 1)
-        {
-            let mut backup = tempfile::NamedTempFile::new_in(path.parent().unwrap())
-                .map_err(|e| e.to_string())?;
-            backup.write_all(&previous).map_err(|e| e.to_string())?;
-            backup.as_file().sync_all().map_err(|e| e.to_string())?;
-            match backup.persist_noclobber(path.with_file_name("session.v1.json")) {
-                Ok(_) => {}
-                Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => {}
-                Err(error) => return Err(error.to_string()),
+    prepare_session_save(&path, &data, recovery.unwrap_or(false))?;
+    write_json(&path, &data, 8 * 1024 * 1024)
+}
+
+fn prepare_session_save(
+    path: &Path,
+    data: &serde_json::Value,
+    recovery: bool,
+) -> Result<(), String> {
+    use std::io::{Read, Write};
+    if data["version"] != 3 || !data["projects"].is_array() {
+        return Err("Unsupported session output.".into());
+    }
+    let file = match fs::File::open(path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.to_string()),
+    };
+    let mut previous = Vec::new();
+    file.take(8 * 1024 * 1024 + 1)
+        .read_to_end(&mut previous)
+        .map_err(|e| e.to_string())?;
+    if previous.len() > 8 * 1024 * 1024 {
+        return Err("The previous session exceeds its size limit and was preserved.".into());
+    }
+    let saved = serde_json::from_slice::<serde_json::Value>(&previous).ok();
+    let version = saved
+        .as_ref()
+        .and_then(|v| v["version"].as_u64())
+        .filter(|v| [1, 2, 3].contains(v));
+    let valid = version.is_some() && saved.as_ref().is_some_and(|v| v["projects"].is_array());
+    if !valid && !recovery {
+        return Err(
+            "The saved session is corrupt or unsupported. Choose recovery before replacing it."
+                .into(),
+        );
+    }
+    if version == Some(3) && valid && !recovery {
+        return Ok(());
+    }
+    let name = if recovery {
+        format!(
+            "session.recovery.{}.json",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos()
+        )
+    } else {
+        format!("session.v{}.json", version.unwrap())
+    };
+    let mut backup = tempfile::NamedTempFile::new_in(path.parent().ok_or("Invalid session path.")?)
+        .map_err(|e| e.to_string())?;
+    backup.write_all(&previous).map_err(|e| e.to_string())?;
+    backup.as_file().sync_all().map_err(|e| e.to_string())?;
+    let destination = path.with_file_name(name);
+    match backup.persist_noclobber(&destination) {
+        Ok(_) => (),
+        Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => {
+            let existing = fs::symlink_metadata(&destination).map_err(|e| e.to_string())?;
+            if !existing.is_file() || existing.file_type().is_symlink() {
+                return Err("The session backup path is not a regular file. The original session was preserved.".into());
             }
         }
+        Err(error) => return Err(error.to_string()),
     }
-    write_json(&path, &data, 8 * 1024 * 1024)
+    #[cfg(unix)]
+    fs::File::open(path.parent().unwrap())
+        .and_then(|f| f.sync_all())
+        .map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 pub fn write_json(path: &Path, data: &impl Serialize, limit: usize) -> Result<(), String> {
@@ -243,6 +296,37 @@ pub fn write_json(path: &Path, data: &impl Serialize, limit: usize) -> Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn session_upgrade_backs_up_exact_legacy_bytes_and_preserves_unknown_files() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("session.json");
+        let output = serde_json::json!({"version":3,"projects":[]});
+        for version in [1, 2] {
+            let bytes = format!("{{ \"version\": {version}, \"projects\": [] }}\n");
+            fs::write(&path, &bytes).unwrap();
+            prepare_session_save(&path, &output, false).unwrap();
+            assert_eq!(
+                fs::read(path.with_file_name(format!("session.v{version}.json"))).unwrap(),
+                bytes.as_bytes()
+            );
+            fs::write(
+                &path,
+                format!("{{\"version\":{version},\"projects\":[],\"other\":true}}"),
+            )
+            .unwrap();
+            prepare_session_save(&path, &output, false).unwrap();
+            assert_eq!(
+                fs::read(path.with_file_name(format!("session.v{version}.json"))).unwrap(),
+                bytes.as_bytes()
+            );
+        }
+        for bytes in ["{broken", "{\"version\":99,\"projects\":[]}"] {
+            fs::write(&path, bytes).unwrap();
+            assert!(prepare_session_save(&path, &output, false).is_err());
+            assert_eq!(fs::read_to_string(&path).unwrap(), bytes);
+            prepare_session_save(&path, &output, true).unwrap();
+        }
+    }
     #[test]
     fn rejects_parent_paths_and_lists_directories_first() {
         let root = tempfile::tempdir().unwrap();
