@@ -5,8 +5,8 @@
 SimpleBench is a desktop ADE application developed incrementally around project
 folders, named workspaces, and terminal tabs. A project owns workspaces sharing
 its folder; each workspace owns tabs; each terminal tab owns a default shell
-environment and a tree of terminal, file editor, and browser panels. Browser, file, diff, and commit tabs
-do not own shells. There is no hardcoded tab count limit.
+environment and a tree of terminal, file editor, browser, and Android panels. Browser, Android,
+file, diff, and commit tabs do not own shells. There is no hardcoded tab count limit.
 
 The current milestone includes project selection, workspaces, tabs, a file
 explorer, CodeMirror file editing, conditional Git Source Control, native terminals with splits and
@@ -25,7 +25,7 @@ or acronym.
 - `src/model.ts` owns the persisted layout and pure layout transformations.
   Workspace tabs are terminals with pane layouts, file editors with project-relative
   paths and positions, read-only file diffs with a repository path and staged/working
-  comparison, browsers with an HTTP(S) URL, or commit views with a repository
+  comparison, browsers with an HTTP(S) URL, Android phones with a device UUID, or commit views with a repository
   path and full commit hash.
   Dragging terminal, browser, or file tabs into a terminal layout preserves pane IDs,
   editor buffers, and running PTYs; moved terminal panes may override the tab's default shell profile, including after restoration.
@@ -155,6 +155,109 @@ or acronym.
   or editor buffers and restore by loading fresh comparisons.
   `src-tauri/src/git/history.rs` provides paginated history and commit details.
   History and commit tabs are read-only; merge diffs use the first parent.
+- Android is an explicit built-in tab/pane with a device UUID, no PTY or shell.
+  `src/android/service.ts` connects domain references to a lazily imported runtime;
+  `AndroidPane.tsx` and `AndroidSettingsPage.tsx` are separate lazy entry points.
+  Retain the domain across docking and workspace changes. Never stop a phone on
+  React unmount or a transient Dockview remove/add. Prepare last-view removal
+  after existing guards, stop the device, then modify the current domain without
+  restoring an old snapshot. Cancelled removal retains descriptors and leaves
+  stopped devices stopped. Restore descriptors with lazy starts on first visit.
+- `src-tauri/src/android/` owns SDK/AVD files, private Java, processes, ports,
+  credentials, versioned preferences/devices and one interprocess directory lock.
+  Its empty application state performs no Android filesystem scans, timers or
+  process startup. Management requires Settings; runtime/input requires main;
+  reads and Stop allow either trusted application webview. Use `Window` and retain
+  the global caller guard excluding browser children. Paths and process identity
+  are always resolved natively from device IDs.
+- Android installation uses the pinned direct CLI with `--no-metrics`, isolated
+  Android homes and a private JRE. Journal publication of directories and manifests,
+  verify archives and installed artifacts, preserve one previous working tool copy,
+  and require explicit provider consent. Images referenced by any device remain
+  immutable even when stopped. Device creation uses private Java's AvdManagerCli;
+  desired hardware changes apply after Stop, while image changes require a new
+  device. Wipe/delete require the exact device name and preserve other AVDs.
+  Maintenance only cleans bounded owned caches/staging/logs, never device data.
+  Preserve the pinned CLI's empty cache lock inode while pruning old bundles;
+  reject a symlink or unexpected contents in its place.
+  Corrupt metadata remains preserved for explicit recovery with revision checks.
+- One native actor owns each Android child through coalesced Start, readiness,
+  cancellation and confirmed exit. A failed Stop retains the child and disallows
+  a second process. Boot preparation is queued to bound peak resource use.
+  Cold Stop uses same-transport guarded ADB `sync` and Android shutdown before
+  reaping; emulator gRPC shutdown alone lost unsynced writes in the native trial.
+  Recovery additionally checks executable, OS creation/boot identity, the owned
+  AVD and authenticated gRPC before stopping a surviving process. Never signal a
+  recovered PID alone, kill a shared ADB server or launch an ordinary ADB client
+  that could replace an incompatible server. Rust's bounded smart-socket transport
+  verifies the device and private generation on the same connection as each action.
+- Android transport uses one authenticated gRPC screenshot source and one binary
+  Tauri Channel per device, shared by visible canvases outside React state.
+  Frame v4 carries process UUID, independent subscription epoch, sequence,
+  dimensions and rotation. Keep one pending IPC frame and one latest Rust frame;
+  stale ACK/unsubscribe cannot affect a replacement epoch. A two-second missing
+  ACK cancels the source. Hidden views and native main-window minimization cancel
+  image transfer without stopping Android. Release visible GPU buffers on unmount.
+  The qualified source budget is 921,600 RGBA pixels at 30 FPS, at most 1280
+  on either edge, with retained WebGL textures. Hardware display dimensions
+  are separate (at most 4096 per edge and 8,294,400 pixels); preserve the SDK
+  profile's resolution and density while scaling the preview at its source.
+  Zoom and scroll belong to each retained domain view, not the device or React
+  mount. Do not save scroll offsets from detached or zero-sized hosts during
+  cleanup: Dockview can remove a portal before React teardown, and WebKit then
+  reports zero instead of the last visible position.
+  100% means preview pixels; offer actual-size wording only when the
+  complete hardware display fits the preview budget. Explicit screenshots
+  use a separately bounded full-resolution PNG response, never the frame IPC.
+  Render the largest visible view at source resolution before sharing its canvas;
+  secondary framebuffers may match their physical display size. Never copy a
+  downscaled framebuffer into a larger view or confuse framebuffer and source
+  dimensions when reporting transport measurements.
+  Android's catalog normalizes multiple provider tags (including 16 KB pages),
+  filters preview/codename tracks and preserves numeric minor API levels.
+  Installed source.properties may encode a decimal AndroidVersion.ApiLevel;
+  preserve its minor component and reject conflicting separate minor metadata.
+  Sort stable images newest first and explain Play Store, Google APIs and AOSP;
+  disable incompatible phone/image combinations before native validation.
+  Keep foldable and resizable hardware out until changing displays are handled.
+- Android input has one ordered native focus lease across devices. Release keys,
+  touches and composition on blur; preserve application shortcuts and normal form
+  fields. Direct Unicode/IME uses the explicitly disclosed bundled keyboard in
+  `src-tauri/android-input/`; clipboard transfer occurs only for intentional Paste. The selected guest IME
+  writes the guest clipboard and invokes its Paste action in order; normal typing
+  does not use the clipboard. Confirm its authenticated readiness after selection. APK and
+  screenshot commands use native file dialogs, never arbitrary webview paths.
+  Keep the IME signing key in persistent private development/signing storage,
+  outside Git and disposable trial directories. Preserve its certificate across
+  updates and regenerate the artifact manifest after rebuilding the APK.
+  Preserve the byte-sensitive Git attributes for IME sources, protobuf and
+  provider licenses; Windows line-ending conversion must not change their hashes.
+  Settings sends expiring, acknowledged open intents to main; closed setup targets
+  are not recreated or redirected into another workspace.
+- `src/application-close.ts` is shared by window close, updater installation and
+  plugin restart: block new Android starts/mutations, finish existing guards, save
+  the current session, settle the installer and stop owned phones before exit.
+  Errors or cancellation release preparation after operations settle, preserving
+  the directory lock and descriptors. Native Exit cleanup is only an emergency
+  fallback. Closing Settings does not cancel consciously started installation.
+- `docs/android-architecture.md` records tools, protobuf provenance, authentication,
+  native evidence and resource budgets. Stage 0 and the integrated product passed
+  on the recorded Apple M3/macOS ARM64 host, including a thirty-minute shared-view
+  trial after framebuffer optimization. Qualification uses 720x1280, Host GPU and
+  cold boot; local packaging has only an ad hoc signature, not notarization.
+  The modern-profile/zoom extension passed on Android 17 (API 37.2), Google
+  Play and Pixel 10 Pro XL at 1344x2992, with a scaled preview. The guide
+  summarizes its input/resource qualification and separates the
+  thirty-minute trial from the two-minute regression after viewport cleanup
+  was fixed. Do not generalize these results to every catalog image.
+  Other platforms remain unverified and native commands gate installation, device creation/wipe,
+  open intents and Start on the toolchain qualification flag. Read, Stop and
+  recovery remain available. In particular, Windows' launcher spawns a separate
+  QEMU child; qualify both process identities and cleanup before enabling it.
+  `tests/native/android-*` and `run-android-product.mjs` are
+  isolated opt-in fixtures behind `android-probe`/`native-smoke`; never distribute
+  those features. Default builds include the lazy production backend and bindings.
+  Keep downloaded tools/AVDs, credentials and user license acceptance outside Git.
 - pnpm manages frontend dependencies; Cargo manages Rust dependencies.
 - `src/Updater.tsx` checks signed GitHub release metadata after startup and on
   requests from Settings → About. `src-tauri/src/updater.rs` detects Linux update

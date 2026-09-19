@@ -20,13 +20,16 @@ incremental = false
 [features]
 native-smoke = []
 chat-probe = ["native-smoke"]
+android-probe = ["native-smoke", "dep:turbojpeg", "dep:objc2-foundation", "objc2/exception"]
 
 [[example]]
 name = "macos-traffic-lights"
 path = "../tests/native/macos-traffic-lights.rs"
 
 [build-dependencies]
+protoc-bin-vendored = { version = "3.2.0" }
 tauri-build = { version = "2", features = [] }
+tonic-prost-build = { version = "0.14.6" }
 
 [dependencies]
 tauri = { version = "2", features = ["macos-private-api", "unstable"] }
@@ -38,6 +41,7 @@ portable-pty = "0.9"
 dunce = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+quick-xml = "0.41"
 percent-encoding = "2"
 sha2 = "0.10"
 notify = "8.2"
@@ -54,6 +58,18 @@ tauri-plugin-fs = { version = "2", features = ["watch"] }
 jsonc-parser = { version = "0.33.1", features = ["serde"] }
 plist = "1.8"
 zip = { version = "4.6", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+tonic = { version = "0.14.6", default-features = false, features = ["channel", "codegen"] }
+tonic-prost = { version = "0.14.6" }
+prost = { version = "0.14.4" }
+tokio = { version = "1", features = ["time", "sync", "macros", "process", "io-util", "fs"] }
+reqwest = { version = "0.13.4", default-features = false, features = ["rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+turbojpeg = { version = "1.5.1", default-features = false, features = ["cmake", "require-simd"], optional = true }
+ring = { version = "0.17.14" }
+base64 = { version = "0.22.1" }
+
+tar = { version = "0.4.46" }
+flate2 = { version = "1.1.10", default-features = false, features = ["zlib-rs"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 keyring = { version = "=3.6.3", features = ["sync-secret-service", "crypto-rust", "vendored"] }
@@ -62,12 +78,13 @@ webkit2gtk = "2"
 
 [target.'cfg(windows)'.dependencies]
 keyring = { version = "=3.6.3", features = ["windows-native"] }
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_Security_Authorization", "Win32_System_Threading"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Diagnostics_ToolHelp", "Win32_Security_Authorization", "Win32_System_Threading", "Win32_Storage_FileSystem", "Win32_System_LibraryLoader"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 keyring = { version = "=3.6.3", features = ["apple-native"] }
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSImage", "NSResponder", "NSWindow", "NSView", "NSButton"] }
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSString"], optional = true }
 
 [target.'cfg(target_os = "macos")'.dev-dependencies]
 objc2-app-kit = { version = "0.3", default-features = false, features = ["NSBitmapImageRep", "NSImageRep"] }

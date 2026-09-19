@@ -81,6 +81,17 @@ task in the same folder, open the Workspaces sidebar and choose **New workspace*
   hold separate sets of tabs. Place Workspaces, Explorer, and Source Control on
   either side of the window.
 
+### Run a local Android phone
+
+Choose **+ → New android symulator** and prepare tools, a system image and a
+virtual phone in **Settings → Android**. Android runs inside the panel, without
+an external emulator window or Android Studio. Browse recent stable Android
+versions and available Pixel profiles, then use Fit, 25–300% zoom and pan in
+each view. Screenshots retain the phone's full resolution. Native qualification
+covers the recorded macOS ARM64 host; Android setup and Start remain disabled
+on other hosts pending their native tests. See the [Android guide](docs/android.md)
+for setup, controls, device data and current limits.
+
 ### Chat with your own AI providers
 
 Choose **+ → Chat AI**, then add a named connection in **Settings → Chat AI**.

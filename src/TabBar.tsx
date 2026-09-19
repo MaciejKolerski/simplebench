@@ -15,6 +15,7 @@ import {
   FileDiff,
   Globe,
   MessageSquare,
+  Monitor,
   Plus,
   Terminal,
   Puzzle,
@@ -41,6 +42,7 @@ interface Props {
   onNew: () => void;
   onNewFile: () => void;
   onNewBrowser: () => void;
+  onNewAndroid: () => void;
   onNewChat: () => void;
   onSelect: (id: string) => void;
   onClose: (id: string, action?: TabCloseAction) => void;
@@ -58,6 +60,7 @@ export default function TabBar({
   onNew,
   onNewFile,
   onNewBrowser,
+  onNewAndroid,
   onNewChat,
   onSelect,
   onClose,
@@ -247,6 +250,8 @@ export default function TabBar({
                   />
                 ) : tab.type === "browser" ? (
                   <Globe size={14} />
+                ) : tab.type === "android" ? (
+                  <Monitor size={14} aria-hidden="true" />
                 ) : tab.type === "chat" ? (
                   <MessageSquare size={14} />
                 ) : tab.type === "file" ? (
@@ -357,6 +362,11 @@ export default function TabBar({
               label: "New browser",
               icon: <Globe size={14} aria-hidden="true" />,
               run: onNewBrowser,
+            },
+            {
+              label: "New android symulator",
+              icon: <Monitor size={14} aria-hidden="true" />,
+              run: onNewAndroid,
             },
           ]}
           onClose={() => {

@@ -3068,6 +3068,303 @@ svg {
 .settings-help + .settings-help {
   margin-top: var(--space-5);
 }
+.android-settings-page .keybindings-group {
+  margin-top: var(--space-28);
+}
+.android-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-12);
+  flex-wrap: wrap;
+  padding: var(--space-12) 0;
+}
+.android-row > div:first-child {
+  min-width: 0;
+  flex: 1 1 180px;
+}
+.android-row strong,
+.android-device-card h3 {
+  font-size: var(--font-size-12);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+.android-device-card h3 {
+  display: flex;
+  gap: var(--space-8);
+  align-items: center;
+  margin: 0 0 var(--space-5);
+}
+.android-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-8);
+  margin: var(--space-10) 0;
+}
+.android-row .android-actions {
+  margin: 0;
+}
+.android-actions input {
+  min-width: 120px;
+  max-width: 100%;
+  flex: 1;
+}
+.android-default {
+  font-size: var(--font-size-10);
+  color: var(--color-surface-variant-text);
+  font-weight: 400;
+}
+.android-path {
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.android-operation {
+  padding: var(--space-12);
+  margin: var(--space-16) 0;
+  border: var(--border-width) solid var(--color-outline);
+  border-radius: var(--radius-control);
+}
+.android-operation .android-row {
+  padding-top: 0;
+}
+.android-operation progress {
+  width: 100%;
+  height: 6px;
+  accent-color: var(--color-primary);
+}
+.android-device-card + .android-device-card,
+.android-image-list .android-row + .android-row {
+  border-top: var(--border-width) solid var(--color-outline);
+}
+.android-image-list {
+  max-height: 360px;
+  overflow: auto;
+  margin-top: var(--space-12);
+  padding-right: var(--space-5);
+}
+.android-storage {
+  margin: var(--space-12) 0;
+  font-size: var(--font-size-12);
+}
+.android-storage dl {
+  margin: var(--space-10) 0;
+}
+.android-storage dl > div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--space-8);
+  padding: var(--space-5) 0;
+}
+.android-storage dd {
+  margin: 0;
+  color: var(--color-surface-variant-text);
+}
+.android-device-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+  padding: var(--space-16);
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+.android-dialog .modal-surface {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 70px);
+}
+.android-dialog .modal-surface > header {
+  flex: 0 0 auto;
+}
+.android-device-form p {
+  margin: 0;
+  line-height: 1.6;
+}
+.android-device-form label {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+  font-size: var(--font-size-12);
+}
+.android-device-form input:not([type="checkbox"]),
+.android-device-form .select {
+  width: 100%;
+  min-width: 0;
+}
+.android-device-form .android-checkbox {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--space-8);
+}
+.android-checkbox input {
+  flex: 0 0 auto;
+  margin: 2px 0 0;
+  accent-color: var(--color-primary);
+}
+.android-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: var(--space-12);
+  margin: var(--space-12) 0;
+}
+.android-device-form summary,
+.android-storage summary {
+  cursor: pointer;
+}
+.android-license h3 {
+  font-size: var(--font-size-12);
+  font-weight: 500;
+}
+.android-license pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 180px;
+  overflow: auto;
+  padding: var(--space-12);
+  background: var(--color-background);
+  border: var(--border-width) solid var(--color-outline);
+  font: var(--font-size-11)/1.6 var(--font-family-mono);
+  user-select: text;
+}
+.android-install-list {
+  margin: 0;
+  padding-left: var(--space-20);
+  font-size: var(--font-size-12);
+  line-height: 1.7;
+}
+.android-pane {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--color-background);
+}
+.android-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-8);
+  flex: 0 0 auto;
+  min-width: 0;
+  border-bottom: var(--border-width) solid var(--color-outline);
+  background: var(--color-surface);
+}
+.android-pane-title {
+  font-size: var(--font-size-12);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 30px;
+  flex: 1;
+}
+.android-pane-phase {
+  font-size: var(--font-size-10);
+  color: var(--color-surface-variant-text);
+}
+.android-navigation {
+  display: flex;
+  gap: var(--space-2);
+}
+.android-zoom.select-trigger {
+  width: 74px;
+  flex: none;
+}
+.android-image-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-12);
+  margin-block: var(--space-12);
+}
+.android-image-filters label {
+  display: grid;
+  gap: var(--space-4);
+  flex: 1;
+  min-width: 160px;
+  font-size: var(--font-size-12);
+}
+.android-zoom.select-trigger {
+  min-height: 24px;
+}
+.android-viewport.is-panning,
+.android-viewport.is-panning .android-screen {
+  cursor: grabbing;
+}
+.android-viewport {
+  position: relative;
+  display: flex;
+  align-items: safe center;
+  justify-content: safe center;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+}
+.android-viewport.is-fit {
+  overflow: hidden;
+}
+.android-screen {
+  display: block;
+  flex: none;
+  touch-action: none;
+  outline: none;
+  object-fit: contain;
+}
+.android-pane:focus-within .android-viewport {
+  box-shadow: inset 0 0 0 1px var(--color-outline);
+}
+.android-input {
+  position: absolute;
+  left: 3px;
+  bottom: 3px;
+  width: 1px;
+  height: 1px;
+  opacity: 0.01;
+  padding: 0;
+  border: 0;
+  resize: none;
+}
+.android-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: var(--space-12);
+  overflow: auto;
+  padding: var(--space-16);
+  text-align: center;
+  background: var(--color-background);
+}
+.android-placeholder p {
+  max-width: 440px;
+  margin: 0;
+  font-size: var(--font-size-12);
+  line-height: 1.6;
+  color: var(--color-surface-variant-text);
+}
+.android-pane-error {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+  padding: var(--space-8);
+  background: var(--color-surface);
+  color: var(--color-error);
+  font-size: var(--font-size-11);
+  position: relative;
+  z-index: 1;
+}
+.android-pane-error > span {
+  flex: 1 1 180px;
+  overflow-wrap: anywhere;
+}
 .keybindings-status {
   min-height: 34px;
   padding: var(--space-10) 0;

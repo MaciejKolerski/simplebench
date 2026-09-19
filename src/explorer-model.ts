@@ -110,7 +110,8 @@ export function applyFileChange(
     if (
       item.type === "browser" ||
       item.type === "plugin" ||
-      item.type === "chat"
+      item.type === "chat" ||
+      item.type === "android"
     )
       return item;
     if (item.type === "terminal")
@@ -136,7 +137,8 @@ export function applyFileChange(
         if (
           tab.type === "browser" ||
           tab.type === "plugin" ||
-          tab.type === "chat"
+          tab.type === "chat" ||
+          tab.type === "android"
         )
           return [tab];
         if (tab.type === "diff") {

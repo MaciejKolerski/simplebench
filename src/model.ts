@@ -33,7 +33,8 @@ export interface Split {
   first: Layout;
   second: Layout;
 }
-export type LayoutPane = Pane | FileTab | BrowserTab | ChatTab | PluginPanel;
+export type LayoutPane =
+  Pane | FileTab | BrowserTab | AndroidTab | ChatTab | PluginPanel;
 export type Layout = LayoutPane | Split;
 export interface LayoutSize {
   width: number;
@@ -96,6 +97,62 @@ export interface BrowserTab {
   title: string;
   customTitle?: string;
   url: string;
+}
+export interface AndroidTab {
+  type: "android";
+  id: string;
+  title: string;
+  customTitle?: string;
+  deviceId: string | null;
+}
+export const newAndroidTab = (
+  deviceId: string | null = null,
+  title = "Android",
+): AndroidTab => ({ type: "android", id: newId(), title, deviceId });
+export function androidTabs(session?: Session): AndroidTab[] {
+  return (
+    session?.projects.flatMap((project) =>
+      project.workspaces.flatMap((workspace) =>
+        workspace.tabs.flatMap((tab) =>
+          tab.type === "terminal"
+            ? layoutPanes(tab.layout).filter(
+                (pane): pane is AndroidTab => pane.type === "android",
+              )
+            : tab.type === "android"
+              ? [tab]
+              : [],
+        ),
+      ),
+    ) ?? []
+  );
+}
+export function updateAndroid(
+  session: Session,
+  id: string,
+  change: Partial<Pick<AndroidTab, "deviceId" | "title">>,
+): Session {
+  const apply = (layout: Layout): Layout =>
+    layout.type === "split"
+      ? { ...layout, first: apply(layout.first), second: apply(layout.second) }
+      : layout.type === "android" && layout.id === id
+        ? { ...layout, ...change }
+        : layout;
+  return {
+    ...session,
+    projects: session.projects.map((project) => ({
+      ...project,
+      workspaces: project.workspaces.map((workspace) => ({
+        ...workspace,
+        tabs: workspace.tabs.map((tab) =>
+          tab.type === "terminal"
+            ? { ...tab, layout: apply(tab.layout) }
+            : tab.type === "android" && tab.id === id
+              ? { ...tab, ...change }
+              : tab,
+        ),
+      })),
+    })),
+  };
 }
 export interface ChatTab {
   type: "chat";
@@ -170,6 +227,7 @@ export type Tab =
   | DiffTab
   | FileTab
   | BrowserTab
+  | AndroidTab
   | ChatTab
   | PluginPanel;
 export const tabTitle = (tab: Tab) => tab.customTitle ?? tab.title;
@@ -1049,6 +1107,27 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
         : {}),
     };
   };
+  const android = (node: Record<string, unknown>): AndroidTab => {
+    if (
+      node.deviceId !== null &&
+      (typeof node.deviceId !== "string" ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+          node.deviceId,
+        ))
+    )
+      throw new Error(
+        "Invalid saved Android device reference. The session was preserved.",
+      );
+    return {
+      type: "android",
+      id: id(node.id),
+      title: string(node.title, "Android"),
+      deviceId: node.deviceId,
+      ...(typeof node.customTitle === "string"
+        ? { customTitle: node.customTitle }
+        : {}),
+    };
+  };
   const plugin = (node: Record<string, unknown>): PluginPanel => {
     if (
       typeof node.owner !== "string" ||
@@ -1081,6 +1160,7 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
     if (node.type === "file") return file(node, cwd);
     if (node.type === "browser") return browser(node);
     if (node.type === "chat") return chat(node);
+    if (node.type === "android") return android(node);
     // Preserve every layout accepted by the native JSON parser's nesting limit.
     if (node.type === "split" && depth < 128)
       return {
@@ -1120,6 +1200,7 @@ export function restoreSession(value: unknown, info: AppInfo): Session {
             if (tab.type === "plugin") return plugin(tab);
             if (tab.type === "browser") return browser(tab);
             if (tab.type === "chat") return chat(tab);
+            if (tab.type === "android") return android(tab);
             if (tab.type === "file") {
               return file(tab, path);
             }

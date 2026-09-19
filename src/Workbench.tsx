@@ -19,6 +19,15 @@ import { setPluginCloseHandler } from "./plugins/PluginsProvider";
 import { pluginPanels, updatePluginPanel, newId } from "./model";
 import Select from "./Select";
 import {
+  configureAndroid,
+  receiveAndroidOpen,
+  retainAndroid,
+  stopLastAndroidViews,
+  type OpenIntent,
+} from "./android/service";
+import { newAndroidTab, androidTabs, updateAndroid } from "./model";
+import { flushSync } from "react-dom";
+import {
   Suspense,
   useCallback,
   useEffect,
@@ -141,6 +150,10 @@ import {
 } from "./editor-service";
 import { useCloseGuard } from "./CloseGuard";
 import { useUpdater } from "./Updater";
+import {
+  prepareApplicationClose,
+  type ReleaseClosePreparation,
+} from "./application-close";
 import { useCliTitleSetup } from "./CliTitleSetup";
 import { useAgentNotifications } from "./AgentNotifications";
 import {
@@ -281,6 +294,7 @@ export default function Workbench() {
       retainEditorTabs(next);
       retainBrowsers(next);
       retainChats(next);
+      retainAndroid(next);
       pluginHost.retainPanels(
         new Set(next ? pluginPanels(next).map((panel) => panel.id) : []),
       );
@@ -483,13 +497,89 @@ export default function Workbench() {
   );
   const savingEnabled = useRef(false);
   const closing = useRef(false);
-  const updater = useUpdater(!!info, async () => {
-    if (closing.current || fileOperationBusy.current) return false;
-    if (!(await closeGuard.confirm())) return false;
-    if (currentSession.current && savingEnabled.current) {
-      await saveSession(captureEditorPositions(currentSession.current));
+  const [stoppingForClose, setStoppingForClose] = useState<
+    "stopping" | "cancelling" | null
+  >(null);
+  const cancelClose = useRef(false);
+  const requestCancelClose = () => {
+    cancelClose.current = true;
+    setStoppingForClose("cancelling");
+  };
+  const prepareAndroidRemoval = async (ids: ReadonlySet<string>) => {
+    if (
+      !androidTabs(currentSession.current).some(
+        (tab) => ids.has(tab.id) && tab.deviceId,
+      )
+    )
+      return true;
+    if (closing.current) return false;
+    closing.current = true;
+    cancelClose.current = false;
+    flushSync(() => setStoppingForClose("stopping"));
+    try {
+      await stopLastAndroidViews(ids, () => currentSession.current);
+      return !cancelClose.current;
+    } catch (reason) {
+      setError(errorMessage(reason));
+      return false;
+    } finally {
+      closing.current = false;
+      setStoppingForClose(null);
     }
-    return true;
+  };
+  useEffect(() => {
+    configureAndroid({
+      change: (id, change) => {
+        if (!closing.current)
+          setSession((state) =>
+            state ? updateAndroid(state, id, change) : state,
+          );
+      },
+      error: setError,
+      session: () => currentSession.current,
+      commit: (update) =>
+        setSession((state) => (state ? update(state) : state)),
+      blocked: () =>
+        closing.current || updater.busy.current || fileOperationBusy.current,
+    });
+  }, [setSession]);
+  useEffect(() => {
+    if (!native) return;
+    const listener = listen<OpenIntent>(
+      "android-open-request",
+      ({ payload }) => {
+        void receiveAndroidOpen(payload).catch((error) =>
+          setError(errorMessage(error)),
+        );
+      },
+    );
+    return () => {
+      void listener.then((stop) => stop()).catch(() => {});
+    };
+  }, []);
+  const prepareClose = (showProgress = true) =>
+    prepareApplicationClose(
+      closeGuard.confirm,
+      async () => {
+        if (currentSession.current && savingEnabled.current) {
+          await saveSession(captureEditorPositions(currentSession.current));
+        }
+      },
+      showProgress
+        ? () => {
+            cancelClose.current = false;
+            // Enter the modal before saving; edits must not race the final session.
+            flushSync(() => setStoppingForClose("stopping"));
+            return {
+              cancelled: () => cancelClose.current,
+              release: () => setStoppingForClose(null),
+            };
+          }
+        : undefined,
+    );
+  const updater = useUpdater(!!info, async () => {
+    if (closing.current || fileOperationBusy.current) return null;
+    return prepareClose(false);
   });
   useEffect(() => {
     if (!native) return;
@@ -502,14 +592,19 @@ export default function Workbench() {
         )
           return;
         closing.current = true;
+        let release: ReleaseClosePreparation | null = null;
+        let restarting = false;
         try {
-          if (!(await closeGuard.confirm())) return;
-          if (currentSession.current && savingEnabled.current)
-            await saveSession(captureEditorPositions(currentSession.current));
+          release = await prepareClose();
+          if (!release) return;
           await api("restart_plugins");
+          restarting = true;
         } catch (error) {
           setError(errorMessage(error));
         } finally {
+          if (!restarting && release) {
+            await release().catch((error) => setError(errorMessage(error)));
+          }
           closing.current = false;
         }
       })();
@@ -670,18 +765,20 @@ export default function Workbench() {
       event.preventDefault();
       if (closing.current || updater.busy.current) return;
       closing.current = true;
+      let release: ReleaseClosePreparation | null = null;
+      let destroyed = false;
       try {
-        if (!(await closeGuard.confirm())) {
-          closing.current = false;
-          return;
-        }
-        if (currentSession.current && savingEnabled.current) {
-          await saveSession(captureEditorPositions(currentSession.current));
-        }
+        release = await prepareClose();
+        if (!release) return;
         await getCurrentWindow().destroy();
+        destroyed = true;
       } catch (error) {
-        closing.current = false;
         setError(`Could not close the window: ${errorMessage(error)}`);
+      } finally {
+        if (!destroyed && release) {
+          await release().catch((error) => setError(errorMessage(error)));
+        }
+        if (!destroyed) closing.current = false;
       }
     });
     void unlisten
@@ -818,6 +915,7 @@ export default function Workbench() {
       ))
     )
       return;
+    if (!(await prepareAndroidRemoval(fileIds))) return;
     const current = currentSession.current?.projects
       .find((candidate) => candidate.id === project.id)
       ?.workspaces.find((candidate) => candidate.id === workspace.id);
@@ -1016,6 +1114,10 @@ export default function Workbench() {
             ".tab-context-menu, .editor-status-menu, .sidebar-context-menu, .markdown-preview-menu, .explorer-context-menu",
           )) ||
         (isTextInput(event.target) &&
+          !(
+            event.target instanceof Element &&
+            event.target.closest("[data-android-input]")
+          ) &&
           !action?.includes(".") &&
           !inEditor &&
           !(
@@ -1333,6 +1435,14 @@ export default function Workbench() {
           ))
         )
           return;
+        const androidIds = new Set(
+          target.tabs.flatMap((tab) =>
+            tab.type === "terminal"
+              ? layoutPanes(tab.layout).map((pane) => pane.id)
+              : [tab.id],
+          ),
+        );
+        if (!(await prepareAndroidRemoval(androidIds))) return;
         const remaining = current();
         if (!remaining) return;
         closeTerminals(
@@ -1609,6 +1719,7 @@ export default function Workbench() {
       ))
     )
       return;
+    if (!(await prepareAndroidRemoval(new Set([id])))) return;
     if (pane.type === "terminal") closeTerminals([id]);
     change(
       (state) =>
@@ -1879,6 +1990,16 @@ export default function Workbench() {
               newTabTitle={shortcutTitle("New tab", bindings.newTab)}
               onNew={() => addTab()}
               onNewChat={() => void addChat()}
+              onNewAndroid={() =>
+                change((state) => {
+                  const added = newAndroidTab();
+                  return updateWorkspace(state, workspace.id, (current) => ({
+                    ...current,
+                    tabs: [...current.tabs, added],
+                    activeTabId: added.id,
+                  }));
+                })
+              }
               onNewBrowser={() =>
                 change((state) => {
                   const added = newBrowserTab();
@@ -2066,6 +2187,14 @@ export default function Workbench() {
                   onOpenCommit={(commit) => openHistoryCommit(commit, tab.root)}
                   onError={setError}
                 />
+              ) : tab.type === "android" ? (
+                <Suspense fallback={<div role="status">Loading Android…</div>}>
+                  <builtinViews.android
+                    key={tab.id}
+                    tab={tab}
+                    onClose={() => void closeTab(tab.id)}
+                  />
+                </Suspense>
               ) : tab.type === "chat" ? (
                 <Suspense
                   fallback={<div role="status">Loading conversation…</div>}
@@ -2189,12 +2318,28 @@ export default function Workbench() {
                         ))
                       )
                         return;
+                      if (
+                        !(await prepareAndroidRemoval(
+                          new Set(removed.map((pane) => pane.id)),
+                        ))
+                      )
+                        return;
                       closeTerminals(
                         removed
                           .filter((pane) => pane.type === "terminal")
                           .map((pane) => pane.id),
                       );
-                      modifyTab((tab) => ({ ...tab, layout: kept }));
+                      const removedIds = new Set(
+                        removed.map((pane) => pane.id),
+                      );
+                      modifyTab((tab) => {
+                        let layout = tab.layout;
+                        for (const id of removedIds) {
+                          const next = removePane(layout, id);
+                          if (next) layout = next;
+                        }
+                        return { ...tab, layout };
+                      });
                       setPaneNotice("");
                     }}
                     onResize={(id, ratio) =>
@@ -2429,6 +2574,27 @@ export default function Workbench() {
           )}
           {updater.dialog}
           {closeGuard.dialog}
+          {stoppingForClose && (
+            <Modal title="Preparing to close" onClose={requestCancelClose}>
+              <div className="dialog-body">
+                <p role="status">
+                  {stoppingForClose === "cancelling"
+                    ? "Keeping SimpleBench open after the current operations finish. Stopped phones will stay stopped."
+                    : "Saving your session, finishing Android installation and stopping your phones…"}
+                </p>
+                <div className="dialog-actions">
+                  <button
+                    type="button"
+                    className="button"
+                    disabled={stoppingForClose === "cancelling"}
+                    onClick={requestCancelClose}
+                  >
+                    Cancel closing
+                  </button>
+                </div>
+              </div>
+            </Modal>
+          )}
           {cliTitles.dialog}
           {agentNotifications.dialog}
         </div>

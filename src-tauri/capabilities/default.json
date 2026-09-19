@@ -18,6 +18,8 @@
     "core:window:allow-internal-toggle-maximize",
     "core:window:allow-is-maximized",
     "core:window:allow-is-fullscreen",
+    "core:window:allow-is-visible",
+    "core:window:allow-is-minimized",
     "core:window:allow-close",
     "core:window:allow-destroy",
     "core:window:allow-set-title",

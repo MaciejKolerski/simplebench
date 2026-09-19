@@ -86,6 +86,9 @@ export async function mockDesktop(
         updateDownloadError: "",
         updateInstallError: "",
         updateRestartError: "",
+        androidPreparation: null,
+        androidExitError: "",
+        androidExitDelay: 0,
         updateCheckDelay: 0,
         updateDownloadDelay: 0,
         updateContentLength: 100,
@@ -208,6 +211,13 @@ export async function mockDesktop(
           calls.push({ command, args: JSON.parse(JSON.stringify(args)) });
           if (command.startsWith("chat_") && desktop.__chatInvoke)
             return desktop.__chatInvoke(command, args);
+          if (
+            (command.startsWith("android_") ||
+              command === "save_android_preferences") &&
+            command !== "android_exit" &&
+            desktop.__androidInvoke
+          )
+            return desktop.__androidInvoke(command, args);
           if (command === "request_agent_notification_setup") {
             localStorage.setItem(
               "test-agent-notification-setup",
@@ -290,6 +300,26 @@ export async function mockDesktop(
             if (desktop.__nativeTest.updateRestartError)
               throw new Error(desktop.__nativeTest.updateRestartError);
             return;
+          }
+          if (command === "android_exit") {
+            const action = args.action;
+            const mock = desktop.__nativeTest;
+            if (action.type === "begin") {
+              if (mock.androidPreparation)
+                throw new Error("Shutdown is already in progress");
+              return (mock.androidPreparation = crypto.randomUUID());
+            }
+            if (action.preparation !== mock.androidPreparation)
+              throw new Error("Stale shutdown preparation");
+            if (action.type === "finish") {
+              await new Promise((resolve) =>
+                setTimeout(resolve, mock.androidExitDelay),
+              );
+              if (mock.androidExitError) throw new Error(mock.androidExitError);
+            } else if (action.type === "resume") {
+              mock.androidPreparation = null;
+            }
+            return null;
           }
           if (command === "local_web_servers") {
             const result = [...desktop.__nativeTest.localWebServers];
@@ -992,6 +1022,8 @@ export async function mockDesktop(
           if (command === "plugin:dialog|open")
             return desktop.__nativeTest.folder;
           if (command === "plugin:window|scale_factor") return 1;
+          if (command === "plugin:window|is_visible") return true;
+          if (command === "plugin:window|is_minimized") return false;
           if (command === "plugin:window|is_fullscreen")
             return desktop.__nativeTest.fullscreen;
           if (command === "plugin:event|listen") {

@@ -1,0 +1,109 @@
+# Local Android phones
+
+Android runs inside a SimpleBench tab or docked panel. It uses a local Android
+Emulator process with its own persistent virtual phone data, without opening an
+emulator window or requiring Android Studio.
+
+Native qualification currently covers the recorded Apple M3/macOS ARM64 host.
+Android setup and Start are disabled on Windows, Linux and Intel macOS until
+their native lifecycle, input and graphics tests are completed. This restriction
+applies to Android, not to the rest of SimpleBench. See the exact host, tool
+versions, results and remaining limitations in [the architecture guide](android-architecture.md).
+The modern profile and zoom extension was tested with Android 17 (API 37.2)
+Google Play and Pixel 10 Pro XL at 1344 × 2992, using a scaled preview. The
+report distinguishes the thirty-minute transport trial from a two-minute
+regression after the viewport retention fix. Other catalog images are offered
+according to SDK compatibility; they have not all been individually tested.
+
+## Prepare a phone
+
+1. Choose **+ → New android symulator** and then **Set up Android**.
+2. In **Settings → Android**, check Environment and any required system
+   preparation. Hardware virtualization may require an administrator outside
+   SimpleBench.
+3. Choose **Install Android tools**, review the provider terms and approve
+   the required licenses. SimpleBench downloads its own SDK tools and private
+   Java runtime into its local application data. It does not change the
+   system PATH, JAVA_HOME, shell profiles or another application's SDK.
+4. Browse **System images**. Recent stable versions appear first, with filters
+   for Android version and included apps. Choose **Google Play** for Play Store
+   and Google services, **Google APIs** for services without the store, or
+   **AOSP** for a minimal open-source system. Images marked **16 KB** require
+   compatible native libraries in your apps. Download only the image you want
+   after reviewing its terms; preview and Canary builds are excluded.
+5. Create a device using an available phone profile and installed image. Review
+   the bundled SimpleBench input method, which provides Unicode and composition
+   inside this virtual phone. Profiles come from the installed official tools,
+   including recent Pixel models. Profiles needing a newer Android version are
+   disabled with an explanation. The name initially follows your chosen phone;
+   you can change it. Hardware options remain under **Hardware and startup**.
+   Host GPU and cold boot are the tested configuration.
+6. Set the device as default if wanted, then choose **Open in workspace** to
+   return to the waiting tab. **Open in new tab** creates an additional view.
+
+The installer shows its current stage and download progress where available.
+Closing Settings keeps an explicitly started installation running. Closing
+SimpleBench safely settles or cancels the installation before exiting.
+
+## Use the panel
+
+Click and drag on the screen to touch, scroll to swipe, or Alt-drag for a
+mirrored two-finger gesture. Type while the phone has focus; Tab leaves the
+phone. Application shortcuts and ordinary form fields keep their normal roles.
+Use **Paste** to transfer the host clipboard intentionally. Typing does not
+use the clipboard, and there is no background clipboard synchronization.
+
+The toolbar provides Android navigation and a **Screen zoom** control. Choose
+**Fit** to see the whole phone or 25–300% to enlarge its preview. Pinch or
+Ctrl/Cmd-scroll over the phone to zoom around the pointer. Middle-drag or
+Shift-scroll pans an enlarged preview; ordinary scrolling swipes in Android.
+Each view keeps its own zoom and position across docking and workspace changes
+during the application session.
+
+The phone retains its profile's full screen resolution and density. Continuous
+previews are scaled at the emulator to at most 1280 pixels on either edge and
+921,600 pixels total. **100%** maps a preview pixel to a physical display pixel;
+enlarging a large phone's preview does not reveal extra detail. **Actual size
+(1:1)** is offered only when the phone fits the preview budget; other phones
+offer **Preview size (100%)**. **Save screenshot…** exports full phone resolution.
+
+The actions menu includes rotation, Start/Stop/Restart, zoom, **Install APK…**,
+**Save screenshot…** and **Device details**. The latter exposes the
+current ADB serial and managed ADB path for your own terminal work. Selecting
+an APK installs it; SimpleBench does not build a project or execute copied text.
+
+Two views of the same device share its apps, data, process and image stream.
+Create another device for an independent phone. Docking, resizing and switching
+workspaces preserve the running process. Hidden or minimized views stop image
+transfer; Android itself still occupies RAM until **Stop**. Closing the final
+view stops the device and preserves its data. Restored tabs start their phones
+only when visited.
+
+Modern Google Play images can use substantially more host memory than AOSP.
+The tested Android 17 emulator and its helper used roughly 7–8.3 GiB, including
+graphics and emulator allocations; the configured guest RAM is only part of
+that total. Stop unused phones to release their resources.
+
+## Manage and recover
+
+Settings manages names, the default device, hardware, images and maintenance.
+Hardware changes apply on the next start after Stop. A different system image
+requires a new device. An image referenced by any device cannot be updated or
+removed in place, including while the device is stopped.
+
+**Wipe data…** and **Delete device…** require the exact device name. Cache
+cleanup preserves phone data. Use **Export diagnostics** for bounded local
+logs. Failed starts and disconnected images offer an explicit retry, reconnect
+or route back to setup; a missing restored device remains repairable in its tab.
+
+The Android backend never kills a shared ADB server or uses a regular ADB client
+that might replace an incompatible server. A conflicting server or unverified
+device identity produces an error to resolve before retrying. A second
+SimpleBench process cannot manage the same Android directory concurrently.
+
+Profiles describe virtual screen hardware, not every physical component or a
+manufacturer's exclusive software. Foldable/resizable profiles remain excluded
+until their changing displays and input mapping are implemented and tested.
+
+Quick Boot, host cameras/microphone, audio forwarding, physical phones, iOS,
+cloud devices and Android AI/MCP control are outside the qualified v1 setup.

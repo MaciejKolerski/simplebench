@@ -42,6 +42,7 @@ export default function DockviewLayout(props: Props) {
       "title",
       "customTitle",
       "url",
+      "deviceId",
       "state",
     ].includes(key)
       ? undefined

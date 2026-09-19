@@ -163,6 +163,19 @@ export default function SplitView({
                       onClose={() => props.onClosePane(layout.id)}
                     />
                   </div>
+                ) : layout.type === "android" ? (
+                  <div key={layout.id} className="split-child">
+                    <Suspense
+                      fallback={<div role="status">Loading Android…</div>}
+                    >
+                      <builtinViews.android
+                        tab={layout}
+                        overview={props.overview}
+                        onFocus={() => props.onFocus(layout.id)}
+                        onClose={() => props.onClosePane(layout.id)}
+                      />
+                    </Suspense>
+                  </div>
                 ) : layout.type === "chat" ? (
                   <div key={layout.id} className="split-child">
                     <Suspense

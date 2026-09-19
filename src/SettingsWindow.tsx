@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import {
   Code,
   MessageSquare,
+  Monitor,
   Info,
   Keyboard,
   Palette,
@@ -30,10 +31,13 @@ import { useKeybindings } from "./KeybindingsProvider";
 import ReadyWindow from "./ReadyWindow";
 import { useWindowZoom } from "./useWindowZoom";
 
+const AndroidSettingsPage = lazy(() => import("./android/AndroidSettingsPage"));
+
 export default function SettingsWindow() {
   const [page, setPage] = useState(() => {
     const requested = new URLSearchParams(window.location.search).get("page");
-    return requested === "chat-ai" ||
+    return requested === "android" ||
+      requested === "chat-ai" ||
       requested === "plugins" ||
       requested === "editor" ||
       requested === "themes" ||
@@ -58,6 +62,7 @@ export default function SettingsWindow() {
       if (
         current &&
         [
+          "android",
           "chat-ai",
           "keybinds",
           "editor",
@@ -208,6 +213,14 @@ export default function SettingsWindow() {
           </button>
           <button
             className="settings-nav-item"
+            aria-current={page === "android" ? "page" : undefined}
+            onClick={() => setPage("android")}
+          >
+            <Monitor size={16} />
+            Android
+          </button>
+          <button
+            className="settings-nav-item"
             aria-current={page === "about" ? "page" : undefined}
             onClick={() => setPage("about")}
           >
@@ -215,7 +228,17 @@ export default function SettingsWindow() {
             About
           </button>
         </nav>
-        {page === "chat-ai" ? (
+        {page === "android" ? (
+          <Suspense
+            fallback={
+              <main className="keybindings-page" role="status">
+                Loading Android settings…
+              </main>
+            }
+          >
+            <AndroidSettingsPage />
+          </Suspense>
+        ) : page === "chat-ai" ? (
           <ChatSettingsPage />
         ) : page === "about" ? (
           <main className="keybindings-page">

@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "checkedAt": "2026-09-18",
+  "hosts": {
+    "darwin_arm64": {
+      "cli": {
+        "version": "1.0.16261425",
+        "url": "https://dl.google.com/android/cli/latest/darwin_arm64/android-cli",
+        "size": 83918832,
+        "sha256": "d1ebf7fc1517aba98d6a34961ea89f843ea3acc7c1ced693fa103a0e279052fd"
+      },
+      "java": {
+        "version": "21.0.12.1+1",
+        "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jre_aarch64_mac_hotspot_21.0.12.1_1.tar.gz",
+        "size": 48144965,
+        "sha256": "dec50fc6f9fcd4fe3ae8cabf5a5fa68f6afc48841f7698e468e9aa5d54beed84"
+      },
+      "qualified": true
+    },
+    "darwin_x86_64": {
+      "cli": {
+        "version": "1.0.16261425",
+        "url": "https://dl.google.com/android/cli/latest/darwin_x86_64/android-cli",
+        "size": 85512528,
+        "sha256": "557060b2dbbe33d35947a679d0afaba1fb31f7275c734ef4a5e80e80e63d8541"
+      },
+      "java": {
+        "version": "21.0.12.1+1",
+        "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jre_x64_mac_hotspot_21.0.12.1_1.tar.gz",
+        "size": 42131876,
+        "sha256": "6717ec641fd9ce0bb209ca083ee23b42202ac68cb6fcc5753496e0e4a0f41989"
+      },
+      "qualified": false
+    },
+    "linux_x86_64": {
+      "cli": {
+        "version": "1.0.16261425",
+        "url": "https://dl.google.com/android/cli/latest/linux_x86_64/android-cli",
+        "size": 87324848,
+        "sha256": "847e24a7d1711561a8739629b59c6e09b5a80dbfd98045d6ce7c661f46ecbc81"
+      },
+      "java": {
+        "version": "21.0.12.1+1",
+        "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jre_x64_linux_hotspot_21.0.12.1_1.tar.gz",
+        "size": 52059408,
+        "sha256": "2413149700df0f7d440500a84a8f764c535f21e5a5e87d38328b64eec2c5b500"
+      },
+      "qualified": false
+    },
+    "windows_x86_64": {
+      "cli": {
+        "version": "1.0.16261425",
+        "url": "https://dl.google.com/android/cli/latest/windows_x86_64/android-cli.exe",
+        "size": 84612760,
+        "sha256": "203f647c50a3dfed38ccc8337610fc08618161471c9472a16de0abfa8248565e"
+      },
+      "java": {
+        "version": "21.0.12.1+1",
+        "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jre_x64_windows_hotspot_21.0.12.1_1.zip",
+        "size": 48999141,
+        "sha256": "d35f31e712f0fcf6ac5a093edc90204fbff22f720ba3950bd09d331d5e621636"
+      },
+      "qualified": false
+    }
+  }
+}

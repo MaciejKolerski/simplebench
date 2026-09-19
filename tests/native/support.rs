@@ -9,6 +9,11 @@ fn entry_script(source: &str, data: &serde_json::Value) -> String {
     source.replace("SMOKE_ENTRY", &serde_json::to_string(data).unwrap())
 }
 pub fn page(webview: &tauri::Webview, payload: &tauri::webview::PageLoadPayload<'_>) {
+    #[cfg(feature = "android-probe")]
+    if std::env::var_os("SIMPLEBENCH_ANDROID_PROBE_DIRECTORY").is_some() {
+        crate::android_probe::page(webview, payload);
+        return;
+    }
     if std::env::var_os("SIMPLEBENCH_NOTIFICATION_SMOKE_DIRECTORY").is_some() {
         notification_smoke::page(webview, payload);
         return;
@@ -50,6 +55,10 @@ pub fn plugin_smoke_result(
 ) -> Result<serde_json::Value, String> {
     if !matches!(window.label(), "main" | "settings") {
         return Err("Unknown test caller.".into());
+    }
+    #[cfg(feature = "android-probe")]
+    if std::env::var_os("SIMPLEBENCH_ANDROID_PRODUCT_DIRECTORY").is_some() {
+        return crate::android_product::result(&window, &stage, data);
     }
     if std::env::var_os("SIMPLEBENCH_NOTIFICATION_SMOKE_DIRECTORY").is_some() {
         return notification_smoke::result(&app, &stage, data);

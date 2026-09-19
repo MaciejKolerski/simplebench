@@ -1,4 +1,12 @@
 mod agent_notifications;
+mod android;
+#[cfg(feature = "android-probe")]
+#[path = "../../tests/native/android-support.rs"]
+mod android_probe;
+#[cfg(feature = "android-probe")]
+#[path = "../../tests/native/android-product-support.rs"]
+mod android_product;
+mod android_protocol;
 mod browser;
 mod chat;
 #[cfg(feature = "chat-probe")]
@@ -122,6 +130,8 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(chat::commands::Chats::default())
+        .manage(android::manager::Android::default())
+        .manage(android::open::Requests::default())
         .manage(browser::Browsers::default())
         .manage(terminal::Terminals::default())
         .manage(cli_titles::CliTitleConfig::default())
@@ -134,7 +144,10 @@ pub fn run() {
         .manage(themes::Themes::default())
         .manage(plugins::Plugins::default())
         .manage(settings_window::SettingsWindow::default())
-        .on_window_event(settings_window::on_window_event)
+        .on_window_event(|window, event| {
+            settings_window::on_window_event(window, event);
+            android::commands::window_event(window, event);
+        })
         .on_page_load(|_view, _payload| {
             #[cfg(feature = "native-smoke")]
             native_smoke::page(_view, _payload);
@@ -155,6 +168,12 @@ pub fn run() {
             #[cfg(feature = "chat-probe")]
             app.manage(chat_probe::Probe::default());
             let handle = app.handle().clone();
+            #[cfg(feature = "android-probe")]
+            app.manage(android_probe::Probe::default());
+            #[cfg(feature = "android-probe")]
+            android_probe::watch_native_control(app.handle().clone());
+            #[cfg(feature = "android-probe")]
+            android_product::watch(app.handle().clone());
             // Load settings alongside the workspace so its first click can
             // reuse the prepared view. Window creation stays off the GUI thread.
             tauri::async_runtime::spawn(async move {
@@ -189,7 +208,44 @@ pub fn run() {
                 ];
                 return probe(invoke);
             }
+            #[cfg(feature = "android-probe")]
+            if invoke.message.command().starts_with("android_probe_") {
+                let probe: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+                    android_probe::android_probe_control,
+                    android_probe::android_probe_subscribe,
+                    android_probe::android_probe_ack,
+                    android_probe::android_probe_input,
+                    android_probe::android_probe_native_text,
+                    android_probe::android_probe_native_pointer,
+                    android_product::android_probe_product_guest,
+                    android_probe::android_probe_report
+                ];
+                return probe(invoke);
+            }
             let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+                android::commands::android_state,
+                android::commands::android_prepare_setup,
+                android::commands::android_setup_context,
+                android::commands::android_request_open,
+                android::commands::android_open_result,
+                android::commands::android_catalog,
+                android::commands::android_storage,
+                android::commands::android_export_diagnostics,
+                android::commands::android_install_plan,
+                android::commands::android_install,
+                android::commands::android_cancel_operation,
+                android::commands::android_manage_device,
+                android::commands::android_maintenance,
+                android::commands::save_android_preferences,
+                android::commands::android_start,
+                android::commands::android_stop,
+                android::commands::android_exit,
+                android::commands::android_subscribe_frames,
+                android::commands::android_ack_frame,
+                android::commands::android_unsubscribe_frames,
+                android::commands::android_input,
+                android::commands::android_install_apk,
+                android::commands::android_save_screenshot,
                 chat::commands::chat_connection_action,
                 chat::commands::chat_main,
                 chat::commands::chat_preferences,
@@ -298,6 +354,13 @@ pub fn run() {
         #[cfg(target_os = "macos")]
         macos::handle_run_event(app, &event);
         if matches!(event, tauri::RunEvent::Exit) {
+            if let Err(error) = tauri::async_runtime::block_on(
+                app.state::<android::manager::Android>().emergency_cleanup(),
+            ) {
+                eprintln!("Android exit cleanup could not confirm completion: {error}");
+            }
+            #[cfg(feature = "android-probe")]
+            app.state::<android_probe::Probe>().cleanup();
             app.state::<chat::commands::Chats>().stop();
             app.state::<terminal::Terminals>().stop_all();
         }

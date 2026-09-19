@@ -1055,6 +1055,8 @@ pub fn request_plugin_restart(window: Window, app: tauri::AppHandle) -> Result<(
 #[tauri::command]
 pub fn restart_plugins(window: Window, app: tauri::AppHandle) -> Result<(), String> {
     crate::files::main_window(&window)?;
+    app.state::<crate::android::manager::Android>()
+        .require_exit_ready()?;
     app.request_restart();
     Ok(())
 }

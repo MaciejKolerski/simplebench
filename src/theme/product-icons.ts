@@ -13,6 +13,7 @@ export const productIcons = {
   ChevronsDownUp: ["collapse-all"],
   ChevronsUpDown: ["expand-all"],
   CircleAlert: ["error"],
+  Circle: ["circle-outline"],
   Code: ["code"],
   Columns2: ["split-horizontal"],
   Command: ["symbol-key"],

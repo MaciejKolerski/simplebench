@@ -5,6 +5,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { api, errorMessage, native } from "./api";
 import { Modal } from "./ui";
+import type { ReleaseClosePreparation } from "./application-close";
 
 const releases =
   "https://github.com/MaciejKolerski/simplebench/releases/latest";
@@ -20,7 +21,7 @@ type Status =
 
 export function useUpdater(
   ready: boolean,
-  beforeInstall: () => Promise<boolean>,
+  beforeInstall: () => Promise<ReleaseClosePreparation | null>,
 ) {
   const [status, setStatus] = useState<Status>("idle");
   const [open, setOpen] = useState(false);
@@ -87,6 +88,7 @@ export function useUpdater(
     busy.current = true;
     setError("");
     let restartRequested = false;
+    let release: ReleaseClosePreparation | null = null;
     try {
       if (!installed.current && !downloaded.current) {
         setStatus("downloading");
@@ -105,7 +107,8 @@ export function useUpdater(
         downloaded.current = true;
       }
       setStatus("preparing");
-      if (!(await beforeInstall())) {
+      release = await beforeInstall();
+      if (!release) {
         setStatus("available");
         return;
       }
@@ -124,6 +127,9 @@ export function useUpdater(
       setError(errorMessage(error));
       setStatus("error");
     } finally {
+      if (!restartRequested && release) {
+        await release().catch((error) => setError(errorMessage(error)));
+      }
       busy.current = restartRequested;
     }
   };

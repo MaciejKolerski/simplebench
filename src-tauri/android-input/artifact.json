@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "package": "org.simplebench.input",
+  "versionCode": 3,
+  "minApi": 26,
+  "targetApi": 36,
+  "apkSha256": "4a1dc0861c689f986732172fefee2f33008d534cc6f59931e71afd916cda2bc7",
+  "certificateSha256": "d9753b5a9b5dfce06b6e7d45d74a094776d8110aa3d14eaecfd4611c4e542de1",
+  "sources": {
+    "AndroidManifest.xml": "d26a4f842c7ec31e40018a71733cb4e125a2cdbd47750046fe9796ef848210da",
+    "res/xml/input_method.xml": "63a8fbf832bca89108f7cd2f2451d34179abde3773fb18fb58889cf881dde2a7",
+    "src/org/simplebench/input/SimpleBenchInput.java": "31f2c21bc4531ac5e87f9091ff157e34b849d64084e158a099e27491ff950401"
+  },
+  "tools": {
+    "javac": "javac 17.0.19",
+    "aapt2": "Android Asset Packaging Tool (aapt) 2.20-13193326",
+    "d8": "D8 8.10.9-dev (build a7ad18a70460b799d0482e497c109a75bf7f91de from go/r8bot (luci-r8-custom-ci-archive-0-mt8s))",
+    "androidJarSha256": "d9eb9da824d9e247a352f570f01e1169e725b2954bca9e283a71786c59b59f9a"
+  }
+}

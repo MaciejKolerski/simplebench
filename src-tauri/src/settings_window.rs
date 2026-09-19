@@ -87,7 +87,14 @@ pub async fn open_settings(
     if page.as_deref().is_some_and(|page| {
         !matches!(
             page,
-            "keybinds" | "themes" | "plugins" | "editor" | "terminal" | "about" | "chat-ai"
+            "keybinds"
+                | "themes"
+                | "plugins"
+                | "editor"
+                | "terminal"
+                | "about"
+                | "chat-ai"
+                | "android"
         )
     }) {
         return Err("Unknown settings page.".into());

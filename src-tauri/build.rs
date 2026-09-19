@@ -19,6 +19,20 @@ fn main() {
         "AI runtime preparation failed"
     );
 
+    {
+        println!("cargo:rerun-if-changed=android-proto/emulator_controller.proto");
+        let mut config = tonic_prost_build::Config::new();
+        config.protoc_executable(protoc_bin_vendored::protoc_bin_path().unwrap());
+        config.bytes([".android.emulation.control.Image.image"]);
+        tonic_prost_build::configure()
+            .build_server(false)
+            .compile_with_config(
+                config,
+                &["android-proto/emulator_controller.proto"],
+                &["android-proto"],
+            )
+            .expect("failed to compile the pinned Android emulator protocol");
+    }
     tauri_build::try_build(tauri_build::Attributes::new().plugin(
         "browser",
         tauri_build::InlinedPlugin::new().commands(&["signal"]),

@@ -59,6 +59,7 @@ export const ChevronRight = product("ChevronRight", Lucide.ChevronRight);
 export const ChevronsDownUp = product("ChevronsDownUp", Lucide.ChevronsDownUp);
 export const ChevronsUpDown = product("ChevronsUpDown", Lucide.ChevronsUpDown);
 export const CircleAlert = product("CircleAlert", Lucide.CircleAlert);
+export const Circle = product("Circle", Lucide.Circle);
 export const Code = product("Code", Lucide.Code);
 export const Columns2 = product("Columns2", Lucide.Columns2);
 export const Command = product("Command", Lucide.Command);
