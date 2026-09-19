@@ -26,7 +26,15 @@ export const generation = z
     operation: z
       .enum(["generate", "test-connection", "list-models"])
       .default("generate"),
-    provider: z.enum(["openai", "anthropic", "google"]),
+    provider: z.enum([
+      "openai",
+      "anthropic",
+      "google",
+      "xai",
+      "openrouter",
+      "deepseek",
+      "nvidia",
+    ]),
     apiKey: z.string().min(1).max(8192),
     model: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,199}$/),
     assistantId: id,

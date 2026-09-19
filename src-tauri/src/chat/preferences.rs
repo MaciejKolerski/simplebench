@@ -60,7 +60,13 @@ impl Preferences {
                 || connection.name.len() > 200
                 || !matches!(
                     connection.provider.as_str(),
-                    "openai" | "anthropic" | "google"
+                    "openai"
+                        | "anthropic"
+                        | "google"
+                        | "xai"
+                        | "openrouter"
+                        | "deepseek"
+                        | "nvidia"
                 )
                 || !matches!(connection.secret_mode.as_str(), "system" | "session")
                 || connection
@@ -375,6 +381,50 @@ mod tests {
         }
     }
     #[test]
+    fn supported_providers_round_trip_and_refresh_preserves_custom_models() {
+        for provider in [
+            "openai",
+            "anthropic",
+            "google",
+            "xai",
+            "openrouter",
+            "deepseek",
+            "nvidia",
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            let path = root.path().join("preferences.json");
+            let secrets = Memory::default();
+            let mut settings = Settings::open(path.clone(), root.path(), secrets.clone()).unwrap();
+            let mut desired = settings.data.clone();
+            let mut item = connection();
+            item.provider = provider.into();
+            item.models = vec!["custom/model".into()];
+            desired.connections.push(item);
+            settings
+                .save(desired, 0, Some(("connection", "private-key")))
+                .unwrap();
+            settings
+                .record_result(
+                    "connection",
+                    1,
+                    "",
+                    "list-models",
+                    &serde_json::json!({"models": ["new/model", "new/model"]}),
+                )
+                .unwrap();
+            let restored = Settings::open(path, root.path(), secrets).unwrap();
+            assert_eq!(restored.data.connections[0].provider, provider);
+            assert_eq!(
+                restored.data.connections[0].models,
+                ["custom/model", "new/model"]
+            );
+            assert_eq!(restored.key("connection").unwrap(), "private-key");
+            let mut invalid = restored.data.clone();
+            invalid.connections[0].provider = "unsupported".into();
+            assert!(invalid.validate().is_err());
+        }
+    }
+    #[test]
     fn rotation_uses_committed_revision_and_session_keys_expire() {
         let root = tempfile::tempdir().unwrap();
         let path = root.path().join("preferences.json");
@@ -542,11 +592,16 @@ impl<S: Secrets> Settings<S> {
         };
         if operation == "list-models" {
             if let Some(models) = result["models"].as_array() {
-                connection.models = models
-                    .iter()
-                    .filter_map(|v| v.as_str().map(str::to_owned))
-                    .take(1000)
-                    .collect();
+                // Keep manually added and previously available IDs when a
+                // provider returns a partial or changed catalog.
+                for model in models.iter().filter_map(|value| value.as_str()) {
+                    if connection.models.len() >= 1000 {
+                        break;
+                    }
+                    if !connection.models.iter().any(|existing| existing == model) {
+                        connection.models.push(model.to_owned());
+                    }
+                }
             }
         } else {
             connection.tested_model = Some(model.into());

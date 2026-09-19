@@ -19,9 +19,11 @@ import {
   Copy,
   History,
   MessageSquare,
-  Paperclip,
+  ArrowUp,
+  ChevronDown,
+  Pencil,
+  RotateCcw,
   Plus,
-  Send,
   Settings,
   Square,
   X,
@@ -33,6 +35,8 @@ import type { ChatRuntime } from "./chat-runtime";
 import type { Attachment, Config, Conversation } from "./types";
 import { textOf } from "./types";
 import capabilities from "./model-capabilities.json";
+import { ModelSelect } from "./ModelSelect";
+import { modelLabel, suggestedModel } from "./models";
 import "./chat.css";
 const copy = (value: string) =>
   native ? writeText(value) : navigator.clipboard.writeText(value);
@@ -173,9 +177,29 @@ export default function ChatPane({
     if (bottom.current && scroll.current)
       scroll.current.scrollTop = scroll.current.scrollHeight;
   }, [messages]);
-  const model = capabilities.models.find(
-    (m) => m.provider === connection?.provider && m.id === config?.model,
-  );
+  useLayoutEffect(() => {
+    const element = input.current;
+    const pane = root.current;
+    if (!element || !pane) return;
+    const resize = () => {
+      element.style.height = "0px";
+      const maximum = parseFloat(getComputedStyle(element).maxHeight);
+      element.style.height = `${Math.min(element.scrollHeight, maximum)}px`;
+      if (bottom.current && scroll.current)
+        scroll.current.scrollTop = scroll.current.scrollHeight;
+    };
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(pane);
+    return () => observer.disconnect();
+  }, [state.text, !!loaded]);
+  const ready =
+    !!connection?.enabled && !!connection.secretId && !!config?.model;
+  const canSend =
+    ready &&
+    !state.storageFailed &&
+    !state.unsentText &&
+    (!!state.text.trim() || !!loaded?.draft.attachments.length);
   return (
     <section
       ref={root}
@@ -221,23 +245,9 @@ export default function ChatPane({
           <X size={15} />
         </IconButton>
       </header>
-      {config && (
-        <div className="chat-model-row">
-          <span title={connection?.name ?? "No connection"}>
-            {connection?.name ?? "No connection"}
-          </span>
-          <button
-            className="chat-model-button"
-            onClick={() => setOptions(true)}
-            disabled={state.busy}
-          >
-            {config.model || "Choose a model"}
-          </button>
-        </div>
-      )}
       <div
         ref={scroll}
-        className="chat-messages"
+        className={`chat-messages${!messages.length ? " chat-messages-empty" : ""}`}
         aria-label="Conversation messages"
         onScroll={(e) => {
           const element = e.currentTarget;
@@ -278,13 +288,13 @@ export default function ChatPane({
         ) : !messages.length ? (
           <div className="chat-empty">
             <MessageSquare size={28} aria-hidden="true" />
-            <h2>Start a conversation</h2>
+            <h2>What would you like to work on?</h2>
             <p>
-              {connection
-                ? `Messages and selected attachments are sent to ${connection.name}.`
-                : "Add your own OpenAI, Anthropic or Google Gemini connection in Settings."}
+              {ready
+                ? "Ask a question, explore an idea, or drop in a file."
+                : "Connect your preferred AI provider in Settings to get started."}
             </p>
-            {!connection && (
+            {!ready && (
               <button
                 className="button"
                 onClick={() => run(api("open_settings", { page: "chat-ai" }))}
@@ -293,8 +303,8 @@ export default function ChatPane({
               </button>
             )}
             <p className="muted">
-              Only the text and files you attach are shared. Conversation
-              history stays on this device.
+              Only messages and files you choose are shared. History stays on
+              this device.
             </p>
           </div>
         ) : (
@@ -317,72 +327,81 @@ export default function ChatPane({
                 <article
                   key={message.id}
                   className={`chat-message chat-message-${message.role}`}
+                  aria-label={
+                    message.role === "user"
+                      ? "Your message"
+                      : "Assistant message"
+                  }
                 >
-                  <header>
-                    <strong>
-                      {message.role === "user" ? "You" : "Assistant"}
-                    </strong>
-                    <span className="muted">
-                      {saved?.status !== "completed" &&
-                      saved?.status !== "active"
-                        ? saved?.status
-                        : ""}
-                    </span>
-                  </header>
-                  {message.parts.map((part, i) =>
-                    part.type === "text" ? (
-                      <div className="chat-markdown" key={i}>
-                        <Markdown text={part.text} onError={runtime.report} />
-                      </div>
-                    ) : part.type === "reasoning" ? (
-                      <details key={i}>
-                        <summary>Reasoning</summary>
-                        <div className="chat-markdown">
+                  <div className="chat-message-content">
+                    {message.parts.map((part, i) =>
+                      part.type === "text" ? (
+                        <div className="chat-markdown" key={i}>
                           <Markdown text={part.text} onError={runtime.report} />
                         </div>
-                      </details>
-                    ) : (
-                      <p key={i}>
-                        Unsupported saved content. Export JSON to preserve this
-                        message.
-                      </p>
-                    ),
-                  )}
-                  {!!saved?.attachments?.length && (
-                    <div className="chat-attachments">
-                      {saved.attachments.map((id) => (
-                        <AttachmentChip
-                          key={id}
-                          id={id}
-                          runtime={runtime}
-                          onPreview={setPreview}
-                        />
-                      ))}
-                    </div>
-                  )}
+                      ) : part.type === "reasoning" ? (
+                        <details key={i}>
+                          <summary>Reasoning</summary>
+                          <div className="chat-markdown">
+                            <Markdown
+                              text={part.text}
+                              onError={runtime.report}
+                            />
+                          </div>
+                        </details>
+                      ) : (
+                        <p key={i}>
+                          Unsupported saved content. Export JSON to preserve
+                          this message.
+                        </p>
+                      ),
+                    )}
+                    {!!saved?.attachments?.length && (
+                      <div className="chat-attachments">
+                        {saved.attachments.map((id) => (
+                          <AttachmentChip
+                            key={id}
+                            id={id}
+                            runtime={runtime}
+                            onPreview={setPreview}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {saved?.status &&
+                    !["completed", "active"].includes(saved.status) && (
+                      <span className="chat-message-status">
+                        {saved.status}
+                      </span>
+                    )}
                   <div className="chat-message-actions">
                     <IconButton
                       title="Copy message"
                       onClick={() => run(copy(textOf(message)))}
                     >
-                      <Copy size={13} />
+                      <Copy size={15} />
                     </IconButton>
                     {message.role === "user" ? (
-                      <button
+                      <IconButton
+                        title="Edit as variant"
                         disabled={state.busy}
                         onClick={() =>
                           setEdit({ id: message.id, text: textOf(message) })
                         }
                       >
-                        Edit as variant
-                      </button>
+                        <Pencil size={15} />
+                      </IconButton>
                     ) : (
-                      <button
+                      <IconButton
+                        title={
+                          saved?.status === "completed" ? "Regenerate" : "Retry"
+                        }
                         disabled={state.busy}
                         onClick={() => run(runtime.send("retry", message.id))}
                       >
-                        {saved?.status === "completed" ? "Regenerate" : "Retry"}
-                      </button>
+                        <RotateCcw size={15} />
+                      </IconButton>
                     )}
                     {saved?.previousVariant && (
                       <button
@@ -408,12 +427,14 @@ export default function ChatPane({
                         Variant →
                       </button>
                     )}
-                    {!!saved?.metadata && (
-                      <details>
-                        <summary>Details</summary>
-                        <pre>{JSON.stringify(saved.metadata, null, 2)}</pre>
-                      </details>
-                    )}
+                    {message.role === "assistant" &&
+                      !!saved?.metadata &&
+                      Object.keys(saved.metadata).length > 0 && (
+                        <details>
+                          <summary>Details</summary>
+                          <pre>{JSON.stringify(saved.metadata, null, 2)}</pre>
+                        </details>
+                      )}
                   </div>
                 </article>
               );
@@ -472,114 +493,150 @@ export default function ChatPane({
       )}
       {loaded && (
         <div className="chat-composer">
-          {!!loaded.draft.attachments.length && (
-            <div className="chat-attachments">
-              {loaded.draft.attachments.map((id) => (
-                <AttachmentChip
-                  key={id}
-                  id={id}
-                  runtime={runtime}
-                  onPreview={setPreview}
-                  remove={() => run(runtime.removeAttachment(id))}
-                />
-              ))}
-            </div>
-          )}
-          <textarea
-            ref={input}
-            data-chat-input
-            aria-label="Message"
-            rows={3}
-            placeholder={state.busy ? "Draft your next message…" : "Message…"}
-            value={state.text}
-            onChange={(e) => runtime.setText(e.target.value)}
-            onPaste={(e) => {
-              const images = Array.from(e.clipboardData.files).filter((f) =>
-                f.type.startsWith("image/"),
-              );
-              if (images.length) {
-                e.preventDefault();
-                run(files(images));
+          <div className="chat-composer-surface">
+            {!!loaded.draft.attachments.length && (
+              <div className="chat-attachments">
+                {loaded.draft.attachments.map((id) => (
+                  <AttachmentChip
+                    key={id}
+                    id={id}
+                    runtime={runtime}
+                    onPreview={setPreview}
+                    remove={() => run(runtime.removeAttachment(id))}
+                  />
+                ))}
+              </div>
+            )}
+            <textarea
+              ref={input}
+              data-chat-input
+              aria-label="Message"
+              rows={1}
+              placeholder={
+                state.busy ? "Draft your next message…" : "Ask anything…"
               }
-            }}
-            onKeyDown={(e) => {
-              if (
-                e.nativeEvent.isComposing ||
-                e.nativeEvent.keyCode === 229 ||
-                e.repeat
-              )
-                return;
-              const send =
-                e.key === "Enter" &&
-                !e.shiftKey &&
-                !e.altKey &&
-                (state.preferences?.sendMode === "modifier-enter"
-                  ? e.ctrlKey || e.metaKey
-                  : !e.ctrlKey && !e.metaKey);
-              if (send && !state.busy) {
-                e.preventDefault();
-                bottom.current = true;
-                run(runtime.send());
-              }
-            }}
-          />
-          <div className="chat-composer-actions">
-            <IconButton
-              title="Attach UTF-8 text or image"
-              onClick={() =>
-                run(
-                  (async () => {
-                    const selected = await open({
-                      multiple: true,
-                      directory: false,
-                      title: "Attach files to this conversation",
-                    });
-                    if (selected) {
-                      const paths =
-                        typeof selected === "string" ? [selected] : selected;
-                      if (paths.length > 10)
-                        throw Error("Choose up to 10 attachments.");
-                      for (const path of paths) await attach({ path });
-                    }
-                  })(),
-                )
-              }
-            >
-              <Paperclip size={16} />
-            </IconButton>
-            <small>
-              {model?.images ? "Text & images" : "Text attachments"}
-            </small>
-            <span className="chat-status" role="status">
-              {state.status}
-            </span>
-            {state.busy ? (
-              <button className="button" onClick={() => run(runtime.stop())}>
-                <Square size={13} /> Stop
-              </button>
-            ) : (
-              <button
-                className="button"
-                disabled={
-                  state.storageFailed ||
-                  !!state.unsentText ||
-                  !connection?.enabled ||
-                  !config?.model ||
-                  (!state.text.trim() && !loaded.draft.attachments.length)
+              value={state.text}
+              onChange={(e) => runtime.setText(e.target.value)}
+              onPaste={(e) => {
+                const images = Array.from(e.clipboardData.files).filter((f) =>
+                  f.type.startsWith("image/"),
+                );
+                if (images.length) {
+                  e.preventDefault();
+                  run(files(images));
                 }
+              }}
+              onKeyDown={(e) => {
+                if (
+                  e.nativeEvent.isComposing ||
+                  e.nativeEvent.keyCode === 229 ||
+                  e.repeat
+                )
+                  return;
+                const send =
+                  e.key === "Enter" &&
+                  !e.shiftKey &&
+                  !e.altKey &&
+                  (state.preferences?.sendMode === "modifier-enter"
+                    ? e.ctrlKey || e.metaKey
+                    : !e.ctrlKey && !e.metaKey);
+                if (send && !state.busy) {
+                  e.preventDefault();
+                  if (canSend) {
+                    bottom.current = true;
+                    run(runtime.send());
+                  }
+                }
+              }}
+            />
+            <div className="chat-composer-actions">
+              <IconButton
+                title="Attach UTF-8 text or image"
+                onClick={() =>
+                  run(
+                    (async () => {
+                      const selected = await open({
+                        multiple: true,
+                        directory: false,
+                        title: "Attach files to this conversation",
+                      });
+                      if (selected) {
+                        const paths =
+                          typeof selected === "string" ? [selected] : selected;
+                        if (paths.length > 10)
+                          throw Error("Choose up to 10 attachments.");
+                        for (const path of paths) await attach({ path });
+                      }
+                    })(),
+                  )
+                }
+              >
+                <Plus size={20} />
+              </IconButton>
+              <button
+                className="chat-model-button"
+                title={
+                  connection
+                    ? `${connection.name} · ${config?.model || "Choose a model"}`
+                    : "Set up Chat AI"
+                }
+                aria-label="Choose model"
+                disabled={state.busy}
                 onClick={() => {
-                  bottom.current = true;
-                  run(runtime.send());
+                  if (
+                    state.preferences?.connections.some(
+                      (c) => c.enabled && c.secretId,
+                    )
+                  )
+                    setOptions(true);
+                  else run(api("open_settings", { page: "chat-ai" }));
                 }}
               >
-                <Send size={14} /> Send
+                <span>
+                  {config?.model ? modelLabel(config.model) : "Choose model"}
+                </span>
+                <ChevronDown size={14} />
               </button>
-            )}
+              {state.busy ? (
+                <IconButton
+                  className="chat-send"
+                  title="Stop"
+                  onClick={() => run(runtime.stop())}
+                >
+                  <Square size={15} fill="currentColor" />
+                </IconButton>
+              ) : (
+                <IconButton
+                  className="chat-send"
+                  title="Send"
+                  disabled={!canSend}
+                  onClick={() => {
+                    bottom.current = true;
+                    run(runtime.send());
+                  }}
+                >
+                  <ArrowUp size={19} />
+                </IconButton>
+              )}
+            </div>
+          </div>
+          <div className="chat-composer-footer">
+            <span className="chat-status" role="status">
+              {state.status ||
+                connection?.name ||
+                "Connect a provider to start"}
+            </span>
+            <span className="chat-input-hint">
+              {state.preferences?.sendMode === "modifier-enter"
+                ? "Ctrl/Cmd + Enter to send"
+                : "Enter to send · Shift + Enter for a new line"}
+            </span>
           </div>
         </div>
       )}
       {discarding && (
         <Modal
+          className="chat-dialog"
           title="Discard unsaved chat data?"
           onClose={() => setDiscarding(false)}
         >
@@ -627,6 +684,7 @@ export default function ChatPane({
       )}
       {recovering && (
         <Modal
+          className="chat-dialog"
           title="Recover chat history?"
           onClose={() => setRecovering(false)}
         >
@@ -660,6 +718,7 @@ export default function ChatPane({
       )}
       {edit && (
         <Modal
+          className="chat-dialog"
           title="Edit message as a new variant"
           onClose={() => setEdit(null)}
         >
@@ -686,6 +745,7 @@ export default function ChatPane({
       )}
       {sensitive && (
         <Modal
+          className="chat-dialog"
           title="Attach sensitive file?"
           onClose={() => decideSensitive(false)}
         >
@@ -711,7 +771,11 @@ export default function ChatPane({
         </Modal>
       )}
       {preview && (
-        <Modal title={preview.attachment.name} onClose={() => setPreview(null)}>
+        <Modal
+          className="chat-dialog"
+          title={preview.attachment.name}
+          onClose={() => setPreview(null)}
+        >
           <div className="dialog-form">
             {preview.attachment.mime.startsWith("image/") ? (
               <img
@@ -864,7 +928,11 @@ function ConfigDialog({
       runtime.chat.messages.map(textOf).join("\n"),
   ).length;
   return (
-    <Modal title="Conversation settings" onClose={onClose}>
+    <Modal
+      className="chat-dialog"
+      title="Conversation settings"
+      onClose={onClose}
+    >
       <form
         className="dialog-form chat-config"
         onSubmit={(e) => {
@@ -885,7 +953,9 @@ function ConfigDialog({
               setNext({
                 ...next,
                 connectionId: e.target.value || null,
-                model: "",
+                model: suggestedModel(
+                  connections.find((c) => c.id === e.target.value),
+                ),
                 temperature: null,
               })
             }
@@ -900,72 +970,67 @@ function ConfigDialog({
               ))}
           </select>
         </label>
-        <label>
-          Model ID
-          <input
-            list="chat-models"
-            value={next.model}
-            onChange={(e) =>
-              setNext({ ...next, model: e.target.value, temperature: null })
-            }
-          />
-          <datalist id="chat-models">
-            {selected?.models.map((id) => (
-              <option key={id} value={id} />
-            ))}
-          </datalist>
-        </label>
-        {!capability && (
-          <small>
-            Manual model IDs support basic text. Image and temperature support
-            must be verified for this model.
-          </small>
-        )}
-        <label>
-          System instructions
-          <textarea
-            rows={4}
-            value={next.system}
-            onChange={(e) => setNext({ ...next, system: e.target.value })}
-          />
-        </label>
-        <label>
-          Maximum output tokens
-          <input
-            type="number"
-            min={1}
-            max={32768}
-            value={next.maxOutputTokens}
-            onChange={(e) =>
-              setNext({ ...next, maxOutputTokens: Number(e.target.value) })
-            }
-          />
-        </label>
-        {capability?.temperature && (
+        <ModelSelect
+          key={next.connectionId}
+          connection={selected}
+          value={next.model}
+          onChange={(model) => setNext({ ...next, model, temperature: null })}
+        />
+        <details className="chat-advanced">
+          <summary>Advanced options</summary>
+          {!capability && (
+            <small>
+              Manual model IDs support basic text. Image and temperature support
+              must be verified for this model.
+            </small>
+          )}
           <label>
-            Temperature (optional)
+            System instructions
+            <textarea
+              rows={4}
+              value={next.system}
+              onChange={(e) => setNext({ ...next, system: e.target.value })}
+            />
+          </label>
+          <label>
+            Maximum output tokens
             <input
               type="number"
-              min={0}
-              max={2}
-              step={0.1}
-              value={next.temperature ?? ""}
+              min={1}
+              max={32768}
+              value={next.maxOutputTokens}
               onChange={(e) =>
-                setNext({
-                  ...next,
-                  temperature:
-                    e.target.value === "" ? null : Number(e.target.value),
-                })
+                setNext({ ...next, maxOutputTokens: Number(e.target.value) })
               }
             />
           </label>
-        )}
-        <small>
-          Visible text estimate: roughly{" "}
-          {Math.ceil(visibleBytes / 4).toLocaleString()}–
-          {visibleBytes.toLocaleString()} tokens. Files, earlier pages and
-          provider overhead are excluded; the model can reject a larger context.
-        </small>
+          {capability?.temperature && (
+            <label>
+              Temperature (optional)
+              <input
+                type="number"
+                min={0}
+                max={2}
+                step={0.1}
+                value={next.temperature ?? ""}
+                onChange={(e) =>
+                  setNext({
+                    ...next,
+                    temperature:
+                      e.target.value === "" ? null : Number(e.target.value),
+                  })
+                }
+              />
+            </label>
+          )}
+          <small>
+            Visible text estimate: roughly{" "}
+            {Math.ceil(visibleBytes / 4).toLocaleString()}–
+            {visibleBytes.toLocaleString()} tokens. Files, earlier pages and
+            provider overhead are excluded; the model can reject a larger
+            context.
+          </small>
+        </details>
         {hasHistory && config.connectionId !== next.connectionId && (
           <p role="status">
             On the next Send or Retry, the active conversation history and its
@@ -1083,7 +1148,7 @@ function ChatHistory({
     <Modal
       title="Chat history"
       onClose={onClose}
-      className="chat-history-dialog"
+      className="chat-dialog chat-history-dialog"
     >
       <div className="dialog-form">
         <input

@@ -35,6 +35,32 @@
         }
       ]
     },
-    "core:resources:allow-close"
+    "core:resources:allow-close",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "https://platform.openai.com/api-keys"
+        },
+        {
+          "url": "https://aistudio.google.com/apikey"
+        },
+        {
+          "url": "https://console.x.ai/"
+        },
+        {
+          "url": "https://openrouter.ai/settings/keys"
+        },
+        {
+          "url": "https://platform.deepseek.com/api_keys"
+        },
+        {
+          "url": "https://build.nvidia.com/"
+        },
+        {
+          "url": "https://platform.claude.com/settings/keys"
+        }
+      ]
+    }
   ]
 }

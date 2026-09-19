@@ -44,6 +44,9 @@ export async function mockChats(page: Page) {
       failClose: false,
       failDraft: false,
       response: "Zażółć 日本語 👩🏽‍💻 ",
+      chunks: 5,
+      connectionActions: [],
+      failPreferences: false,
       starts: 0,
       stops: 0,
       requests,
@@ -68,6 +71,10 @@ export async function mockChats(page: Page) {
     desktop.__chatInvoke = async (command: string, args: any) => {
       if (command === "chat_preferences") return structuredClone(preferences);
       if (command === "chat_preferences_save") {
+        if (desktop.__chatTest.failPreferences)
+          throw "System credential store is locked.";
+        if (args.expected !== preferences.revision)
+          throw "conflict: Chat AI settings changed.";
         preferences = { ...args.data, revision: preferences.revision + 1 };
         if (args.newKey) {
           const c = preferences.connections.find(
@@ -85,6 +92,31 @@ export async function mockChats(page: Page) {
         }
         localStorage.setItem("chat-preferences", JSON.stringify(preferences));
         return structuredClone(preferences);
+      }
+      if (command === "chat_connection_action") {
+        desktop.__chatTest.connectionActions.push(args);
+        if (desktop.__chatTest.failConnectionAction)
+          return { status: "failed", result: { code: "auth" } };
+        const connection = preferences.connections.find(
+          (c: any) => c.id === args.connectionId,
+        );
+        if (args.operation === "list-models") {
+          connection.models = [
+            ...new Set([
+              ...connection.models,
+              ...Array.from(
+                { length: 12 },
+                (_, index) => `catalog-model-${index}`,
+              ),
+            ]),
+          ];
+        } else {
+          connection.testedModel = args.model;
+          connection.testStatus = "completed";
+        }
+        preferences.revision++;
+        localStorage.setItem("chat-preferences", JSON.stringify(preferences));
+        return { status: "completed" };
       }
       if (
         command === "chat_retain" ||
@@ -197,7 +229,10 @@ export async function mockChats(page: Page) {
               sequence: ++request.sequence,
               chunk: { type: "text-delta", id: "text", delta },
             });
-            if (++count === 5 && !desktop.__chatTest.hold)
+            if (
+              ++count === desktop.__chatTest.chunks &&
+              !desktop.__chatTest.hold
+            )
               stop(request, "completed");
           }, 60);
         }, 20);
@@ -219,7 +254,7 @@ export async function mockChats(page: Page) {
             id: input.id,
             title: "Chat AI",
             origin: input.origin,
-            config: structuredClone(config),
+            config: structuredClone(preferences.defaults),
             revision: 0,
             activeLeafId: null,
             updatedAt: Date.now(),

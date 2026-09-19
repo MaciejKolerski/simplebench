@@ -1,11 +1,43 @@
 # Chat AI
 
 Open **+ → Chat AI** to create a conversation in the current workspace. In
-**Settings → Chat AI**, add a named OpenAI, Anthropic or Google Gemini connection,
-enter an API key, choose system storage or session-only storage, and set the
-default connection and model. Multiple connections can use the same provider.
-The model catalog is optional; a model ID can be entered manually. **Test
-connection** sends a fixed, short prompt and may incur provider charges.
+**Settings → Chat AI**, select a provider in the sidebar and choose **Connect**.
+OpenAI, Google (AI Studio), xAI, OpenRouter, DeepSeek, NVIDIA Build and Anthropic
+are available with preset API endpoints. Paste your API key; **Get API key** opens
+the provider's console in your browser. The first connection has a suggested model
+and **Use for new conversations** selected; **Save connection** saves the key and
+defaults together. No model refresh or paid test is required. An empty,
+unconfigured conversation picks up these defaults when Settings saves.
+
+**Advanced options** contains the optional connection name, system or session-only
+key storage, and enabled state. Multiple connections can use the same provider.
+**Add connection** adds another named connection, including a second key for the
+same provider. **Edit** changes its key or connection options without exposing the
+stored secret. The provider switch enables or disables a connection.
+
+The model list offers **Use by default**, **Refresh models**, a search field for
+long catalogs, and **Add model** for exact custom IDs. Refresh supplements the saved
+catalog and preserves custom IDs. Suggested and catalog models are not access
+checks; availability and billing depend on the provider and account. Only models
+with locally verified image support display a **Vision** badge.
+
+**Chat preferences** changes defaults and the send shortcut. Unsaved preferences
+remain separate from connection actions. **Connection tools** contains optional
+paid testing and key/connection removal.
+**Test connection** sends a fixed, short prompt and may incur provider charges.
+
+OpenAI uses Responses, Google uses Generative Language, and Anthropic uses
+Messages. The other presets use the pinned OpenAI-compatible AI SDK adapter with
+fixed HTTPS Chat Completions endpoints, including streaming reasoning. Endpoint
+references: [xAI](https://docs.x.ai/developers/rest-api-reference/inference/chat-completions),
+[OpenRouter](https://openrouter.ai/docs/quickstart),
+[DeepSeek](https://api-docs.deepseek.com/), and
+[NVIDIA](https://docs.api.nvidia.com/nim/re/reference/llm-apis).
+
+Choose the model in the composer to switch models or connections. **Custom model…**
+accepts a provider model ID. Conversation instructions and generation limits are
+under **Advanced options**. The composer grows with its draft and adapts to panel
+size; long messages, code blocks and dialogs scroll within their available space.
 
 Enter sends; Shift+Enter adds a line. Settings can change sending to Ctrl/Cmd+Enter.
 IME composition never sends. **Stop** cancels the provider request and saves the
@@ -23,7 +55,7 @@ Restarting restores saved text, never a paid request or unsaved RAM.
 
 ## Attachments and limits
 
-Choose files with the paperclip, drag from Explorer or the operating system,
+Choose files with the composer’s plus button, drag from Explorer or the operating system,
 or paste an image. Files are copied locally before sending, and previews/removal
 are available in the composer. Nothing reads the project, editor, terminal or
 clipboard automatically. Sensitive filenames require explicit confirmation.

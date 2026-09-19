@@ -86,8 +86,10 @@ or acronym.
   Retry retains the user message; Edit branches. Checkpoints and final saves run
   independently of React. Existing editor/PTY guards run before chat cancellation;
   failed saves retain RAM and block close, update and restart until resolved.
-- `packages/ai-runtime/` bundles pinned AI SDK 7 and explicit OpenAI, Anthropic
-  and Google adapters. Build preparation stages verified Node 24 archives;
+- `packages/ai-runtime/` bundles pinned AI SDK 7 and explicit OpenAI, Anthropic,
+  Google and OpenAI-compatible adapters. xAI, OpenRouter, DeepSeek and NVIDIA
+  Build use fixed provider presets, never arbitrary webview-supplied endpoints.
+  Build preparation stages verified Node 24 archives;
   generation uses only the shipped binary and bundle, no shell or system Node.
   Keys travel only from native storage to this private process. Disable SDK
   retries and raw warnings/errors; never add tools, MCP or command execution.

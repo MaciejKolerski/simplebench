@@ -1,5 +1,6 @@
 import type { Generation, Emit } from "./protocol.ts";
 import { errorCode } from "./protocol.ts";
+import { providerPresets } from "../../../src/chat/provider-presets.ts";
 
 export async function catalog(
   input: Generation,
@@ -18,18 +19,19 @@ export async function catalog(
     });
   const timer = setTimeout(() => controller.abort(), 30_000);
   try {
-    const url = {
-      openai: "https://api.openai.com/v1/models",
-      anthropic: "https://api.anthropic.com/v1/models?limit=1000",
-      google:
-        "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000",
-    }[input.provider];
-    const headers: Record<string, string> =
-      input.provider === "openai"
-        ? { Authorization: `Bearer ${input.apiKey}` }
+    const suffix =
+      input.provider === "google"
+        ? "?pageSize=1000"
         : input.provider === "anthropic"
-          ? { "x-api-key": input.apiKey, "anthropic-version": "2023-06-01" }
-          : { "x-goog-api-key": input.apiKey };
+          ? "?limit=1000"
+          : "";
+    const url = `${providerPresets[input.provider].baseURL}/models${suffix}`;
+    const headers: Record<string, string> =
+      input.provider === "anthropic"
+        ? { "x-api-key": input.apiKey, "anthropic-version": "2023-06-01" }
+        : input.provider === "google"
+          ? { "x-goog-api-key": input.apiKey }
+          : { Authorization: `Bearer ${input.apiKey}` };
     const response = await fetch(url, {
       headers,
       signal: controller.signal,
@@ -56,10 +58,17 @@ export async function catalog(
           id?: string;
           name?: string;
           supportedGenerationMethods?: string[];
+          architecture?: { output_modalities?: string[] };
         };
         if (
           input.provider === "google" &&
           !item.supportedGenerationMethods?.includes("generateContent")
+        )
+          return [];
+        if (
+          input.provider === "openrouter" &&
+          item.architecture?.output_modalities &&
+          !item.architecture.output_modalities.includes("text")
         )
           return [];
         const id = (item.id ?? item.name ?? "").replace(/^models\//, "");

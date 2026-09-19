@@ -1,4 +1,5 @@
 import type { UIMessage } from "ai";
+import type { Provider } from "./provider-presets";
 export interface Origin {
   projectId: string;
   projectName: string;
@@ -63,7 +64,7 @@ export interface Accepted {
 export interface Connection {
   id: string;
   name: string;
-  provider: "openai" | "anthropic" | "google";
+  provider: Provider;
   enabled: boolean;
   credentialRevision: number;
   secretMode: "system" | "session";

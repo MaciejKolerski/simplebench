@@ -141,6 +141,7 @@ test("settings route supports named connections without reading a secret", async
   await page
     .getByRole("button", { name: "Add connection", exact: true })
     .click();
+  await page.getByText("Advanced options", { exact: true }).click();
   await page
     .getByRole("textbox", { name: "Connection name" })
     .fill("Second connection");
