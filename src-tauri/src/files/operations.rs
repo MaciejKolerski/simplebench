@@ -327,7 +327,7 @@ pub async fn git_pull(window: Window, root: String, rebase: bool) -> Result<(), 
     main_window(&window)?;
     tauri::async_runtime::spawn_blocking(move || {
         let state = window.state::<super::editor::EditorFiles>();
-        // ponytail: reuse the write lock through pull; split fetch from integration if network waits block saves.
+        // Hold the editor write lock through pull to serialize worktree mutations.
         let _lock = state
             .writes
             .lock()

@@ -15,7 +15,7 @@ const FILE_LIMIT: usize = 20 * 1024 * 1024;
 const JSON_LIMIT: usize = 256 * 1024;
 #[derive(Default)]
 pub struct Plugins {
-    // ponytail: package operations serialize globally; use per-package locks if imports contend.
+    // Package operations serialize access to shared catalog and runtime state.
     inner: Mutex<Runtime>,
 }
 #[derive(Default)]

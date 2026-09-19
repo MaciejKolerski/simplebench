@@ -146,7 +146,7 @@ fn responds_to_http(address: SocketAddr) -> std::io::Result<bool> {
     stream.set_read_timeout(Some(Duration::from_millis(1200)))?;
     stream.set_write_timeout(Some(Duration::from_millis(200)))?;
     // OPTIONS checks HTTP support without fetching a page body. Next.js rejects the * target.
-    // ponytail: discover plain HTTP only; add TLS probing if HTTPS-only discovery is needed.
+    // Discovery probes plain HTTP only; no TLS handshake is performed.
     write!(
         stream,
         "OPTIONS / HTTP/1.1\r\nHost: {}\r\nConnection: close\r\n\r\n",

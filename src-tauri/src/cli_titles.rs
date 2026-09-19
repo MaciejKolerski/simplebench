@@ -77,7 +77,7 @@ fn identify(executable: &Path, argv: &[u8]) -> Option<TitleCli> {
 #[cfg(target_os = "linux")]
 pub fn process_in_group(group: u32) -> Option<TitleProcess> {
     let mut pending = vec![group];
-    // ponytail: inspect at most 64 wrapper descendants; raise this bound for deeper launchers.
+    // Bound /proc traversal to 64 wrapper descendants per terminal group.
     for _ in 0..64 {
         let pid = pending.pop()?;
         let root = PathBuf::from(format!("/proc/{pid}"));

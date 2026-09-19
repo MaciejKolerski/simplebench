@@ -180,8 +180,8 @@ impl Terminals {
         Ok(sessions
             .into_iter()
             .filter(|(_, session)| {
-                // ponytail: WSL processes are outside the host process tree; confirm
-                // conservatively until a per-terminal WSL process probe is available.
+                // WSL processes are outside the host process tree, so these sessions
+                // require close confirmation without a host-side child lookup.
                 session.profile.distro.is_some()
                     || session.has_foreground_process()
                     || session.pid.is_none_or(|pid| parents.contains(&pid))
