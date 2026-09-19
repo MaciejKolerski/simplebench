@@ -289,6 +289,14 @@ test("a theme updates both windows and hidden terminals without replacing PTYs",
     .getAttribute("data-pane-id"))!;
   await expect.poll(async () => (await terminal(page, first)).id).toBeTruthy();
   const before = await terminal(page, first);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        (id) => (window as any).__nativeTest.sessions.has(id),
+        before.id,
+      ),
+    )
+    .toBe(true);
   await page.evaluate(
     (id) => (window as any).__nativeTest.emit(id, "\r\noutput to preserve\r\n"),
     before.id,

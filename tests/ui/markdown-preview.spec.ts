@@ -169,6 +169,18 @@ test("preview-only mode survives tab switches and restoration, and returning to 
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("test-session")))
     .toContain('"previewView":"preview"');
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const workspace = JSON.parse(
+          localStorage.getItem("test-session") ?? "{}",
+        ).projects?.[0].workspaces[0];
+        return workspace?.tabs.find(
+          (tab: any) => tab.id === workspace.activeTabId,
+        )?.relative;
+      }),
+    )
+    .toBe("README.md");
   await page.reload();
   await expect(
     page.getByRole("heading", { name: "Unsaved draft" }),

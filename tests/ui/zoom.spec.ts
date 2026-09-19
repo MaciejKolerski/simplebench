@@ -24,6 +24,7 @@ for (const platform of ["macos", "linux"] as const) {
     await page.locator(".xterm-helper-textarea").focus();
     await page.keyboard.press(`${mod}+d`);
     await expect(page.locator(".xterm-screen")).toHaveCount(2);
+    await expect.poll(() => commands(page, "start_terminal")).toHaveLength(2);
     const started = await commands(page, "start_terminal");
     await page.keyboard.press(`${mod}+Minus`);
     await expect.poll(() => zoom(page)).toBe(0.9);

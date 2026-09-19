@@ -693,6 +693,18 @@ test("Rust editing preserves per-tab positions across switches and session resto
       ),
     )
     .toBe(expectedHead);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const workspace = JSON.parse(
+          localStorage.getItem("test-session") ?? "{}",
+        ).projects?.[0].workspaces[0];
+        return workspace?.tabs.find(
+          (tab: any) => tab.id === workspace.activeTabId,
+        )?.relative;
+      }),
+    )
+    .toBe("main.rs");
   await page.reload();
   await expect(page.getByText("Ln 250, Col 2", { exact: true })).toBeVisible();
   await page.keyboard.press("End");
