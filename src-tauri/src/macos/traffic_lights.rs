@@ -1,6 +1,18 @@
-use objc2::MainThreadMarker;
+use objc2::{
+    rc::{Retained, Weak},
+    MainThreadMarker,
+};
 use objc2_app_kit::{NSView, NSWindow, NSWindowButton, NSWindowStyleMask};
+use std::{cell::RefCell, collections::HashMap};
 use tauri::{AppHandle, LogicalPosition, Manager};
+
+thread_local! {
+    static WINDOWS: RefCell<HashMap<String, Weak<NSWindow>>> = RefCell::new(HashMap::new());
+}
+
+pub fn forget(label: &str) {
+    WINDOWS.with(|windows| windows.borrow_mut().remove(label));
+}
 
 pub const SETTINGS_POSITION: LogicalPosition<f64> = LogicalPosition::new(14.0, 24.0);
 
@@ -11,14 +23,22 @@ pub fn refresh(app: &AppHandle) {
     // Tao queues title changes on the main dispatch queue. Restore the inset
     // after native events, even when AppKit does not redraw the content view.
     for label in ["main", "settings"] {
-        let Some(window) = app.get_window(label) else {
+        let native = WINDOWS.with(|windows| {
+            let mut windows = windows.borrow_mut();
+            if let Some(native) = windows.get(label).and_then(Weak::load) {
+                return Some(native);
+            }
+            // Cloning Tauri's window dispatcher or querying its raw handle wakes the
+            // event loop. Cache weak native references to avoid self-triggered refresh.
+            let window = app.get_window(label)?;
+            let pointer = window.ns_window().ok()?;
+            let native = unsafe { Retained::retain(pointer.cast::<NSWindow>()) }?;
+            windows.insert(label.to_string(), Weak::new(&native));
+            Some(native)
+        });
+        let Some(native) = native else {
             continue;
         };
-        let Ok(native) = window.ns_window() else {
-            continue;
-        };
-        // Tauri keeps this NSWindow alive; this callback runs on the main thread.
-        let native = unsafe { &*native.cast::<NSWindow>() };
         let position = if label == "settings" {
             Some(SETTINGS_POSITION)
         } else {
@@ -31,7 +51,7 @@ pub fn refresh(app: &AppHandle) {
                 .map(|position| LogicalPosition::new(position.x, position.y))
         };
         if let Some(position) = position {
-            position_buttons(native, position);
+            position_buttons(&native, position);
         }
     }
 }

@@ -174,6 +174,14 @@ fn main() {
         handle.exit(0);
     });
     app.run_return(move |app, event| {
+        if let tauri::RunEvent::WindowEvent {
+            ref label,
+            event: tauri::WindowEvent::Destroyed,
+            ..
+        } = event
+        {
+            traffic_lights::forget(label);
+        }
         if fix && matches!(event, tauri::RunEvent::MainEventsCleared) {
             traffic_lights::refresh(app);
         }

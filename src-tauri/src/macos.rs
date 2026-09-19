@@ -84,6 +84,11 @@ pub fn setup_menu(app: &App) -> tauri::Result<()> {
 
 pub fn handle_run_event(app: &AppHandle, event: &RunEvent) {
     match event {
+        RunEvent::WindowEvent {
+            label,
+            event: tauri::WindowEvent::Destroyed,
+            ..
+        } => traffic_lights::forget(label),
         RunEvent::MainEventsCleared => traffic_lights::refresh(app),
         #[cfg(dev)]
         RunEvent::Ready => use_development_bundle_icon(),
